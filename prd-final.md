@@ -488,3 +488,13 @@ Let each user's dashboard customization survive across sessions and devices.
 - [ ] Widget reorder/resize/enable/disable actions persist to the backend
 - [ ] Reloading the dashboard on any device reflects the saved layout
 - [ ] Admin-locked widgets remain fixed even after a user's layout is saved
+
+
+---
+
+## Document References
+
+- **Notion page**: https://app.notion.com/p/Hospital-Management-System-Phase-1-PRD-3d58f6b0a7a581929041eb7f4597fe0e
+- **GitHub repository**: https://github.com/arkinara/hospital-management-system
+- **GitHub Project board**: https://github.com/users/arkinara/projects/16
+- **Tickets**: https://github.com/arkinara/hospital-management-system/issues
