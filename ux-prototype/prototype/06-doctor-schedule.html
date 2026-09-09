@@ -1,0 +1,199 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My schedule — Hospital MS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen flex">
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="hidden lg:flex flex-col w-64 shrink-0 bg-surface-container-high border-r border-outline/10">
+    <div class="flex h-16 items-center gap-3 px-5 border-b border-outline/10">
+      <div class="h-9 w-9 grid place-items-center rounded-xl bg-primary text-primary-foreground"><i data-lucide="plus" class="w-5 h-5"></i></div>
+      <div class="leading-tight"><p class="text-sm font-semibold">Meridian HMS</p><p class="text-xs text-foreground/60">Clinician</p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="users" class="w-5 h-5"></i> Patients</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium bg-primary/10 text-primary"><i data-lucide="calendar-days" class="w-5 h-5"></i> Appointments</a>
+      <a href="07-record-entry.html" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="file-text" class="w-5 h-5"></i> Records</a>
+    </nav>
+    <div class="p-3 border-t border-outline/10">
+      <div class="flex items-center gap-3 rounded-xl px-3 py-2">
+        <div class="h-9 w-9 grid place-items-center rounded-full bg-primary/15 text-primary text-xs font-semibold">SW</div>
+        <div class="leading-tight"><p class="text-sm font-medium">Dr. Sari Wibowo</p><p class="text-xs text-foreground/60">Cardiology</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="sticky top-0 z-10 h-16 bg-surface-container-high/95 backdrop-blur border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6">
+      <button class="lg:hidden h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <h1 class="text-xl font-semibold truncate">My schedule — Wed 9 Sep 2026</h1>
+      <div class="ml-auto flex items-center gap-1">
+        <button class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Search"><i data-lucide="search" class="w-5 h-5"></i></button>
+        <button onclick="document.documentElement.classList.toggle('dark')" class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Toggle dark mode">
+          <i data-lucide="sun" class="w-5 h-5 dark:hidden"></i><i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+        </button>
+        <div class="h-9 w-9 grid place-items-center rounded-full ring-2 ring-background bg-primary/15 text-primary text-xs font-semibold ml-1">SW</div>
+      </div>
+    </header>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+      <div class="mx-auto max-w-7xl w-full space-y-6">
+
+        <!-- Toolbar: doctor selector + date nav + demo -->
+        <div class="flex flex-col md:flex-row md:items-center gap-3">
+          <div class="flex items-center gap-2">
+            <label for="doc" class="sr-only">Doctor</label>
+            <select id="doc" onchange="applyDoctor()" class="min-h-[48px] rounded-xl border border-outline/20 bg-surface-container px-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 text-sm">
+              <option>Dr. Sari Wibowo — Cardiology</option>
+              <option>Dr. Adi Nugroho — General</option>
+              <option>Dr. Lina Hartono — Pediatric</option>
+              <option>Dr. Rendra Pratama — Emergency</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="setState('data')" class="h-11 w-11 grid place-items-center rounded-xl border border-outline/20 hover:bg-surface-container-high" aria-label="Previous day"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
+            <button onclick="setState('data')" class="min-h-[44px] rounded-xl border border-outline/20 px-4 text-sm font-medium hover:bg-surface-container-high">Today</button>
+            <button onclick="setState('empty')" class="h-11 w-11 grid place-items-center rounded-xl border border-outline/20 hover:bg-surface-container-high" aria-label="Next day"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
+          </div>
+          <div class="md:ml-auto flex flex-wrap items-center gap-1.5 text-xs">
+            <span class="text-foreground/60 mr-1">Demo:</span>
+            <button onclick="setState('data')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Data</button>
+            <button onclick="setState('loading')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Loading</button>
+            <button onclick="setState('empty')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Empty</button>
+            <button onclick="setState('error')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Error</button>
+          </div>
+        </div>
+
+        <!-- Day summary metrics -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-surface-container rounded-2xl p-5 border border-outline/10"><p class="text-sm text-foreground/70">Total</p><p class="text-3xl font-bold mt-1">7</p></div>
+          <div class="bg-surface-container rounded-2xl p-5 border border-outline/10"><p class="text-sm text-foreground/70">Completed</p><p class="text-3xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">2</p></div>
+          <div class="bg-surface-container rounded-2xl p-5 border border-outline/10"><p class="text-sm text-foreground/70">Remaining</p><p class="text-3xl font-bold mt-1">4</p></div>
+          <div class="bg-surface-container rounded-2xl p-5 border border-outline/10"><p class="text-sm text-foreground/70">Cancelled</p><p class="text-3xl font-bold mt-1 text-rose-600 dark:text-rose-400">1</p></div>
+        </div>
+
+        <!-- Legend -->
+        <div class="flex flex-wrap items-center gap-4 text-xs text-foreground/70">
+          <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded bg-primary/20 border border-primary/30"></span> Booked</span>
+          <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded bg-blue-500/25 border border-blue-500/40"></span> Checked in</span>
+          <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded bg-emerald-500/25 border border-emerald-500/40"></span> Completed</span>
+          <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded bg-rose-500/20 border border-rose-500/40"></span> Cancelled</span>
+          <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded border border-dashed border-outline/50"></span> Open</span>
+        </div>
+
+        <!-- ===== DAY CALENDAR ===== -->
+        <section class="bg-surface-container rounded-2xl border border-outline/10 shadow-sm overflow-hidden">
+          <!-- Data -->
+          <div id="calData" class="p-3 sm:p-4">
+            <div id="calRows"></div>
+          </div>
+
+          <!-- Loading skeleton -->
+          <div id="calLoading" class="hidden p-4 space-y-2">
+            <div class="skl h-14 rounded-xl"></div><div class="skl h-14 rounded-xl"></div><div class="skl h-14 rounded-xl"></div>
+            <div class="skl h-14 rounded-xl"></div><div class="skl h-14 rounded-xl"></div><div class="skl h-14 rounded-xl"></div>
+          </div>
+
+          <!-- Empty -->
+          <div id="calEmpty" class="hidden flex flex-col items-center justify-center text-center gap-3 py-20">
+            <div class="h-14 w-14 grid place-items-center rounded-2xl bg-surface-container-high"><i data-lucide="coffee" class="w-7 h-7 text-foreground/50"></i></div>
+            <p class="text-lg font-medium">No appointments — enjoy the quiet</p>
+            <p class="text-sm text-foreground/60 max-w-sm">Nothing scheduled for this day. New bookings will appear here automatically.</p>
+          </div>
+
+          <!-- Error -->
+          <div id="calError" class="hidden flex flex-col items-center justify-center text-center gap-3 py-20">
+            <div class="h-14 w-14 grid place-items-center rounded-2xl bg-rose-100 dark:bg-rose-500/20"><i data-lucide="wifi-off" class="w-7 h-7 text-rose-700 dark:text-rose-300"></i></div>
+            <p class="text-lg font-medium">Couldn't load schedule</p>
+            <p class="text-sm text-foreground/60 max-w-sm">Something went wrong fetching today's appointments. Check your connection and try again.</p>
+            <button onclick="setState('data')" class="mt-1 inline-flex items-center gap-2 min-h-[48px] rounded-2xl border border-outline/30 px-4 text-sm font-medium hover:bg-surface-container-high"><i data-lucide="refresh-cw" class="w-5 h-5"></i> Retry</button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Mobile bottom nav -->
+    <nav class="lg:hidden sticky bottom-0 z-10 bg-surface-container-high border-t border-outline/10 flex justify-around">
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="text-[10px]">Home</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[10px]">Patients</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-primary"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="text-[10px]">Schedule</span></a>
+      <a href="07-record-entry.html" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="file-text" class="w-5 h-5"></i><span class="text-[10px]">Records</span></a>
+    </nav>
+  </div>
+</div>
+
+<script>
+const APPTS = [
+  { time:'08:30', end:'09:00', patient:'Agus Salim', reason:'Post-MI follow-up', dept:'Cardiology', status:'completed' },
+  { time:'09:00', end:'09:30', patient:'Siti Rahayu', reason:'Palpitations review', dept:'Cardiology', status:'completed' },
+  { time:'10:00', end:'10:30', patient:'Budi Santoso', reason:'Hypertension follow-up', dept:'Cardiology', status:'checked_in' },
+  { time:'11:00', end:'11:30', patient:'Rina Wijaya', reason:'Chest discomfort', dept:'Cardiology', status:'booked' },
+  { time:'13:30', end:'14:00', patient:'Dewi Lestari', reason:'Murmur assessment', dept:'Pediatric', status:'booked' },
+  { time:'15:00', end:'15:30', patient:'Hendra Wijaya', reason:'ECG results', dept:'Cardiology', status:'cancelled' },
+  { time:'16:00', end:'16:30', patient:'Nadia Putri', reason:'Pre-op clearance', dept:'Cardiology', status:'booked' },
+];
+const STYLE = {
+  booked:     { box:'bg-primary/10 border-primary/30 hover:bg-primary/15', chip:'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300', label:'Booked' },
+  checked_in: { box:'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/15', chip:'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300', label:'Checked in' },
+  completed:  { box:'bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/15', chip:'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300', label:'Completed' },
+  cancelled:  { box:'bg-rose-500/5 border-rose-500/30', chip:'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300', label:'Cancelled' },
+};
+
+function renderCal(){
+  const byTime = {};
+  APPTS.forEach(a=>byTime[a.time]=a);
+  const rows=[];
+  for(let h=8; h<17; h++){
+    for(const m of ['00','30']){
+      const t = String(h).padStart(2,'0')+':'+m;
+      const a = byTime[t];
+      const timeCol = `<div class="w-14 shrink-0 pt-3 text-xs font-medium tabular-nums text-foreground/60 text-right pr-3">${t}</div>`;
+      if(a){
+        const s = STYLE[a.status];
+        const cancelled = a.status==='cancelled';
+        rows.push(`<div class="flex">${timeCol}
+          <a href="07-record-entry.html" title="${a.patient} · ${a.reason}" class="group flex-1 mb-1.5 rounded-xl border px-3 py-2.5 ${s.box} transition-colors block">
+            <div class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-sm font-medium truncate ${cancelled?'line-through text-foreground/50':''}">${a.patient} <span class="text-foreground/50 font-normal">${a.time}–${a.end}</span></p>
+                <p class="text-xs truncate ${cancelled?'line-through text-foreground/40':'text-foreground/70'}">${a.reason}</p>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <span class="hidden sm:inline rounded-full px-2 py-0.5 text-[11px] font-medium bg-surface-container-highest text-foreground/70">${a.dept}</span>
+                <span class="rounded-full px-2.5 py-0.5 text-xs font-medium ${s.chip}">${s.label}</span>
+                <i data-lucide="chevron-right" class="w-4 h-4 text-foreground/30 group-hover:text-primary hidden sm:block"></i>
+              </div>
+            </div>
+          </a></div>`);
+      } else {
+        rows.push(`<div class="flex">${timeCol}
+          <div class="flex-1 mb-1.5 rounded-xl border border-dashed border-outline/25 px-3 py-2 text-xs text-foreground/40">Open</div>
+        </div>`);
+      }
+    }
+  }
+  document.getElementById('calRows').innerHTML = rows.join('');
+  lucide.createIcons();
+}
+
+function setState(s){
+  ['calData','calLoading','calEmpty','calError'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  const map={data:'calData',loading:'calLoading',empty:'calEmpty',error:'calError'};
+  document.getElementById(map[s]).classList.remove('hidden');
+  if(s==='data') renderCal();
+  lucide.createIcons();
+}
+function applyDoctor(){ setState('data'); }
+
+setState('data');
+lucide.createIcons();
+</script>
+<script>lucide.createIcons();</script></body></html>

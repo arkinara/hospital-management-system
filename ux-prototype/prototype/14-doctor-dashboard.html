@@ -1,0 +1,277 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — Hospital MS (Doctor)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  .grip,.widget-actions{display:none}
+  body.editing .grip,body.editing .widget-actions{display:inline-flex}
+  body.editing .widget{outline:2px dashed rgb(var(--outline)/.45);outline-offset:3px;cursor:grab}
+  body.editing .widget[data-locked="true"]{outline-color:rgb(var(--outline)/.25)}
+  body.editing .widget.dragging{opacity:.4}
+  .add-tile{display:none}
+  body.editing .add-tile{display:flex}
+  .seg-btn{padding:.15rem .55rem;border-radius:9999px;font-size:.7rem;font-weight:500}
+  .seg-btn.seg-active{background:rgb(var(--primary));color:rgb(var(--primary-foreground))}
+</style>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen flex">
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="hidden lg:flex flex-col w-64 shrink-0 bg-surface-container-high border-r border-outline/10">
+    <div class="flex h-16 items-center gap-3 px-5 border-b border-outline/10">
+      <div class="h-9 w-9 grid place-items-center rounded-xl bg-primary text-primary-foreground"><i data-lucide="cross" class="w-5 h-5"></i></div>
+      <div class="leading-tight"><p class="text-sm font-semibold">Meridian HMS</p><p class="text-xs text-foreground/60">Clinician</p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium bg-primary/10 text-primary"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="users" class="w-5 h-5"></i> Patients</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="calendar-days" class="w-5 h-5"></i> Appointments</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="file-text" class="w-5 h-5"></i> Records</a>
+    </nav>
+    <div class="p-3 border-t border-outline/10">
+      <div class="flex items-center gap-3 rounded-xl px-3 py-2">
+        <div class="h-9 w-9 grid place-items-center rounded-full bg-primary/15 text-primary text-xs font-semibold">SW</div>
+        <div class="leading-tight"><p class="text-sm font-medium">Dr. Sari Wibowo</p><p class="text-xs text-foreground/60">Cardiology</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN COLUMN ===== -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="sticky top-0 z-10 h-16 bg-surface-container-high/95 backdrop-blur border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6">
+      <button class="lg:hidden h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Open menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <div class="min-w-0"><h1 class="text-xl font-semibold truncate">Dashboard</h1><p class="text-xs text-foreground/60 hidden sm:block">Cardiology · Wed, 9 Sep 2026</p></div>
+      <div class="ml-auto flex items-center gap-1">
+        <button class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Search"><i data-lucide="search" class="w-5 h-5"></i></button>
+        <button onclick="document.documentElement.classList.toggle('dark')" class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Toggle dark mode">
+          <i data-lucide="sun" class="w-5 h-5 dark:hidden"></i><i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+        </button>
+        <img src="https://i.pravatar.cc/80?img=32" alt="Dr. Sari Wibowo" class="h-9 w-9 rounded-full ring-2 ring-background object-cover">
+      </div>
+    </header>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+      <div class="mx-auto max-w-7xl w-full space-y-5">
+
+        <div class="flex flex-wrap items-center gap-3">
+          <div>
+            <h2 class="text-2xl font-semibold">Good morning, Dr. Wibowo</h2>
+            <p class="text-sm text-foreground/70">6 patients today · 3 records pending documentation.</p>
+          </div>
+          <div class="ml-auto flex items-center gap-2">
+            <button id="editBtn" onclick="toggleEdit()" class="inline-flex items-center gap-2 min-h-[44px] rounded-2xl border border-outline/30 px-4 text-sm font-medium hover:bg-surface-container-high"><i data-lucide="pencil-ruler" class="w-4 h-4"></i> <span id="editLabel">Edit layout</span></button>
+          </div>
+        </div>
+
+        <!-- ===== WIDGET GRID ===== -->
+        <div id="grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+
+          <!-- (1) Today's Schedule — LOCKED by admin -->
+          <article class="widget bg-surface-container rounded-2xl p-5 shadow-sm border border-outline/10" draggable="false" data-widget="schedule" data-locked="true">
+            <header class="flex items-center gap-2 mb-4">
+              <i data-lucide="lock" class="w-4 h-4 text-foreground/40" title="Locked by admin"></i>
+              <i data-lucide="calendar-clock" class="w-5 h-5 text-primary"></i>
+              <h3 class="text-lg font-medium">Today's Schedule</h3>
+              <div class="ml-auto flex items-center gap-1">
+                <div class="seg flex items-center gap-1 bg-surface-container-high rounded-full p-0.5">
+                  <button class="seg-btn seg-active" onclick="setView(this,'data')">Data</button>
+                  <button class="seg-btn" onclick="setView(this,'empty')">Empty</button>
+                </div>
+                <span class="rounded-full bg-surface-container-high px-2 py-0.5 text-[11px] font-medium text-foreground/60 ml-1">Locked</span>
+              </div>
+            </header>
+            <div>
+              <div data-view="data" class="divide-y divide-outline/10">
+                <button class="w-full flex items-center gap-3 py-2.5 text-left hover:bg-surface-container-high rounded-lg px-2 -mx-2">
+                  <span class="text-sm font-semibold tabular-nums w-14 shrink-0">08:30</span>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate">Budi Santoso</p><p class="text-xs text-foreground/60 truncate">Follow-up · Hypertension</p></div>
+                  <span class="rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">Checked in</span>
+                </button>
+                <button class="w-full flex items-center gap-3 py-2.5 text-left hover:bg-surface-container-high rounded-lg px-2 -mx-2">
+                  <span class="text-sm font-semibold tabular-nums w-14 shrink-0">09:15</span>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate">Rina Wijaya</p><p class="text-xs text-foreground/60 truncate">New consult · Palpitations</p></div>
+                  <span class="rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300">Booked</span>
+                </button>
+                <!-- cancelled appt visually distinguished -->
+                <div class="w-full flex items-center gap-3 py-2.5 px-2 -mx-2 opacity-60">
+                  <span class="text-sm font-semibold tabular-nums w-14 shrink-0 line-through">10:00</span>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate line-through">Agus Salim</p><p class="text-xs text-foreground/60 truncate">Echo review</p></div>
+                  <span class="rounded-full px-2.5 py-0.5 text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300">Cancelled</span>
+                </div>
+                <button class="w-full flex items-center gap-3 py-2.5 text-left hover:bg-surface-container-high rounded-lg px-2 -mx-2">
+                  <span class="text-sm font-semibold tabular-nums w-14 shrink-0">11:30</span>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate">Siti Rahayu</p><p class="text-xs text-foreground/60 truncate">Follow-up · Arrhythmia</p></div>
+                  <span class="rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300">Booked</span>
+                </button>
+              </div>
+              <div data-view="empty" class="hidden flex flex-col items-center text-center gap-2 py-10">
+                <div class="h-12 w-12 grid place-items-center rounded-2xl bg-surface-container-high"><i data-lucide="calendar-off" class="w-6 h-6 text-foreground/50"></i></div>
+                <p class="font-medium">No appointments today</p>
+                <p class="text-sm text-foreground/60 max-w-xs">Your schedule is clear. Enjoy the breather.</p>
+              </div>
+            </div>
+          </article>
+
+          <!-- (2) Pending Records -->
+          <article class="widget bg-surface-container rounded-2xl p-5 shadow-sm border border-outline/10" draggable="true" data-widget="pending">
+            <header class="flex items-center gap-2 mb-4">
+              <button class="grip cursor-grab text-foreground/40" aria-label="Drag widget"><i data-lucide="grip-vertical" class="w-4 h-4"></i></button>
+              <i data-lucide="file-clock" class="w-5 h-5 text-primary"></i>
+              <h3 class="text-lg font-medium">Pending Records</h3>
+              <span class="rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300 px-2 py-0.5 text-xs font-semibold">3</span>
+              <div class="ml-auto flex items-center gap-1">
+                <div class="seg flex items-center gap-1 bg-surface-container-high rounded-full p-0.5">
+                  <button class="seg-btn seg-active" onclick="setView(this,'data')">Data</button>
+                  <button class="seg-btn" onclick="setView(this,'empty')">Empty</button>
+                </div>
+                <span class="widget-actions items-center gap-1 ml-1">
+                  <button class="h-8 w-8 grid place-items-center rounded-lg hover:bg-surface-container-highest" aria-label="Configure"><i data-lucide="settings-2" class="w-4 h-4"></i></button>
+                  <button class="h-8 w-8 grid place-items-center rounded-lg hover:bg-surface-container-highest text-rose-600 dark:text-rose-400" aria-label="Remove"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </span>
+              </div>
+            </header>
+            <div>
+              <div data-view="data" class="space-y-2">
+                <button class="w-full flex items-center gap-3 rounded-xl bg-surface-container-high/60 px-3 py-2.5 text-left hover:bg-surface-container-high">
+                  <i data-lucide="file-pen" class="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0"></i>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate">Budi Santoso</p><p class="text-xs text-foreground/60">Visit 08:35 · note not written</p></div>
+                  <span class="text-xs font-medium text-primary">Document</span>
+                </button>
+                <button class="w-full flex items-center gap-3 rounded-xl bg-surface-container-high/60 px-3 py-2.5 text-left hover:bg-surface-container-high">
+                  <i data-lucide="file-pen" class="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0"></i>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate">Agus Salim</p><p class="text-xs text-foreground/60">Visit yesterday 16:10 · draft</p></div>
+                  <span class="text-xs font-medium text-primary">Document</span>
+                </button>
+                <button class="w-full flex items-center gap-3 rounded-xl bg-surface-container-high/60 px-3 py-2.5 text-left hover:bg-surface-container-high">
+                  <i data-lucide="file-pen" class="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0"></i>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate">Dewi Lestari</p><p class="text-xs text-foreground/60">Visit yesterday 11:40 · note not written</p></div>
+                  <span class="text-xs font-medium text-primary">Document</span>
+                </button>
+              </div>
+              <div data-view="empty" class="hidden flex flex-col items-center text-center gap-2 py-10">
+                <div class="h-12 w-12 grid place-items-center rounded-2xl bg-emerald-100 dark:bg-emerald-500/20"><i data-lucide="party-popper" class="w-6 h-6 text-emerald-700 dark:text-emerald-300"></i></div>
+                <p class="font-medium">All caught up</p>
+                <p class="text-sm text-foreground/60 max-w-xs">Every completed visit is documented. Nice work.</p>
+              </div>
+            </div>
+          </article>
+
+          <!-- (3) Vitals Queue — with skeleton demo -->
+          <article class="widget bg-surface-container rounded-2xl p-5 shadow-sm border border-outline/10" draggable="true" data-widget="vitals">
+            <header class="flex items-center gap-2 mb-4">
+              <button class="grip cursor-grab text-foreground/40" aria-label="Drag widget"><i data-lucide="grip-vertical" class="w-4 h-4"></i></button>
+              <i data-lucide="activity" class="w-5 h-5 text-primary"></i>
+              <h3 class="text-lg font-medium">Vitals Queue</h3>
+              <div class="ml-auto flex items-center gap-1">
+                <div class="seg flex items-center gap-1 bg-surface-container-high rounded-full p-0.5">
+                  <button class="seg-btn seg-active" onclick="setView(this,'data')">Data</button>
+                  <button class="seg-btn" onclick="setView(this,'empty')">Empty</button>
+                  <button class="seg-btn" onclick="setView(this,'loading')">Load</button>
+                </div>
+                <span class="widget-actions items-center gap-1 ml-1">
+                  <button class="h-8 w-8 grid place-items-center rounded-lg hover:bg-surface-container-highest" aria-label="Configure"><i data-lucide="settings-2" class="w-4 h-4"></i></button>
+                  <button class="h-8 w-8 grid place-items-center rounded-lg hover:bg-surface-container-highest text-rose-600 dark:text-rose-400" aria-label="Remove"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </span>
+              </div>
+            </header>
+            <div>
+              <div data-view="data" class="space-y-2">
+                <button class="w-full flex items-center gap-3 rounded-xl bg-surface-container-high/60 px-3 py-2.5 text-left hover:bg-surface-container-high">
+                  <div class="h-9 w-9 grid place-items-center rounded-full bg-primary/15 text-primary text-xs font-semibold">RW</div>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate">Rina Wijaya</p><p class="text-xs text-foreground/60">BP 128/84 · HR 72 · Temp 36.8° · 09:05</p></div>
+                  <i data-lucide="chevron-right" class="w-4 h-4 text-foreground/40"></i>
+                </button>
+                <button class="w-full flex items-center gap-3 rounded-xl bg-surface-container-high/60 px-3 py-2.5 text-left hover:bg-surface-container-high">
+                  <div class="h-9 w-9 grid place-items-center rounded-full bg-primary/15 text-primary text-xs font-semibold">BS</div>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate">Budi Santoso</p><p class="text-xs text-foreground/60">BP 142/91 · HR 80 · Temp 37.0° · 08:40</p></div>
+                  <i data-lucide="chevron-right" class="w-4 h-4 text-foreground/40"></i>
+                </button>
+                <!-- incomplete vitals flagged -->
+                <div class="w-full flex items-center gap-3 rounded-xl bg-amber-100/60 dark:bg-amber-500/10 border border-amber-300/40 px-3 py-2.5">
+                  <div class="h-9 w-9 grid place-items-center rounded-full bg-amber-200/60 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300"><i data-lucide="alert-triangle" class="w-4 h-4"></i></div>
+                  <div class="min-w-0 flex-1"><p class="text-sm font-medium truncate">Siti Rahayu</p><p class="text-xs text-amber-700 dark:text-amber-300">Incomplete vitals (missing BP) · 08:20</p></div>
+                  <button class="text-xs font-medium text-primary">Complete</button>
+                </div>
+              </div>
+              <div data-view="empty" class="hidden flex flex-col items-center text-center gap-2 py-10">
+                <div class="h-12 w-12 grid place-items-center rounded-2xl bg-surface-container-high"><i data-lucide="heart-pulse" class="w-6 h-6 text-foreground/50"></i></div>
+                <p class="font-medium">No vitals to review</p>
+                <p class="text-sm text-foreground/60 max-w-xs">Patients with newly recorded vitals will queue here for your review.</p>
+              </div>
+              <div data-view="loading" class="hidden space-y-2 py-1">
+                <div class="skl h-14 rounded-xl"></div><div class="skl h-14 rounded-xl"></div><div class="skl h-14 rounded-xl"></div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Add widget tile -->
+          <button class="add-tile min-h-[160px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-outline/30 text-foreground/60 hover:border-primary hover:text-primary transition-colors">
+            <i data-lucide="plus" class="w-7 h-7"></i>
+            <span class="text-sm font-medium">Add widget</span>
+          </button>
+        </div>
+
+        <!-- Page-level error demo -->
+        <div class="rounded-2xl border border-outline/10 bg-surface-container p-5 shadow-sm">
+          <p class="text-xs font-medium text-foreground/50 mb-3 uppercase tracking-wide">Error state demo</p>
+          <div class="flex flex-col items-center text-center gap-2 py-6">
+            <div class="h-12 w-12 grid place-items-center rounded-2xl bg-rose-100 dark:bg-rose-500/20"><i data-lucide="wifi-off" class="w-6 h-6 text-rose-700 dark:text-rose-300"></i></div>
+            <p class="font-medium">Couldn't load your dashboard</p>
+            <p class="text-sm text-foreground/60 max-w-sm">We hit a snag reaching the server. Check your connection and try again.</p>
+            <button class="mt-1 inline-flex items-center gap-2 rounded-2xl border border-outline/30 px-4 py-2 text-sm font-medium hover:bg-surface-container-high"><i data-lucide="refresh-cw" class="w-4 h-4"></i> Retry</button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- Mobile bottom nav -->
+    <nav class="lg:hidden sticky bottom-0 z-10 bg-surface-container-high border-t border-outline/10 flex justify-around">
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-primary"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="text-[11px] font-medium">Dashboard</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/60"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[11px]">Patients</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/60"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="text-[11px]">Appts</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/60"><i data-lucide="file-text" class="w-5 h-5"></i><span class="text-[11px]">Records</span></a>
+    </nav>
+  </div>
+</div>
+
+<!-- FAB -->
+<button class="fixed bottom-20 lg:bottom-6 right-6 z-30 h-14 rounded-2xl bg-primary text-primary-foreground px-5 flex items-center gap-2 shadow-lg"><i data-lucide="file-plus-2" class="w-5 h-5"></i> <span class="font-medium">New visit note</span></button>
+
+<script>
+function toggleEdit(){
+  document.body.classList.toggle('editing');
+  const on = document.body.classList.contains('editing');
+  document.getElementById('editLabel').textContent = on ? 'Done' : 'Edit layout';
+  document.getElementById('editBtn').classList.toggle('bg-primary/10', on);
+  document.getElementById('editBtn').classList.toggle('text-primary', on);
+}
+function setView(btn,view){
+  const w = btn.closest('.widget');
+  w.querySelectorAll('[data-view]').forEach(v=>v.classList.toggle('hidden', v.dataset.view!==view));
+  const seg=w.querySelector('.seg');
+  if(seg) seg.querySelectorAll('.seg-btn').forEach(b=>b.classList.toggle('seg-active', b===btn));
+  lucide.createIcons();
+}
+let dragged=null;
+const grid=document.getElementById('grid');
+grid.querySelectorAll('.widget[draggable="true"]').forEach(w=>{
+  w.addEventListener('dragstart',e=>{ if(!document.body.classList.contains('editing')){e.preventDefault();return;} dragged=w; w.classList.add('dragging'); });
+  w.addEventListener('dragend',()=>{ dragged&&dragged.classList.remove('dragging'); dragged=null; });
+});
+grid.addEventListener('dragover',e=>{
+  if(!dragged) return; e.preventDefault();
+  const after=[...grid.querySelectorAll('.widget[draggable="true"]:not(.dragging)')].find(el=>{
+    const r=el.getBoundingClientRect(); return e.clientY < r.top + r.height/2 && e.clientX < r.right;
+  });
+  const addTile=grid.querySelector('.add-tile');
+  if(after) grid.insertBefore(dragged,after); else grid.insertBefore(dragged,addTile);
+});
+lucide.createIcons();
+</script>
+</body></html>

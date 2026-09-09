@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hospital MS — Prototype Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  html,body{height:100%}
+  .tab.active{background:rgb(var(--primary));color:rgb(var(--primary-foreground))}
+  .frame-wrap{background:
+    linear-gradient(45deg,rgb(var(--surface-container-low)) 25%,transparent 25%,transparent 75%,rgb(var(--surface-container-low)) 75%) 0 0/24px 24px,
+    linear-gradient(45deg,rgb(var(--surface-container-low)) 25%,transparent 25%,transparent 75%,rgb(var(--surface-container-low)) 75%) 12px 12px/24px 24px;
+  }
+</style>
+</head>
+<body class="bg-background text-foreground antialiased h-full">
+<div class="flex h-full flex-col">
+
+  <!-- Top bar -->
+  <header class="shrink-0 h-16 bg-surface-container-high border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6 z-10">
+    <div class="flex items-center gap-2">
+      <div class="w-9 h-9 rounded-2xl bg-primary text-primary-foreground grid place-items-center">
+        <i data-lucide="activity" class="w-5 h-5"></i>
+      </div>
+      <div class="leading-tight">
+        <div class="text-sm font-semibold">Hospital MS</div>
+        <div class="text-xs text-foreground/60">Phase 1 · UX Prototype</div>
+      </div>
+    </div>
+
+    <div class="flex-1"></div>
+
+    <!-- Viewport toggle -->
+    <div id="viewport" class="hidden sm:flex items-center gap-1 bg-surface-container rounded-full p-1 border border-outline/10">
+      <button data-vp="375"  class="vp px-3 h-9 rounded-full text-sm font-medium flex items-center gap-1.5"><i data-lucide="smartphone" class="w-4 h-4"></i>375</button>
+      <button data-vp="768"  class="vp px-3 h-9 rounded-full text-sm font-medium flex items-center gap-1.5"><i data-lucide="tablet" class="w-4 h-4"></i>768</button>
+      <button data-vp="1440" class="vp px-3 h-9 rounded-full text-sm font-medium flex items-center gap-1.5"><i data-lucide="monitor" class="w-4 h-4"></i>1440</button>
+      <button data-vp="full" class="vp px-3 h-9 rounded-full text-sm font-medium flex items-center gap-1.5"><i data-lucide="maximize" class="w-4 h-4"></i>Full</button>
+    </div>
+
+    <button id="darkToggle" class="w-11 h-11 rounded-full grid place-items-center hover:bg-surface-container-highest transition-colors" title="Toggle dark mode">
+      <i data-lucide="moon" class="w-5 h-5"></i>
+    </button>
+    <a id="openNew" href="#" target="_blank" class="w-11 h-11 rounded-full grid place-items-center hover:bg-surface-container-highest transition-colors" title="Open page in new tab">
+      <i data-lucide="external-link" class="w-5 h-5"></i>
+    </a>
+  </header>
+
+  <div class="flex flex-1 min-h-0">
+    <!-- Tab rail -->
+    <nav class="w-60 shrink-0 bg-surface-container-high border-r border-outline/10 overflow-y-auto hidden md:block">
+      <ul id="tabs" class="p-2 space-y-0.5"></ul>
+      <div class="px-4 py-3 text-xs text-foreground/50 border-t border-outline/10">
+        Keys: <span class="font-mono">1–9</span> jump · <span class="font-mono">← →</span> prev/next · <span class="font-mono">m t d f</span> viewport · <span class="font-mono">n</span> dark
+      </div>
+    </nav>
+
+    <!-- Mobile tab select -->
+    <div class="md:hidden absolute top-16 left-0 right-0 z-10 p-2 bg-surface-container-high border-b border-outline/10">
+      <select id="tabsMobile" class="w-full h-11 rounded-xl bg-surface-container px-3 text-sm"></select>
+    </div>
+
+    <!-- Stage -->
+    <main class="flex-1 min-w-0 frame-wrap overflow-auto grid place-items-start justify-center p-4 md:pt-4 pt-20">
+      <div id="frameShell" class="bg-background shadow-lg rounded-xl overflow-hidden border border-outline/10 transition-[width] duration-200" style="width:100%;max-width:100%;">
+        <iframe id="frame" src="01-signin.html" class="w-full block" style="height:calc(100vh - 8rem);border:0;"></iframe>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+const PAGES = [
+  ['01-signin.html','Sign in','auth'],
+  ['02-admin-dashboard.html','Admin dashboard','admin'],
+  ['03-patient-list.html','Patient list','shared'],
+  ['04-patient-detail.html','Patient detail','shared'],
+  ['05-appointment-booking.html','Appointment booking','reception'],
+  ['06-doctor-schedule.html','Doctor schedule','doctor'],
+  ['07-record-entry.html','Medical record entry','doctor'],
+  ['08-billing.html','Billing & invoices','billing'],
+  ['09-admin-users.html','Admin · Users','admin'],
+  ['10-admin-departments.html','Admin · Departments','admin'],
+  ['11-admin-widget-library.html','Admin · Widget library','admin'],
+  ['12-admin-permissions.html','Admin · Permissions','admin'],
+  ['13-receptionist-dashboard.html','Receptionist dashboard','reception'],
+  ['14-doctor-dashboard.html','Doctor dashboard','doctor'],
+  ['15-nurse-dashboard.html','Nurse dashboard','nurse'],
+];
+const TAG_COLOR = {
+  auth:'bg-surface-container-highest text-foreground/70',
+  admin:'bg-rose-100 text-rose-800', shared:'bg-blue-100 text-blue-800',
+  reception:'bg-amber-100 text-amber-800', doctor:'bg-emerald-100 text-emerald-800',
+  nurse:'bg-blue-100 text-blue-800', billing:'bg-amber-100 text-amber-800',
+};
+let current = 0;
+const frame = document.getElementById('frame');
+const frameShell = document.getElementById('frameShell');
+const openNew = document.getElementById('openNew');
+const tabsEl = document.getElementById('tabs');
+const tabsMobile = document.getElementById('tabsMobile');
+
+PAGES.forEach(([file,label,tag],i)=>{
+  const li = document.createElement('li');
+  li.innerHTML = `<button data-i="${i}" class="tab w-full text-left rounded-xl px-3 py-2.5 flex items-center gap-2.5 text-sm font-medium hover:bg-surface-container-highest transition-colors">
+    <span class="w-6 h-6 shrink-0 rounded-lg bg-surface-container grid place-items-center text-xs font-semibold">${i+1}</span>
+    <span class="flex-1 truncate">${label}</span>
+    <span class="text-[10px] px-1.5 py-0.5 rounded-full ${TAG_COLOR[tag]||''}">${tag}</span>
+  </button>`;
+  tabsEl.appendChild(li);
+  const opt = document.createElement('option');
+  opt.value = i; opt.textContent = `${i+1}. ${label}`;
+  tabsMobile.appendChild(opt);
+});
+
+function go(i){
+  current = (i + PAGES.length) % PAGES.length;
+  frame.src = PAGES[current][0];
+  openNew.href = PAGES[current][0];
+  tabsMobile.value = current;
+  [...tabsEl.querySelectorAll('.tab')].forEach(b=>b.classList.toggle('active', +b.dataset.i===current));
+  [...tabsEl.querySelectorAll('.tab')][current]?.scrollIntoView({block:'nearest'});
+}
+tabsEl.addEventListener('click',e=>{const b=e.target.closest('.tab'); if(b) go(+b.dataset.i);});
+tabsMobile.addEventListener('change',e=>go(+e.target.value));
+
+// Viewport
+function setVP(v){
+  frameShell.style.width = v==='full' ? '100%' : v+'px';
+  frameShell.style.maxWidth = '100%';
+  [...document.querySelectorAll('.vp')].forEach(b=>b.classList.toggle('active', b.dataset.vp===v));
+}
+document.querySelectorAll('.vp').forEach(b=>b.addEventListener('click',()=>setVP(b.dataset.vp)));
+
+// Dark
+document.getElementById('darkToggle').addEventListener('click',()=>document.documentElement.classList.toggle('dark'));
+
+// Keyboard
+document.addEventListener('keydown',e=>{
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  const k = e.key;
+  if(k>='1'&&k<='9'){ go(+k-1); }
+  else if(k==='0'){ go(9); }
+  else if(k==='ArrowRight'){ go(current+1); }
+  else if(k==='ArrowLeft'){ go(current-1); }
+  else if(k==='m'){ setVP('375'); }
+  else if(k==='t'){ setVP('768'); }
+  else if(k==='d'){ setVP('1440'); }
+  else if(k==='f'){ setVP('full'); }
+  else if(k==='n'){ document.documentElement.classList.toggle('dark'); }
+});
+
+setVP('full');
+go(0);
+lucide.createIcons();
+</script>
+</body>
+</html>

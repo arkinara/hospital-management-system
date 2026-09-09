@@ -1,0 +1,197 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Permission matrix — Hospital MS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen flex">
+  <!-- ===== Sidebar ===== -->
+  <aside class="hidden lg:flex flex-col w-64 shrink-0 bg-surface-container-high border-r border-outline/10">
+    <div class="h-16 flex items-center gap-2.5 px-5 border-b border-outline/10">
+      <div class="h-9 w-9 grid place-items-center rounded-xl bg-primary text-primary-foreground"><i data-lucide="cross" class="w-5 h-5"></i></div>
+      <div><p class="text-sm font-semibold leading-tight">Meridian HMS</p><p class="text-xs text-foreground/60 leading-tight">Administrator</p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-dashboard" class="w-5 h-5"></i>Dashboard</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="users" class="w-5 h-5"></i>Patients</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="calendar-days" class="w-5 h-5"></i>Appointments</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="file-text" class="w-5 h-5"></i>Records</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="receipt" class="w-5 h-5"></i>Billing</a>
+      <div class="pt-2">
+        <div class="px-3 pb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/50"><i data-lucide="shield" class="w-4 h-4"></i>Admin</div>
+        <div class="pl-3 space-y-1 border-l border-outline/15 ml-3">
+          <a href="09-admin-users.html" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="user-cog" class="w-5 h-5"></i>Users</a>
+          <a href="10-admin-departments.html" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="building-2" class="w-5 h-5"></i>Departments</a>
+          <a href="11-admin-widget-library.html" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-grid" class="w-5 h-5"></i>Widget Library</a>
+          <a href="12-admin-permissions.html" aria-current="page" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium bg-primary/10 text-primary"><i data-lucide="lock" class="w-5 h-5"></i>Permissions</a>
+          <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="bar-chart-3" class="w-5 h-5"></i>Reports</a>
+        </div>
+      </div>
+    </nav>
+    <div class="p-3 border-t border-outline/10">
+      <div class="flex items-center gap-3 rounded-xl px-3 py-2">
+        <div class="h-9 w-9 rounded-full bg-primary/20 grid place-items-center text-sm font-semibold text-primary">AS</div>
+        <div class="min-w-0"><p class="text-sm font-medium truncate">Ardyanto S.</p><p class="text-xs text-foreground/60 truncate">System admin</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== Main column ===== -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="sticky top-0 z-20 h-16 bg-surface-container-high/95 backdrop-blur border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6">
+      <button class="lg:hidden h-10 w-10 grid place-items-center rounded-lg hover:bg-surface-container-highest" aria-label="Open menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <h1 class="text-lg font-semibold">Permission matrix</h1>
+      <div class="flex-1"></div>
+      <button class="h-10 w-10 grid place-items-center rounded-full hover:bg-surface-container-highest" aria-label="Search"><i data-lucide="search" class="w-5 h-5"></i></button>
+      <button onclick="document.documentElement.classList.toggle('dark')" class="h-10 w-10 grid place-items-center rounded-full hover:bg-surface-container-highest" aria-label="Toggle dark mode"><i data-lucide="moon" class="w-5 h-5 dark:hidden"></i><i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i></button>
+      <img alt="You" class="h-9 w-9 rounded-full ring-2 ring-background" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect width='36' height='36' fill='%230d8076'/%3E%3Ctext x='18' y='23' font-family='Inter' font-size='14' fill='white' text-anchor='middle'%3EAS%3C/text%3E%3C/svg%3E">
+    </header>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+      <div class="mx-auto max-w-7xl w-full">
+        <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 class="text-3xl font-semibold">Permission matrix</h2>
+            <p class="text-sm text-foreground/70 mt-1">Grant view, create, edit, and delete rights per module and role.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="showState('data')" class="text-xs px-3 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest">State: data</button>
+            <button onclick="showState('loading')" class="text-xs px-3 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest">State: loading</button>
+            <button onclick="showState('error')" class="text-xs px-3 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest">State: error</button>
+          </div>
+        </div>
+
+        <!-- Legend + actions -->
+        <div class="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+          <span class="font-medium">Legend:</span>
+          <span class="flex items-center gap-1.5"><span class="h-6 w-6 grid place-items-center rounded-md bg-primary text-primary-foreground text-xs font-semibold">V</span>View</span>
+          <span class="flex items-center gap-1.5"><span class="h-6 w-6 grid place-items-center rounded-md bg-primary text-primary-foreground text-xs font-semibold">C</span>Create</span>
+          <span class="flex items-center gap-1.5"><span class="h-6 w-6 grid place-items-center rounded-md bg-primary text-primary-foreground text-xs font-semibold">E</span>Edit</span>
+          <span class="flex items-center gap-1.5"><span class="h-6 w-6 grid place-items-center rounded-md bg-primary text-primary-foreground text-xs font-semibold">D</span>Delete</span>
+          <span class="flex items-center gap-1.5"><span class="h-6 w-6 grid place-items-center rounded-md bg-surface-container-highest text-foreground/40 text-xs font-semibold">–</span>Off</span>
+        </div>
+
+        <!-- ===== ERROR demo ===== -->
+        <div id="errorCard" class="hidden bg-surface-container rounded-2xl border border-outline/10 shadow-sm p-12 text-center">
+          <div class="mx-auto h-14 w-14 grid place-items-center rounded-2xl bg-rose-100 dark:bg-rose-500/20 mb-3"><i data-lucide="cloud-alert" class="w-7 h-7 text-rose-600 dark:text-rose-300"></i></div>
+          <h3 class="text-lg font-medium">Couldn't load the permission matrix</h3>
+          <p class="text-sm text-foreground/70 mt-1 mb-4">Your changes were not lost. Retry to reload the saved configuration.</p>
+          <button onclick="showState('data')" class="h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium inline-flex items-center gap-2"><i data-lucide="refresh-cw" class="w-4 h-4"></i>Retry</button>
+        </div>
+
+        <!-- ===== SKELETON demo ===== -->
+        <div id="loadingCard" class="hidden bg-surface-container rounded-2xl border border-outline/10 shadow-sm p-4 space-y-3">
+          <div class="skl h-10 w-full rounded-xl"></div>
+          <div class="skl h-14 w-full rounded-xl"></div>
+          <div class="skl h-14 w-full rounded-xl"></div>
+          <div class="skl h-14 w-full rounded-xl"></div>
+          <div class="skl h-14 w-full rounded-xl"></div>
+        </div>
+
+        <!-- ===== MATRIX (populated) ===== -->
+        <div id="dataCard" class="bg-surface-container rounded-2xl border border-outline/10 shadow-sm overflow-hidden">
+          <!-- horizontal-scroll wrapper -->
+          <div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
+            <table class="border-collapse text-sm min-w-[760px] w-full">
+              <thead>
+                <tr>
+                  <th class="sticky top-0 left-0 z-30 bg-surface-container-high text-left text-xs font-semibold uppercase tracking-wide text-foreground/60 px-4 py-3 border-b border-r border-outline/10">Module</th>
+                  <th class="sticky top-0 z-20 bg-surface-container-high text-xs font-semibold px-4 py-3 border-b border-outline/10">Admin</th>
+                  <th class="sticky top-0 z-20 bg-surface-container-high text-xs font-semibold px-4 py-3 border-b border-outline/10">Doctor</th>
+                  <th class="sticky top-0 z-20 bg-surface-container-high text-xs font-semibold px-4 py-3 border-b border-outline/10">Nurse</th>
+                  <th class="sticky top-0 z-20 bg-surface-container-high text-xs font-semibold px-4 py-3 border-b border-outline/10">Receptionist</th>
+                </tr>
+              </thead>
+              <tbody id="matrixBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Save bar -->
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          <button onclick="save()" class="h-11 px-6 rounded-full bg-primary text-primary-foreground text-sm font-medium">Save changes</button>
+          <button onclick="resetMatrix()" class="h-11 px-5 rounded-full border border-outline/30 text-sm font-medium hover:bg-surface-container-highest inline-flex items-center gap-2"><i data-lucide="rotate-ccw" class="w-4 h-4"></i>Reset to defaults</button>
+          <p id="unsavedNote" class="hidden text-sm text-amber-700 dark:text-amber-300 flex items-center gap-1.5"><i data-lucide="circle-alert" class="w-4 h-4"></i>You have unsaved changes.</p>
+          <p id="savedNote" class="hidden text-sm text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5"><i data-lucide="check" class="w-4 h-4"></i>All changes saved.</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Mobile bottom nav -->
+    <nav class="lg:hidden sticky bottom-0 z-20 bg-surface-container-high border-t border-outline/10 flex justify-around">
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="text-[10px]">Home</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[10px]">Patients</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="text-[10px]">Appts</span></a>
+      <a href="12-admin-permissions.html" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-primary"><i data-lucide="shield" class="w-5 h-5"></i><span class="text-[10px]">Admin</span></a>
+    </nav>
+  </div>
+</div>
+
+<script>
+  const MODULES = ['Patients','Appointments','Records','Billing','Admin','Widgets','Reports'];
+  const ROLES = ['Admin','Doctor','Nurse','Receptionist'];
+  const PERMS = ['V','C','E','D'];
+  // defaults[role][module] = "VCED" subset
+  const DEFAULTS = {
+    Admin:        {Patients:'VCED', Appointments:'VCED', Records:'VCED', Billing:'VCED', Admin:'VCED', Widgets:'VCED', Reports:'VCED'},
+    Doctor:       {Patients:'VCE',  Appointments:'VCE',  Records:'VCE',  Billing:'',     Admin:'',     Widgets:'',     Reports:'V'},
+    Nurse:        {Patients:'VC',   Appointments:'',     Records:'VC',   Billing:'',     Admin:'',     Widgets:'',     Reports:''},
+    Receptionist: {Patients:'VCE',  Appointments:'VCE',  Records:'',     Billing:'VCE',  Admin:'',     Widgets:'',     Reports:''},
+  };
+  // deep clone helper
+  const clone = o => JSON.parse(JSON.stringify(o));
+  let state = clone(DEFAULTS);
+
+  function cellKey(r,m,p){ return `${r}|${m}|${p}`; }
+  function toggle(r,m,p){
+    const has = state[r][m].includes(p);
+    state[r][m] = has ? state[r][m].replace(p,'') : state[r][m]+p;
+    dirtyCheck(); render();
+  }
+  function dirtyCheck(){
+    const dirty = JSON.stringify(state)!==JSON.stringify(DEFAULTS);
+    document.getElementById('unsavedNote').classList.toggle('hidden', !dirty);
+    if(dirty) document.getElementById('savedNote').classList.add('hidden');
+  }
+  function render(){
+    const body = document.getElementById('matrixBody');
+    body.innerHTML = MODULES.map((m,ri)=>{
+      const zebra = ri%2===1 ? 'bg-surface-container-low' : 'bg-surface-container';
+      const cells = ROLES.map(r=>{
+        const set = state[r][m];
+        const toggles = PERMS.map(p=>{
+          const on = set.includes(p);
+          return `<button role="checkbox" aria-checked="${on}" aria-label="${p==='V'?'View':p==='C'?'Create':p==='E'?'Edit':'Delete'} ${m} for ${r}" onclick="toggle('${r}','${m}','${p}')"
+            class="h-11 min-w-[44px] grid place-items-center rounded-md text-xs font-semibold transition-colors ${on?'bg-primary text-primary-foreground':'bg-surface-container-highest text-foreground/40 hover:text-foreground/70'}">${on?p:'–'}</button>`;
+        }).join('');
+        return `<td class="px-3 py-2 border-b border-outline/10 align-middle ${zebra}"><div class="flex items-center justify-center gap-1">${toggles}</div></td>`;
+      }).join('');
+      return `<tr>
+        <th scope="row" class="sticky left-0 z-10 ${zebra} text-left font-medium px-4 py-2 border-b border-r border-outline/10 whitespace-nowrap">${m}</th>
+        ${cells}
+      </tr>`;
+    }).join('');
+    lucide.createIcons();
+  }
+  function save(){
+    // pretend to persist: bake current state into defaults reference for the demo
+    Object.assign(DEFAULTS, clone(state));
+    dirtyCheck();
+    document.getElementById('unsavedNote').classList.add('hidden');
+    document.getElementById('savedNote').classList.remove('hidden');
+  }
+  function resetMatrix(){ state = clone(DEFAULTS); dirtyCheck(); render(); }
+  function showState(s){
+    document.getElementById('dataCard').classList.toggle('hidden', s!=='data');
+    document.getElementById('loadingCard').classList.toggle('hidden', s!=='loading');
+    document.getElementById('errorCard').classList.toggle('hidden', s!=='error');
+  }
+  render();
+  lucide.createIcons();
+</script>
+</body></html>

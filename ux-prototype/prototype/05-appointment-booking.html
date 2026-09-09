@@ -1,0 +1,284 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Book appointment — Hospital MS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen flex">
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="hidden lg:flex flex-col w-64 shrink-0 bg-surface-container-high border-r border-outline/10">
+    <div class="flex h-16 items-center gap-3 px-5 border-b border-outline/10">
+      <div class="h-9 w-9 grid place-items-center rounded-xl bg-primary text-primary-foreground"><i data-lucide="plus" class="w-5 h-5"></i></div>
+      <div class="leading-tight"><p class="text-sm font-semibold">Meridian HMS</p><p class="text-xs text-foreground/60">Front desk</p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="users" class="w-5 h-5"></i> Patients</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium bg-primary/10 text-primary"><i data-lucide="calendar-days" class="w-5 h-5"></i> Appointments</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="receipt" class="w-5 h-5"></i> Billing</a>
+    </nav>
+    <div class="p-3 border-t border-outline/10">
+      <div class="flex items-center gap-3 rounded-xl px-3 py-2">
+        <div class="h-9 w-9 grid place-items-center rounded-full bg-primary/15 text-primary text-xs font-semibold">FH</div>
+        <div class="leading-tight"><p class="text-sm font-medium">Fitri Handayani</p><p class="text-xs text-foreground/60">Receptionist</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="sticky top-0 z-10 h-16 bg-surface-container-high/95 backdrop-blur border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6">
+      <button class="lg:hidden h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <h1 class="text-xl font-semibold truncate">Book appointment</h1>
+      <div class="ml-auto flex items-center gap-1">
+        <button class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Search"><i data-lucide="search" class="w-5 h-5"></i></button>
+        <button onclick="document.documentElement.classList.toggle('dark')" class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Toggle dark mode">
+          <i data-lucide="sun" class="w-5 h-5 dark:hidden"></i><i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+        </button>
+        <div class="h-9 w-9 grid place-items-center rounded-full ring-2 ring-background bg-primary/15 text-primary text-xs font-semibold ml-1">FH</div>
+      </div>
+    </header>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+      <div class="mx-auto max-w-7xl w-full">
+        <div class="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-6">
+
+          <!-- ===== LEFT: booking form ===== -->
+          <section class="space-y-6">
+            <!-- Success state demo (hidden by default) -->
+            <div id="successCard" class="hidden rounded-2xl border border-emerald-300/50 bg-emerald-100 dark:bg-emerald-500/15 p-5">
+              <div class="flex items-start gap-3">
+                <div class="h-10 w-10 shrink-0 grid place-items-center rounded-full bg-emerald-500 text-white"><i data-lucide="check" class="w-5 h-5"></i></div>
+                <div class="min-w-0">
+                  <p class="text-lg font-medium text-emerald-800 dark:text-emerald-300">Booking confirmed</p>
+                  <p class="text-sm text-emerald-800/80 dark:text-emerald-300/80 mt-0.5">Appointment <span class="font-medium">#A-2298</span> created for <span class="font-medium">Budi Santoso</span> with <span class="font-medium">Dr. Sari Wibowo</span>, Cardiology — <span class="font-medium">Wed 9 Sep 2026, 11:00</span>.</p>
+                  <div class="mt-3 flex gap-2">
+                    <button onclick="resetForm()" class="rounded-2xl bg-emerald-600 text-white px-4 py-2 text-sm font-medium hover:opacity-90">Book another</button>
+                    <button class="rounded-2xl border border-emerald-400/50 px-4 py-2 text-sm font-medium text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200/40">View appointment</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <form id="bookingForm" class="bg-surface-container rounded-2xl p-5 sm:p-6 border border-outline/10 shadow-sm space-y-5">
+              <div class="flex items-center justify-between">
+                <h2 class="text-lg font-medium">Appointment details</h2>
+                <span class="text-xs text-foreground/60">All fields required unless noted</span>
+              </div>
+
+              <!-- Patient inline search-select -->
+              <div>
+                <label class="block text-sm font-medium mb-1.5">Patient</label>
+                <div class="relative">
+                  <i data-lucide="search" class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-foreground/50"></i>
+                  <button type="button" class="w-full min-h-[48px] rounded-xl border border-outline/20 bg-background pl-10 pr-3 flex items-center justify-between text-left hover:border-primary/50">
+                    <span class="flex items-center gap-2 min-w-0">
+                      <span class="h-7 w-7 shrink-0 grid place-items-center rounded-full bg-primary/15 text-primary text-[11px] font-semibold">BS</span>
+                      <span class="truncate">Budi Santoso <span class="text-foreground/60">· P-001042</span></span>
+                    </span>
+                    <i data-lucide="chevron-down" class="w-4 h-4 text-foreground/50 shrink-0"></i>
+                  </button>
+                </div>
+                <p class="mt-1 text-xs text-foreground/60">Search by name or MRN. Selected patient shown above.</p>
+              </div>
+
+              <!-- Department + Doctor -->
+              <div class="grid sm:grid-cols-2 gap-5">
+                <div>
+                  <label for="dept" class="block text-sm font-medium mb-1.5">Department</label>
+                  <select id="dept" onchange="onDept()" class="w-full min-h-[48px] rounded-xl border border-outline/20 bg-background px-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                    <option value="">Select department…</option>
+                    <option value="General">General</option>
+                    <option value="Pediatric">Pediatric</option>
+                    <option value="Cardiology" selected>Cardiology</option>
+                    <option value="Emergency">Emergency</option>
+                    <option value="Neurology">Neurology (no doctors)</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="doctor" class="block text-sm font-medium mb-1.5">Doctor</label>
+                  <select id="doctor" onchange="onDoctor()" class="w-full min-h-[48px] rounded-xl border border-outline/20 bg-background px-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"></select>
+                  <!-- helper -->
+                  <p id="docHelper" class="mt-1 text-xs text-foreground/60">3 doctors in Cardiology</p>
+                  <!-- empty -->
+                  <div id="docEmpty" class="hidden mt-2 flex items-start gap-2 rounded-xl border border-outline/15 bg-surface-container-high px-3 py-2.5 text-xs">
+                    <i data-lucide="user-x" class="w-4 h-4 shrink-0 mt-0.5 text-foreground/50"></i>
+                    <span class="text-foreground/70">No doctors available in this department. Choose another department or contact scheduling.</span>
+                  </div>
+                  <!-- validation error -->
+                  <p id="docError" class="hidden mt-1 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1"><i data-lucide="circle-alert" class="w-3.5 h-3.5"></i> Please select a doctor</p>
+                </div>
+              </div>
+
+              <!-- Conflict warning -->
+              <div id="conflictBanner" class="flex items-start gap-3 rounded-xl border border-rose-300/50 bg-rose-100 dark:bg-rose-500/15 p-3.5 text-sm text-rose-800 dark:text-rose-300">
+                <i data-lucide="triangle-alert" class="w-5 h-5 shrink-0 mt-0.5"></i>
+                <div>
+                  <p class="font-medium">Scheduling conflict</p>
+                  <p class="text-rose-800/80 dark:text-rose-300/80">Dr. Sari Wibowo is already booked 10:00–10:30 (Budi Santoso). Pick a different time or doctor.</p>
+                </div>
+              </div>
+
+              <!-- Date + Time -->
+              <div class="grid sm:grid-cols-2 gap-5">
+                <div>
+                  <label for="date" class="block text-sm font-medium mb-1.5">Date</label>
+                  <input id="date" type="date" value="2026-09-09" class="w-full min-h-[48px] rounded-xl border border-outline/20 bg-background px-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                </div>
+                <div>
+                  <label for="time" class="block text-sm font-medium mb-1.5">Time</label>
+                  <select id="time" class="w-full min-h-[48px] rounded-xl border border-outline/20 bg-background px-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                    <option>09:00</option><option>09:30</option><option>11:00</option><option>11:30</option><option>13:00</option><option>14:30</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Reason -->
+              <div>
+                <label for="reason" class="block text-sm font-medium mb-1.5">Reason for visit</label>
+                <textarea id="reason" rows="3" placeholder="e.g. Follow-up on hypertension, chest discomfort during exertion…" class="w-full rounded-xl border border-outline/20 bg-background px-3 py-2.5 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 resize-y"></textarea>
+              </div>
+
+              <div class="flex flex-col sm:flex-row sm:justify-end gap-3 pt-1">
+                <button type="button" onclick="resetForm()" class="min-h-[48px] rounded-2xl border border-outline/30 px-5 text-sm font-medium hover:bg-surface-container-high">Cancel</button>
+                <button type="submit" class="min-h-[48px] rounded-2xl bg-primary text-primary-foreground px-6 text-sm font-medium hover:opacity-90 flex items-center justify-center gap-2"><i data-lucide="calendar-check" class="w-5 h-5"></i> Confirm booking</button>
+              </div>
+            </form>
+          </section>
+
+          <!-- ===== RIGHT: availability ===== -->
+          <aside class="lg:sticky lg:top-24 self-start">
+            <div class="bg-surface-container rounded-2xl border border-outline/10 shadow-sm">
+              <div class="p-5 border-b border-outline/10">
+                <h2 class="text-lg font-medium">Availability</h2>
+                <p id="availSub" class="text-sm text-foreground/70 mt-0.5">Dr. Sari Wibowo · Wed 9 Sep</p>
+                <!-- Demo state switcher -->
+                <div class="mt-3 flex flex-wrap gap-1.5 text-xs">
+                  <button onclick="setAvail('data')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Data</button>
+                  <button onclick="setAvail('loading')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Loading</button>
+                  <button onclick="setAvail('empty')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Empty</button>
+                </div>
+              </div>
+
+              <!-- Data -->
+              <div id="availData" class="p-4">
+                <div class="flex items-center gap-4 text-xs text-foreground/70 mb-3 px-1">
+                  <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded border border-dashed border-primary"></span> Available</span>
+                  <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded bg-primary/20 border border-primary/30"></span> Booked</span>
+                </div>
+                <div id="slotGrid" class="space-y-1.5 max-h-[520px] overflow-y-auto pr-1"></div>
+              </div>
+
+              <!-- Loading skeleton -->
+              <div id="availLoading" class="hidden p-4 space-y-1.5">
+                <div class="skl h-11 rounded-xl"></div><div class="skl h-11 rounded-xl"></div><div class="skl h-11 rounded-xl"></div>
+                <div class="skl h-11 rounded-xl"></div><div class="skl h-11 rounded-xl"></div><div class="skl h-11 rounded-xl"></div>
+              </div>
+
+              <!-- Empty -->
+              <div id="availEmpty" class="hidden p-8 flex flex-col items-center text-center gap-2">
+                <div class="h-12 w-12 grid place-items-center rounded-2xl bg-surface-container-high"><i data-lucide="calendar-search" class="w-6 h-6 text-foreground/50"></i></div>
+                <p class="font-medium">Select a doctor</p>
+                <p class="text-sm text-foreground/60 max-w-[220px]">Choose a doctor to view their availability for the selected day.</p>
+              </div>
+            </div>
+          </aside>
+
+        </div>
+      </div>
+    </main>
+
+    <!-- Mobile bottom nav -->
+    <nav class="lg:hidden sticky bottom-0 z-10 bg-surface-container-high border-t border-outline/10 flex justify-around">
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="text-[10px]">Home</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[10px]">Patients</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-primary"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="text-[10px]">Appts</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="receipt" class="w-5 h-5"></i><span class="text-[10px]">Billing</span></a>
+    </nav>
+  </div>
+</div>
+
+<script>
+const DOCTORS = {
+  General: ['Dr. Adi Nugroho','Dr. Maya Kusuma'],
+  Pediatric: ['Dr. Lina Hartono'],
+  Cardiology: ['Dr. Sari Wibowo','Dr. Bayu Nugroho','Dr. Dewi Lestari'],
+  Emergency: ['Dr. Rendra Pratama'],
+  Neurology: []
+};
+// booked slots for Dr. Sari Wibowo (9 Sep)
+const BOOKED = { '10:00':'Budi Santoso', '10:30':'Siti Rahayu', '13:30':'Agus Salim', '15:00':'Rina Wijaya' };
+
+function onDept(){
+  const dept = document.getElementById('dept').value;
+  const sel = document.getElementById('doctor');
+  const helper = document.getElementById('docHelper');
+  const empty = document.getElementById('docEmpty');
+  const list = DOCTORS[dept] || [];
+  sel.innerHTML = '<option value="">Select doctor…</option>' + list.map(d=>`<option${d==='Dr. Sari Wibowo'?' selected':''}>${d}</option>`).join('');
+  document.getElementById('docError').classList.add('hidden');
+  if(!dept){ helper.textContent='Select a department first'; empty.classList.add('hidden'); sel.disabled=true; setAvail('empty'); return; }
+  sel.disabled=false;
+  if(list.length===0){ helper.classList.add('hidden'); empty.classList.remove('hidden'); sel.disabled=true; setAvail('empty'); }
+  else { helper.classList.remove('hidden'); empty.classList.add('hidden'); helper.textContent = `${list.length} doctor${list.length>1?'s':''} in ${dept}`; onDoctor(); }
+  lucide.createIcons();
+}
+function onDoctor(){
+  const doc = document.getElementById('doctor').value;
+  if(!doc){ setAvail('empty'); return; }
+  document.getElementById('availSub').textContent = `${doc} · Wed 9 Sep`;
+  setAvail('data');
+}
+
+function buildSlots(){
+  const grid = document.getElementById('slotGrid');
+  const rows = [];
+  for(let h=8; h<17; h++){
+    for(const m of ['00','30']){
+      const t = String(h).padStart(2,'0')+':'+m;
+      if(BOOKED[t]){
+        rows.push(`<div class="flex items-center justify-between rounded-xl bg-primary/15 border border-primary/30 px-3 py-2.5">
+          <span class="text-sm font-medium tabular-nums">${t}</span>
+          <span class="text-xs flex items-center gap-1.5 text-foreground/80"><i data-lucide="user" class="w-3.5 h-3.5"></i> ${BOOKED[t]}</span>
+        </div>`);
+      } else {
+        rows.push(`<button type="button" onclick="pick('${t}')" class="w-full flex items-center justify-between rounded-xl border border-dashed border-primary/50 px-3 py-2.5 hover:bg-primary/10 text-left">
+          <span class="text-sm font-medium tabular-nums">${t}</span>
+          <span class="text-xs text-primary flex items-center gap-1">Available <i data-lucide="plus" class="w-3.5 h-3.5"></i></span>
+        </button>`);
+      }
+    }
+  }
+  grid.innerHTML = rows.join('');
+  lucide.createIcons();
+}
+function pick(t){ document.getElementById('time').value = t; }
+
+function setAvail(s){
+  ['availData','availLoading','availEmpty'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  if(s==='data'){ document.getElementById('availData').classList.remove('hidden'); buildSlots(); }
+  else if(s==='loading'){ document.getElementById('availLoading').classList.remove('hidden'); }
+  else { document.getElementById('availEmpty').classList.remove('hidden'); }
+}
+
+document.getElementById('bookingForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  const doc = document.getElementById('doctor').value;
+  if(!doc){ document.getElementById('docError').classList.remove('hidden'); lucide.createIcons(); return; }
+  document.getElementById('successCard').classList.remove('hidden');
+  document.getElementById('successCard').scrollIntoView({behavior:'smooth', block:'center'});
+});
+function resetForm(){
+  document.getElementById('successCard').classList.add('hidden');
+  document.getElementById('reason').value='';
+}
+
+onDept();
+lucide.createIcons();
+</script>
+<script>lucide.createIcons();</script></body></html>

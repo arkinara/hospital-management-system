@@ -1,0 +1,191 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Widget library settings — Hospital MS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen flex">
+  <!-- ===== Sidebar ===== -->
+  <aside class="hidden lg:flex flex-col w-64 shrink-0 bg-surface-container-high border-r border-outline/10">
+    <div class="h-16 flex items-center gap-2.5 px-5 border-b border-outline/10">
+      <div class="h-9 w-9 grid place-items-center rounded-xl bg-primary text-primary-foreground"><i data-lucide="cross" class="w-5 h-5"></i></div>
+      <div><p class="text-sm font-semibold leading-tight">Meridian HMS</p><p class="text-xs text-foreground/60 leading-tight">Administrator</p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-dashboard" class="w-5 h-5"></i>Dashboard</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="users" class="w-5 h-5"></i>Patients</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="calendar-days" class="w-5 h-5"></i>Appointments</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="file-text" class="w-5 h-5"></i>Records</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="receipt" class="w-5 h-5"></i>Billing</a>
+      <div class="pt-2">
+        <div class="px-3 pb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/50"><i data-lucide="shield" class="w-4 h-4"></i>Admin</div>
+        <div class="pl-3 space-y-1 border-l border-outline/15 ml-3">
+          <a href="09-admin-users.html" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="user-cog" class="w-5 h-5"></i>Users</a>
+          <a href="10-admin-departments.html" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="building-2" class="w-5 h-5"></i>Departments</a>
+          <a href="11-admin-widget-library.html" aria-current="page" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium bg-primary/10 text-primary"><i data-lucide="layout-grid" class="w-5 h-5"></i>Widget Library</a>
+          <a href="12-admin-permissions.html" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="lock" class="w-5 h-5"></i>Permissions</a>
+          <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="bar-chart-3" class="w-5 h-5"></i>Reports</a>
+        </div>
+      </div>
+    </nav>
+    <div class="p-3 border-t border-outline/10">
+      <div class="flex items-center gap-3 rounded-xl px-3 py-2">
+        <div class="h-9 w-9 rounded-full bg-primary/20 grid place-items-center text-sm font-semibold text-primary">AS</div>
+        <div class="min-w-0"><p class="text-sm font-medium truncate">Ardyanto S.</p><p class="text-xs text-foreground/60 truncate">System admin</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== Main column ===== -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="sticky top-0 z-10 h-16 bg-surface-container-high/95 backdrop-blur border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6">
+      <button class="lg:hidden h-10 w-10 grid place-items-center rounded-lg hover:bg-surface-container-highest" aria-label="Open menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <h1 class="text-lg font-semibold">Widget library settings</h1>
+      <div class="flex-1"></div>
+      <button class="h-10 w-10 grid place-items-center rounded-full hover:bg-surface-container-highest" aria-label="Search"><i data-lucide="search" class="w-5 h-5"></i></button>
+      <button onclick="document.documentElement.classList.toggle('dark')" class="h-10 w-10 grid place-items-center rounded-full hover:bg-surface-container-highest" aria-label="Toggle dark mode"><i data-lucide="moon" class="w-5 h-5 dark:hidden"></i><i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i></button>
+      <img alt="You" class="h-9 w-9 rounded-full ring-2 ring-background" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect width='36' height='36' fill='%230d8076'/%3E%3Ctext x='18' y='23' font-family='Inter' font-size='14' fill='white' text-anchor='middle'%3EAS%3C/text%3E%3C/svg%3E">
+    </header>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+      <div class="mx-auto max-w-7xl w-full">
+        <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 class="text-3xl font-semibold">Widget library settings</h2>
+            <p class="text-sm text-foreground/70 mt-1">Control which dashboard widgets are available and whether users can remove them.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="showState('data')" class="text-xs px-3 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest">State: data</button>
+            <button onclick="showState('loading')" class="text-xs px-3 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest">State: loading</button>
+            <button onclick="showState('error')" class="text-xs px-3 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest">State: error</button>
+          </div>
+        </div>
+
+        <!-- Mini dashboard-preview note -->
+        <div class="mb-5 rounded-2xl bg-primary/10 border border-primary/20 p-4 flex items-start gap-3">
+          <i data-lucide="info" class="w-5 h-5 shrink-0 text-primary mt-0.5"></i>
+          <p class="text-sm text-foreground/80"><span class="font-medium text-foreground">Dashboard preview:</span> locked widgets appear on user dashboards with a lock badge and no remove button — users cannot drag them out or hide them.</p>
+        </div>
+
+        <!-- ===== ERROR demo ===== -->
+        <div id="errorCard" class="hidden bg-surface-container rounded-2xl border border-outline/10 shadow-sm p-12 text-center">
+          <div class="mx-auto h-14 w-14 grid place-items-center rounded-2xl bg-rose-100 dark:bg-rose-500/20 mb-3"><i data-lucide="cloud-alert" class="w-7 h-7 text-rose-600 dark:text-rose-300"></i></div>
+          <h3 class="text-lg font-medium">Couldn't load widget settings</h3>
+          <p class="text-sm text-foreground/70 mt-1 mb-4">The configuration service is unavailable right now.</p>
+          <button onclick="showState('data')" class="h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium inline-flex items-center gap-2"><i data-lucide="refresh-cw" class="w-4 h-4"></i>Retry</button>
+        </div>
+
+        <!-- ===== SKELETON demo ===== -->
+        <div id="loadingCard" class="hidden grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div class="bg-surface-container rounded-2xl p-5 border border-outline/10 space-y-3"><div class="skl h-9 w-9 rounded-xl"></div><div class="skl h-5 w-32 rounded"></div><div class="skl h-4 w-full rounded"></div><div class="skl h-4 w-24 rounded-full"></div><div class="flex justify-between pt-2"><div class="skl h-7 w-12 rounded-full"></div><div class="skl h-7 w-20 rounded-full"></div></div></div>
+          <div class="bg-surface-container rounded-2xl p-5 border border-outline/10 space-y-3"><div class="skl h-9 w-9 rounded-xl"></div><div class="skl h-5 w-28 rounded"></div><div class="skl h-4 w-full rounded"></div><div class="skl h-4 w-24 rounded-full"></div><div class="flex justify-between pt-2"><div class="skl h-7 w-12 rounded-full"></div><div class="skl h-7 w-20 rounded-full"></div></div></div>
+          <div class="bg-surface-container rounded-2xl p-5 border border-outline/10 space-y-3"><div class="skl h-9 w-9 rounded-xl"></div><div class="skl h-5 w-36 rounded"></div><div class="skl h-4 w-full rounded"></div><div class="skl h-4 w-24 rounded-full"></div><div class="flex justify-between pt-2"><div class="skl h-7 w-12 rounded-full"></div><div class="skl h-7 w-20 rounded-full"></div></div></div>
+        </div>
+
+        <!-- ===== GRID (populated) ===== -->
+        <div id="dataGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+    </main>
+
+    <!-- Mobile bottom nav -->
+    <nav class="lg:hidden sticky bottom-0 z-10 bg-surface-container-high border-t border-outline/10 flex justify-around">
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="text-[10px]">Home</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[10px]">Patients</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="text-[10px]">Appts</span></a>
+      <a href="11-admin-widget-library.html" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-primary"><i data-lucide="shield" class="w-5 h-5"></i><span class="text-[10px]">Admin</span></a>
+    </nav>
+  </div>
+</div>
+
+<!-- ===== Unlock confirm dialog ===== -->
+<div id="unlockDialog" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/50" onclick="closeUnlock()"></div>
+  <div class="absolute inset-0 z-[51] grid place-items-center p-4">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="unlockTitle" class="w-full max-w-md bg-surface-container-high rounded-2xl border border-outline/10 shadow-2xl">
+      <div class="p-5">
+        <div class="flex items-start gap-3">
+          <div class="h-11 w-11 shrink-0 grid place-items-center rounded-full bg-amber-100 dark:bg-amber-500/20"><i data-lucide="lock-open" class="w-6 h-6 text-amber-700 dark:text-amber-300"></i></div>
+          <div>
+            <h3 id="unlockTitle" class="text-lg font-medium">Unlock this widget?</h3>
+            <p class="text-sm text-foreground/70 mt-1">Once unlocked, users will be able to remove <span class="font-medium text-foreground">Today's Appointments</span> from their own dashboards. Existing placements are kept.</p>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-5 py-4 border-t border-outline/10">
+        <button onclick="closeUnlock()" autofocus class="h-11 px-5 rounded-full border border-outline/30 text-sm font-medium hover:bg-surface-container-highest">Cancel</button>
+        <button onclick="closeUnlock()" class="h-11 px-5 rounded-full bg-primary text-primary-foreground text-sm font-medium">Unlock widget</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // enabled: on/off, locked: bool. Special: disabled+locked-attempt, locked+disable-attempt shown as blocking hints.
+  const WIDGETS = [
+    {n:"Today's Appointments", d:"Upcoming visits for the current day.", role:"All", icon:"calendar-clock", enabled:true, locked:true, hint:null},
+    {n:"Recent Patients", d:"Most recently viewed patient records.", role:"All", icon:"users", enabled:true, locked:false, hint:null},
+    {n:"Department Occupancy", d:"Live bed and room utilisation per department.", role:"Admin", icon:"bar-chart-3", enabled:true, locked:false, hint:null},
+    {n:"Revenue This Month", d:"Billed vs collected revenue to date.", role:"Admin", icon:"banknote", enabled:false, locked:false, hint:"lockDisabled"},
+    {n:"Pending Records", d:"Encounters awaiting documentation.", role:"Doctor", icon:"file-clock", enabled:true, locked:true, hint:"disableLocked"},
+    {n:"Staff On Duty", d:"Clinicians currently rostered on shift.", role:"All", icon:"badge-check", enabled:true, locked:false, hint:null},
+    {n:"Registration Queue", d:"Walk-in patients waiting to be registered.", role:"Receptionist", icon:"clipboard-list", enabled:true, locked:false, hint:null},
+    {n:"Vitals Queue", d:"Patients waiting for vitals capture.", role:"Nurse", icon:"activity", enabled:false, locked:false, hint:null},
+    {n:"Care Plan", d:"Assigned care plans and nursing tasks.", role:"Nurse", icon:"heart-pulse", enabled:true, locked:false, hint:null},
+  ];
+  const roleChip = {All:'bg-surface-container-highest text-foreground/70', Admin:'bg-primary/15 text-primary', Doctor:'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300', Nurse:'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300', Receptionist:'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'};
+
+  function switchMarkup(w){
+    const on = w.enabled;
+    return `<button role="switch" aria-checked="${on}" aria-label="Enable ${w.n}" class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${on?'bg-primary':'bg-surface-container-highest'}">
+      <span class="inline-block h-5 w-5 transform rounded-full bg-primary-foreground shadow transition-transform ${on?'translate-x-6':'translate-x-1'} ${on?'':'bg-white dark:bg-foreground/80'}"></span>
+    </button>`;
+  }
+  function lockMarkup(w){
+    if(w.locked){
+      return `<button class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary/15 text-primary text-xs font-medium" aria-label="Locked"><i data-lucide="lock" class="w-3.5 h-3.5"></i>Locked</button>`;
+    }
+    return `<button class="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-surface-container-highest text-foreground/70 text-xs font-medium hover:bg-surface-container-high" aria-label="Unlocked"><i data-lucide="lock-open" class="w-3.5 h-3.5"></i>Unlocked</button>`;
+  }
+  function hintMarkup(w){
+    if(w.hint==='lockDisabled') return `<div class="mt-3 rounded-xl border border-amber-500/30 bg-amber-100 dark:bg-amber-500/15 p-2.5 flex items-start gap-2"><i data-lucide="triangle-alert" class="w-4 h-4 shrink-0 text-amber-700 dark:text-amber-300 mt-0.5"></i><p class="text-xs text-amber-800 dark:text-amber-200">Enable the widget before locking.</p></div>`;
+    if(w.hint==='disableLocked') return `<div class="mt-3 rounded-xl border border-amber-500/30 bg-amber-100 dark:bg-amber-500/15 p-2.5 flex items-start gap-2"><i data-lucide="triangle-alert" class="w-4 h-4 shrink-0 text-amber-700 dark:text-amber-300 mt-0.5"></i><p class="text-xs text-amber-800 dark:text-amber-200">Remove the lock first to disable this widget.</p></div>`;
+    return '';
+  }
+  function render(){
+    document.getElementById('dataGrid').innerHTML = WIDGETS.map(w=>{
+      const dim = !w.enabled ? 'opacity-60' : '';
+      const unlockBtn = w.locked ? `onclick="openUnlock()"` : '';
+      return `<div class="bg-surface-container rounded-2xl p-5 border border-outline/10 shadow-sm flex flex-col ${dim}">
+        <div class="flex items-start justify-between mb-3">
+          <div class="h-10 w-10 grid place-items-center rounded-xl bg-primary/10 text-primary"><i data-lucide="${w.icon}" class="w-5 h-5"></i></div>
+          ${switchMarkup(w)}
+        </div>
+        <h3 class="text-lg font-medium">${w.n}</h3>
+        <p class="text-sm text-foreground/70 mt-0.5 flex-1">${w.d}</p>
+        <div class="mt-3 flex items-center justify-between">
+          <span class="rounded-full px-2.5 py-0.5 text-xs font-medium ${roleChip[w.role]}">${w.role}</span>
+          <span ${unlockBtn}>${lockMarkup(w)}</span>
+        </div>
+        ${w.locked?`<p class="mt-2 text-xs text-foreground/60 flex items-center gap-1"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i>Users cannot remove</p>`:''}
+        ${!w.enabled?`<p class="mt-2 text-xs text-foreground/60 flex items-center gap-1"><i data-lucide="eye-off" class="w-3.5 h-3.5"></i>Disabled globally</p>`:''}
+        ${hintMarkup(w)}
+      </div>`;
+    }).join('');
+    lucide.createIcons();
+  }
+  function showState(s){
+    document.getElementById('dataGrid').classList.toggle('hidden', s!=='data');
+    document.getElementById('loadingCard').classList.toggle('hidden', s!=='loading');
+    document.getElementById('errorCard').classList.toggle('hidden', s!=='error');
+  }
+  function openUnlock(){ document.getElementById('unlockDialog').classList.remove('hidden'); }
+  function closeUnlock(){ document.getElementById('unlockDialog').classList.add('hidden'); }
+  render();
+  lucide.createIcons();
+</script>
+</body></html>

@@ -1,0 +1,278 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>User management — Hospital MS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen flex">
+  <!-- ===== Sidebar ===== -->
+  <aside class="hidden lg:flex flex-col w-64 shrink-0 bg-surface-container-high border-r border-outline/10">
+    <div class="h-16 flex items-center gap-2.5 px-5 border-b border-outline/10">
+      <div class="h-9 w-9 grid place-items-center rounded-xl bg-primary text-primary-foreground"><i data-lucide="cross" class="w-5 h-5"></i></div>
+      <div><p class="text-sm font-semibold leading-tight">Meridian HMS</p><p class="text-xs text-foreground/60 leading-tight">Administrator</p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-dashboard" class="w-5 h-5"></i>Dashboard</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="users" class="w-5 h-5"></i>Patients</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="calendar-days" class="w-5 h-5"></i>Appointments</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="file-text" class="w-5 h-5"></i>Records</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="receipt" class="w-5 h-5"></i>Billing</a>
+      <div class="pt-2">
+        <div class="px-3 pb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-foreground/50"><i data-lucide="shield" class="w-4 h-4"></i>Admin</div>
+        <div class="pl-3 space-y-1 border-l border-outline/15 ml-3">
+          <a href="09-admin-users.html" aria-current="page" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium bg-primary/10 text-primary"><i data-lucide="user-cog" class="w-5 h-5"></i>Users</a>
+          <a href="10-admin-departments.html" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="building-2" class="w-5 h-5"></i>Departments</a>
+          <a href="11-admin-widget-library.html" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-grid" class="w-5 h-5"></i>Widget Library</a>
+          <a href="12-admin-permissions.html" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="lock" class="w-5 h-5"></i>Permissions</a>
+          <a href="#" class="rounded-xl px-3 py-2.5 min-h-[44px] flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="bar-chart-3" class="w-5 h-5"></i>Reports</a>
+        </div>
+      </div>
+    </nav>
+    <div class="p-3 border-t border-outline/10">
+      <div class="flex items-center gap-3 rounded-xl px-3 py-2">
+        <div class="h-9 w-9 rounded-full bg-primary/20 grid place-items-center text-sm font-semibold text-primary">AS</div>
+        <div class="min-w-0"><p class="text-sm font-medium truncate">Ardyanto S.</p><p class="text-xs text-foreground/60 truncate">System admin</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== Main column ===== -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="sticky top-0 z-10 h-16 bg-surface-container-high/95 backdrop-blur border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6">
+      <button class="lg:hidden h-10 w-10 grid place-items-center rounded-lg hover:bg-surface-container-highest" aria-label="Open menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <h1 class="text-lg font-semibold">User management</h1>
+      <div class="flex-1"></div>
+      <button class="h-10 w-10 grid place-items-center rounded-full hover:bg-surface-container-highest" aria-label="Search"><i data-lucide="search" class="w-5 h-5"></i></button>
+      <button onclick="document.documentElement.classList.toggle('dark')" class="h-10 w-10 grid place-items-center rounded-full hover:bg-surface-container-highest" aria-label="Toggle dark mode"><i data-lucide="moon" class="w-5 h-5 dark:hidden"></i><i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i></button>
+      <img alt="You" class="h-9 w-9 rounded-full ring-2 ring-background" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect width='36' height='36' fill='%230d8076'/%3E%3Ctext x='18' y='23' font-family='Inter' font-size='14' fill='white' text-anchor='middle'%3EAS%3C/text%3E%3C/svg%3E">
+    </header>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+      <div class="mx-auto max-w-7xl w-full">
+        <div class="mb-5">
+          <h2 class="text-3xl font-semibold">User management</h2>
+          <p class="text-sm text-foreground/70 mt-1">Manage staff accounts, roles, and department assignments.</p>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
+          <div class="relative flex-1 max-w-sm">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-foreground/50"></i>
+            <input type="search" placeholder="Search name or email…" oninput="filterSearch(this.value)" class="w-full h-11 rounded-xl bg-surface-container-low border border-outline/20 pl-9 pr-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+          </div>
+          <div class="flex flex-wrap gap-2" id="roleChips">
+            <button data-role="All" onclick="filterRole('All')" class="chip h-9 px-4 rounded-full text-sm font-medium bg-primary text-primary-foreground">All</button>
+            <button data-role="Admin" onclick="filterRole('Admin')" class="chip h-9 px-4 rounded-full text-sm font-medium bg-surface-container-high text-foreground/80 hover:bg-surface-container-highest">Admin</button>
+            <button data-role="Doctor" onclick="filterRole('Doctor')" class="chip h-9 px-4 rounded-full text-sm font-medium bg-surface-container-high text-foreground/80 hover:bg-surface-container-highest">Doctor</button>
+            <button data-role="Nurse" onclick="filterRole('Nurse')" class="chip h-9 px-4 rounded-full text-sm font-medium bg-surface-container-high text-foreground/80 hover:bg-surface-container-highest">Nurse</button>
+            <button data-role="Receptionist" onclick="filterRole('Receptionist')" class="chip h-9 px-4 rounded-full text-sm font-medium bg-surface-container-high text-foreground/80 hover:bg-surface-container-highest">Receptionist</button>
+          </div>
+        </div>
+
+        <!-- Demo state switches -->
+        <div class="flex flex-wrap gap-2 mb-4">
+          <button onclick="showState('table')" class="text-xs px-3 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest">State: data</button>
+          <button onclick="showState('loading')" class="text-xs px-3 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest">State: loading</button>
+          <button onclick="showState('error')" class="text-xs px-3 py-1.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest">State: error</button>
+        </div>
+
+        <!-- ===== TABLE (populated) ===== -->
+        <div id="tableCard" class="bg-surface-container rounded-2xl border border-outline/10 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm min-w-[720px]">
+              <thead>
+                <tr class="text-left text-xs font-semibold uppercase tracking-wide text-foreground/60 border-b border-outline/10">
+                  <th class="px-4 py-3 font-semibold">User</th>
+                  <th class="px-4 py-3 font-semibold">Role</th>
+                  <th class="px-4 py-3 font-semibold">Department</th>
+                  <th class="px-4 py-3 font-semibold">Status</th>
+                  <th class="px-4 py-3 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+          <!-- Empty filter state -->
+          <div id="emptyState" class="hidden p-12 text-center">
+            <div class="mx-auto h-14 w-14 grid place-items-center rounded-2xl bg-surface-container-high mb-3"><i data-lucide="user-search" class="w-7 h-7 text-foreground/50"></i></div>
+            <h3 class="text-lg font-medium">No users match this filter</h3>
+            <p class="text-sm text-foreground/70 mt-1 mb-4">Try a different role or clear the search to see all staff.</p>
+            <button onclick="filterRole('All');document.querySelector('input[type=search]').value=''" class="h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium">Clear filters</button>
+          </div>
+        </div>
+
+        <!-- ===== SKELETON ===== -->
+        <div id="loadingCard" class="hidden bg-surface-container rounded-2xl border border-outline/10 shadow-sm overflow-hidden">
+          <div class="divide-y divide-outline/10">
+            <div class="px-4 py-3 flex items-center gap-4"><div class="skl h-10 w-10 rounded-full"></div><div class="flex-1 space-y-2"><div class="skl h-3 w-40 rounded"></div><div class="skl h-3 w-56 rounded"></div></div><div class="skl h-6 w-16 rounded-full"></div><div class="skl h-6 w-20 rounded-full"></div></div>
+            <div class="px-4 py-3 flex items-center gap-4"><div class="skl h-10 w-10 rounded-full"></div><div class="flex-1 space-y-2"><div class="skl h-3 w-32 rounded"></div><div class="skl h-3 w-48 rounded"></div></div><div class="skl h-6 w-16 rounded-full"></div><div class="skl h-6 w-20 rounded-full"></div></div>
+            <div class="px-4 py-3 flex items-center gap-4"><div class="skl h-10 w-10 rounded-full"></div><div class="flex-1 space-y-2"><div class="skl h-3 w-44 rounded"></div><div class="skl h-3 w-52 rounded"></div></div><div class="skl h-6 w-16 rounded-full"></div><div class="skl h-6 w-20 rounded-full"></div></div>
+            <div class="px-4 py-3 flex items-center gap-4"><div class="skl h-10 w-10 rounded-full"></div><div class="flex-1 space-y-2"><div class="skl h-3 w-36 rounded"></div><div class="skl h-3 w-44 rounded"></div></div><div class="skl h-6 w-16 rounded-full"></div><div class="skl h-6 w-20 rounded-full"></div></div>
+          </div>
+        </div>
+
+        <!-- ===== ERROR ===== -->
+        <div id="errorCard" class="hidden bg-surface-container rounded-2xl border border-outline/10 shadow-sm p-12 text-center">
+          <div class="mx-auto h-14 w-14 grid place-items-center rounded-2xl bg-rose-100 dark:bg-rose-500/20 mb-3"><i data-lucide="cloud-alert" class="w-7 h-7 text-rose-600 dark:text-rose-300"></i></div>
+          <h3 class="text-lg font-medium">Couldn't load users</h3>
+          <p class="text-sm text-foreground/70 mt-1 mb-4">The directory service didn't respond. Check your connection and try again.</p>
+          <button onclick="showState('table')" class="h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-medium inline-flex items-center gap-2"><i data-lucide="refresh-cw" class="w-4 h-4"></i>Retry</button>
+        </div>
+
+        <p class="text-xs text-foreground/60 mt-3" id="rowCount"></p>
+      </div>
+    </main>
+
+    <!-- Mobile bottom nav -->
+    <nav class="lg:hidden sticky bottom-0 z-10 bg-surface-container-high border-t border-outline/10 flex justify-around">
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="text-[10px]">Home</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[10px]">Patients</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="text-[10px]">Appts</span></a>
+      <a href="09-admin-users.html" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-primary"><i data-lucide="shield" class="w-5 h-5"></i><span class="text-[10px]">Admin</span></a>
+    </nav>
+  </div>
+</div>
+
+<!-- Extended FAB -->
+<button onclick="openAdd()" class="fixed bottom-6 right-6 z-30 h-14 rounded-2xl bg-primary text-primary-foreground px-5 flex items-center gap-2 shadow-lg hover:opacity-90"><i data-lucide="user-plus" class="w-5 h-5"></i><span class="text-sm font-semibold">Add user</span></button>
+
+<!-- ============ ADD USER DIALOG (rendered open) ============ -->
+<div id="addDialog" class="fixed inset-0 z-50">
+  <div class="absolute inset-0 bg-black/50" onclick="closeAdd()"></div>
+  <div class="absolute inset-0 z-[51] grid place-items-center p-4">
+    <div role="dialog" aria-modal="true" aria-labelledby="addTitle" class="w-full max-w-lg bg-surface-container-high rounded-2xl border border-outline/10 shadow-2xl">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-outline/10">
+        <h3 id="addTitle" class="text-lg font-medium">Add user</h3>
+        <button onclick="closeAdd()" class="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface-container-highest" aria-label="Close"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form class="p-5 space-y-4" onsubmit="event.preventDefault()">
+        <div>
+          <label class="block text-sm font-medium mb-1.5" for="u-name">Full name</label>
+          <input id="u-name" value="Maya Kusuma" class="w-full h-11 rounded-xl border border-outline/30 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+        </div>
+        <!-- Duplicate email conflict example -->
+        <div>
+          <label class="block text-sm font-medium mb-1.5" for="u-email">Email</label>
+          <input id="u-email" value="lina.hartono@meridian.co" aria-invalid="true" class="w-full h-11 rounded-xl border border-rose-500 bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-rose-500/30">
+          <p class="mt-1.5 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1"><i data-lucide="circle-alert" class="w-3.5 h-3.5"></i>Email already in use</p>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <!-- Role required validation example -->
+          <div>
+            <label class="block text-sm font-medium mb-1.5" for="u-role">Role</label>
+            <select id="u-role" aria-invalid="true" class="w-full h-11 rounded-xl border border-rose-500 bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-rose-500/30">
+              <option value="">Select role…</option>
+              <option>Admin</option><option>Doctor</option><option>Nurse</option><option>Receptionist</option>
+            </select>
+            <p class="mt-1.5 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1"><i data-lucide="circle-alert" class="w-3.5 h-3.5"></i>Role is required</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5" for="u-dept">Department</label>
+            <select id="u-dept" class="w-full h-11 rounded-xl border border-outline/30 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+              <option>General</option><option>Pediatric</option><option>Cardiology</option><option>Emergency</option>
+            </select>
+          </div>
+        </div>
+      </form>
+      <div class="flex justify-end gap-3 px-5 py-4 border-t border-outline/10">
+        <button onclick="closeAdd()" class="h-11 px-5 rounded-full border border-outline/30 text-sm font-medium hover:bg-surface-container-highest">Cancel</button>
+        <button class="h-11 px-5 rounded-full bg-primary text-primary-foreground text-sm font-medium">Create user</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DEACTIVATE CONFIRM DIALOG (destructive) ============ -->
+<div id="deactivateDialog" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/50" onclick="closeDeactivate()"></div>
+  <div class="absolute inset-0 z-[51] grid place-items-center p-4">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="deTitle" class="w-full max-w-md bg-surface-container-high rounded-2xl border border-outline/10 shadow-2xl">
+      <div class="p-5">
+        <div class="flex items-start gap-3">
+          <div class="h-11 w-11 shrink-0 grid place-items-center rounded-full bg-rose-100 dark:bg-rose-500/20"><i data-lucide="user-x" class="w-6 h-6 text-rose-600 dark:text-rose-300"></i></div>
+          <div>
+            <h3 id="deTitle" class="text-lg font-medium">Deactivate user?</h3>
+            <p class="text-sm text-foreground/70 mt-1">Dr. Adi Nugroho will lose access immediately. Their records and history are kept. You can reactivate later.</p>
+          </div>
+        </div>
+        <!-- Last-admin warning example -->
+        <div class="mt-4 rounded-xl border border-amber-500/30 bg-amber-100 dark:bg-amber-500/15 p-3 flex items-start gap-2">
+          <i data-lucide="triangle-alert" class="w-5 h-5 shrink-0 text-amber-700 dark:text-amber-300 mt-0.5"></i>
+          <p class="text-sm text-amber-800 dark:text-amber-200">Cannot remove the last admin. At least one active administrator must remain.</p>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-5 py-4 border-t border-outline/10">
+        <button onclick="closeDeactivate()" autofocus class="h-11 px-5 rounded-full bg-primary text-primary-foreground text-sm font-medium">Cancel</button>
+        <button class="h-11 px-5 rounded-full bg-rose-600 text-white text-sm font-medium hover:bg-rose-700">Deactivate user</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const USERS = [
+    {n:'Ardyanto Setyadie', e:'ardyanto.setyadie@brank.as', r:'Admin', d:'IT Administration', s:'active', i:'AS'},
+    {n:'Nadia Pramesti', e:'nadia.pramesti@meridian.co', r:'Admin', d:'IT Administration', s:'active', i:'NP'},
+    {n:'Dr. Sari Wibowo', e:'sari.wibowo@meridian.co', r:'Doctor', d:'Cardiology', s:'active', i:'SW'},
+    {n:'Dr. Adi Nugroho', e:'adi.nugroho@meridian.co', r:'Doctor', d:'General', s:'active', i:'AN'},
+    {n:'Dr. Lina Hartono', e:'lina.hartono@meridian.co', r:'Doctor', d:'Pediatric', s:'active', i:'LH'},
+    {n:'Dr. Rendra Pratama', e:'rendra.pratama@meridian.co', r:'Doctor', d:'Emergency', s:'inactive', i:'RP'},
+    {n:'Wati Ningsih', e:'wati.ningsih@meridian.co', r:'Nurse', d:'Pediatric', s:'active', i:'WN'},
+    {n:'Eko Prasetyo', e:'eko.prasetyo@meridian.co', r:'Nurse', d:'Emergency', s:'active', i:'EP'},
+    {n:'Rina Novita', e:'rina.novita@meridian.co', r:'Receptionist', d:'Front Desk', s:'inactive', i:'RN'},
+  ];
+  const roleChip = {Admin:'bg-primary/15 text-primary', Doctor:'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300', Nurse:'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300', Receptionist:'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'};
+  let curRole = 'All', curSearch = '';
+
+  function render(){
+    const list = USERS.filter(u => (curRole==='All'||u.r===curRole) && (u.n.toLowerCase().includes(curSearch)||u.e.toLowerCase().includes(curSearch)));
+    const rows = document.getElementById('rows');
+    document.getElementById('emptyState').classList.toggle('hidden', list.length>0);
+    rows.innerHTML = list.map(u => `
+      <tr class="border-b border-outline/10 last:border-0 hover:bg-surface-container-low">
+        <td class="px-4 py-3">
+          <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-full bg-primary/15 grid place-items-center text-xs font-semibold text-primary shrink-0">${u.i}</div>
+            <div class="min-w-0"><p class="font-medium truncate">${u.n}</p><p class="text-xs text-foreground/60 truncate">${u.e}</p></div>
+          </div>
+        </td>
+        <td class="px-4 py-3"><span class="rounded-full px-2.5 py-0.5 text-xs font-medium ${roleChip[u.r]}">${u.r}</span></td>
+        <td class="px-4 py-3 text-foreground/80">${u.d}</td>
+        <td class="px-4 py-3"><span class="rounded-full px-2.5 py-0.5 text-xs font-medium ${u.s==='active'?'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300':'bg-surface-container-highest text-foreground/60'}">${u.s==='active'?'Active':'Inactive'}</span></td>
+        <td class="px-4 py-3">
+          <div class="flex items-center justify-end gap-1">
+            <button class="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface-container-highest" aria-label="Edit ${u.n}"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+            <button onclick="openDeactivate()" class="h-9 w-9 grid place-items-center rounded-lg hover:bg-rose-100 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-300" aria-label="Deactivate ${u.n}"><i data-lucide="user-x" class="w-4 h-4"></i></button>
+          </div>
+        </td>
+      </tr>`).join('');
+    document.getElementById('rowCount').textContent = `Showing ${list.length} of ${USERS.length} users`;
+    lucide.createIcons();
+  }
+  function filterRole(r){
+    curRole = r;
+    document.querySelectorAll('#roleChips .chip').forEach(c=>{
+      const on = c.dataset.role===r;
+      c.className = 'chip h-9 px-4 rounded-full text-sm font-medium ' + (on?'bg-primary text-primary-foreground':'bg-surface-container-high text-foreground/80 hover:bg-surface-container-highest');
+    });
+    render();
+  }
+  function filterSearch(v){ curSearch = v.toLowerCase().trim(); render(); }
+  function showState(s){
+    document.getElementById('tableCard').classList.toggle('hidden', s!=='table');
+    document.getElementById('loadingCard').classList.toggle('hidden', s!=='loading');
+    document.getElementById('errorCard').classList.toggle('hidden', s!=='error');
+  }
+  function openAdd(){ document.getElementById('addDialog').classList.remove('hidden'); }
+  function closeAdd(){ document.getElementById('addDialog').classList.add('hidden'); }
+  function openDeactivate(){ document.getElementById('deactivateDialog').classList.remove('hidden'); }
+  function closeDeactivate(){ document.getElementById('deactivateDialog').classList.add('hidden'); }
+  render();
+  lucide.createIcons();
+</script>
+</body></html>

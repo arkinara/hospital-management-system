@@ -1,0 +1,107 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in — Hospital MS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen grid place-items-center bg-background p-4">
+
+  <!-- Dark toggle, floating top-right -->
+  <button onclick="document.documentElement.classList.toggle('dark')"
+    class="fixed top-4 right-4 h-11 w-11 grid place-items-center rounded-full bg-surface-container-high border border-outline/10 hover:bg-surface-container-highest"
+    aria-label="Toggle dark mode">
+    <i data-lucide="sun-moon" class="w-5 h-5"></i>
+  </button>
+
+  <div class="w-full max-w-md">
+
+    <!-- Brand -->
+    <div class="flex flex-col items-center text-center mb-6">
+      <div class="h-16 w-16 rounded-2xl bg-primary grid place-items-center shadow-lg shadow-primary/20 mb-4">
+        <i data-lucide="hospital" class="w-8 h-8 text-primary-foreground"></i>
+      </div>
+      <h1 class="text-2xl font-semibold">Sirkaya Hospital</h1>
+      <p class="text-sm text-foreground/70 mt-1">Management System — sign in to continue</p>
+    </div>
+
+    <!-- Card -->
+    <div class="bg-surface-container rounded-2xl p-6 sm:p-8 border border-outline/10 shadow-sm">
+
+      <!-- Generic invalid-credentials banner (example) -->
+      <div class="mb-5 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-100 dark:bg-rose-500/20 px-4 py-3">
+        <i data-lucide="alert-circle" class="w-5 h-5 text-rose-700 dark:text-rose-300 shrink-0 mt-0.5"></i>
+        <div class="text-sm text-rose-800 dark:text-rose-300">
+          <p class="font-medium">Sign in failed</p>
+          <p class="text-rose-700/90 dark:text-rose-300/80">Incorrect email or password. Please try again.</p>
+        </div>
+      </div>
+
+      <form onsubmit="return false" class="space-y-5">
+
+        <!-- Email (shows inline validation error) -->
+        <div>
+          <label for="email" class="block text-sm font-medium mb-1.5">Email</label>
+          <div class="relative">
+            <i data-lucide="mail" class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40"></i>
+            <input id="email" type="email" value="dr.sari@sirkaya"
+              class="w-full h-12 rounded-xl bg-surface-container-low border border-rose-500/50 pl-10 pr-3 text-sm outline-none focus:border-primary"
+              aria-invalid="true" aria-describedby="email-err">
+          </div>
+          <p id="email-err" class="mt-1.5 flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300">
+            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Email tidak valid
+          </p>
+        </div>
+
+        <!-- Password -->
+        <div>
+          <label for="password" class="block text-sm font-medium mb-1.5">Password</label>
+          <div class="relative">
+            <i data-lucide="lock" class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40"></i>
+            <input id="password" type="password" value="password123"
+              class="w-full h-12 rounded-xl bg-surface-container-low border border-outline/20 pl-10 pr-11 text-sm outline-none focus:border-primary">
+            <button type="button" onclick="const p=document.getElementById('password');p.type=p.type==='password'?'text':'password'"
+              class="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 grid place-items-center rounded-lg hover:bg-surface-container-highest text-foreground/50"
+              aria-label="Toggle password visibility">
+              <i data-lucide="eye" class="w-4.5 h-4.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Remember + forgot -->
+        <div class="flex items-center justify-between">
+          <label class="flex items-center gap-2 text-sm cursor-pointer select-none">
+            <input type="checkbox" checked class="h-4 w-4 rounded border-outline/40 text-primary focus:ring-primary accent-[rgb(var(--primary))]">
+            Remember me
+          </label>
+          <a href="#" class="text-sm font-medium text-primary hover:underline">Forgot password?</a>
+        </div>
+
+        <!-- Submit -->
+        <button type="submit"
+          class="w-full h-12 rounded-xl bg-primary text-primary-foreground text-sm font-semibold shadow-sm hover:opacity-90 flex items-center justify-center gap-2">
+          <i data-lucide="log-in" class="w-4.5 h-4.5"></i> Sign in
+        </button>
+      </form>
+
+      <div class="my-6 flex items-center gap-3 text-xs text-foreground/50">
+        <span class="h-px flex-1 bg-outline/15"></span> OR <span class="h-px flex-1 bg-outline/15"></span>
+      </div>
+
+      <button class="w-full h-12 rounded-xl border border-outline/20 bg-surface-container-low text-sm font-medium hover:bg-surface-container-high flex items-center justify-center gap-2">
+        <i data-lucide="key-round" class="w-4.5 h-4.5"></i> Sign in with SSO
+      </button>
+    </div>
+
+    <p class="text-center text-xs text-foreground/50 mt-6">
+      Need access? <a href="#" class="text-primary font-medium hover:underline">Contact your administrator</a><br>
+      <span class="opacity-70">© 2026 Sirkaya Hospital · v2.4.1</span>
+    </p>
+  </div>
+</div>
+
+<script>lucide.createIcons();</script></body></html>

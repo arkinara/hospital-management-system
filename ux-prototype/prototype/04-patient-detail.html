@@ -1,0 +1,287 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Patient Detail — Hospital MS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen flex">
+
+  <!-- Sidebar -->
+  <aside class="hidden lg:flex flex-col w-64 shrink-0 bg-surface-container-high border-r border-outline/10">
+    <div class="h-16 flex items-center gap-3 px-5 border-b border-outline/10">
+      <div class="h-9 w-9 rounded-xl bg-primary grid place-items-center"><i data-lucide="hospital" class="w-5 h-5 text-primary-foreground"></i></div>
+      <div class="leading-tight"><p class="text-sm font-semibold">Sirkaya</p><p class="text-xs text-foreground/60">Hospital MS</p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <a href="02-admin-dashboard.html" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard</a>
+      <a href="03-patient-list.html" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium bg-primary/10 text-primary"><i data-lucide="users" class="w-5 h-5"></i> Patients</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="calendar-days" class="w-5 h-5"></i> Appointments</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="file-text" class="w-5 h-5"></i> Records</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="receipt" class="w-5 h-5"></i> Billing</a>
+      <div class="pt-3 mt-2 border-t border-outline/10">
+        <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground/40">Admin</p>
+        <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="user-cog" class="w-5 h-5"></i> Users</a>
+        <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="building-2" class="w-5 h-5"></i> Departments</a>
+        <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-grid" class="w-5 h-5"></i> Widget Library</a>
+        <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="shield-check" class="w-5 h-5"></i> Permissions</a>
+        <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="bar-chart-3" class="w-5 h-5"></i> Reports</a>
+      </div>
+    </nav>
+    <div class="p-3 border-t border-outline/10">
+      <div class="flex items-center gap-3 rounded-xl px-3 py-2">
+        <img src="https://i.pravatar.cc/64?img=13" class="h-9 w-9 rounded-full ring-2 ring-background" alt="">
+        <div class="leading-tight min-w-0"><p class="text-sm font-medium truncate">Ardyanto S.</p><p class="text-xs text-foreground/60 truncate">Administrator</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="flex-1 flex flex-col min-w-0">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-10 h-16 bg-surface-container-high/95 backdrop-blur border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6">
+      <button class="lg:hidden h-10 w-10 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <a href="03-patient-list.html" class="h-10 w-10 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Back"><i data-lucide="arrow-left" class="w-5 h-5"></i></a>
+      <h1 class="text-xl font-semibold truncate">Budi Santoso</h1>
+      <div class="flex-1"></div>
+      <button class="h-10 w-10 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Search"><i data-lucide="search" class="w-5 h-5"></i></button>
+      <button onclick="document.documentElement.classList.toggle('dark')" class="h-10 w-10 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Toggle dark mode"><i data-lucide="sun-moon" class="w-5 h-5"></i></button>
+      <img src="https://i.pravatar.cc/64?img=13" class="h-9 w-9 rounded-full ring-2 ring-background" alt="">
+    </header>
+
+    <!-- Content -->
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 bg-background pb-24">
+      <div class="mx-auto max-w-7xl w-full space-y-5">
+
+        <!-- PatientHeader -->
+        <div class="bg-surface-container rounded-2xl p-5 sm:p-6 border border-outline/10 shadow-sm">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+            <img src="https://i.pravatar.cc/128?img=51" class="h-20 w-20 rounded-full ring-2 ring-primary" alt="">
+            <div class="flex-1 min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-2xl font-semibold">Budi Santoso</h2>
+                <span class="rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">Active</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-sm text-foreground/70">
+                <span class="flex items-center gap-1.5"><i data-lucide="cake" class="w-4 h-4"></i> 12 Mar 1978 · 48 yrs</span>
+                <span class="flex items-center gap-1.5"><i data-lucide="user" class="w-4 h-4"></i> Male</span>
+                <span class="flex items-center gap-1.5"><i data-lucide="hash" class="w-4 h-4"></i> <span class="font-mono">P-001042</span></span>
+                <span class="flex items-center gap-1.5"><i data-lucide="droplet" class="w-4 h-4"></i> O+</span>
+              </div>
+              <div class="flex flex-wrap gap-2 mt-3">
+                <span class="rounded-full bg-surface-container-highest px-2.5 py-0.5 text-xs font-medium flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-primary"></span> General</span>
+                <span class="rounded-full bg-surface-container-highest px-2.5 py-0.5 text-xs font-medium flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-rose-500"></span> Cardiology</span>
+              </div>
+            </div>
+            <div class="flex sm:flex-col gap-2">
+              <button class="h-10 rounded-xl bg-primary text-primary-foreground px-4 text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90"><i data-lucide="calendar-plus" class="w-4 h-4"></i> Book</button>
+              <button class="h-10 rounded-xl border border-outline/20 bg-surface-container-high px-4 text-sm font-medium flex items-center justify-center gap-2 hover:bg-surface-container-highest"><i data-lucide="pencil" class="w-4 h-4"></i> Edit</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab bar (segmented pills) -->
+        <div class="flex gap-1 p-1 bg-surface-container-high rounded-full w-full sm:w-auto sm:inline-flex overflow-x-auto">
+          <button onclick="showTab('overview')" data-tab="overview" class="tab-btn shrink-0 rounded-full px-4 h-9 text-sm font-medium text-foreground/70 hover:bg-surface-container-highest flex items-center gap-2"><i data-lucide="layout-panel-left" class="w-4 h-4"></i> Overview</button>
+          <button onclick="showTab('timeline')" data-tab="timeline" class="tab-btn shrink-0 rounded-full px-4 h-9 text-sm font-medium bg-primary text-primary-foreground flex items-center gap-2"><i data-lucide="git-commit-vertical" class="w-4 h-4"></i> Timeline</button>
+          <button onclick="showTab('records')" data-tab="records" class="tab-btn shrink-0 rounded-full px-4 h-9 text-sm font-medium text-foreground/70 hover:bg-surface-container-highest flex items-center gap-2"><i data-lucide="file-text" class="w-4 h-4"></i> Records</button>
+          <button onclick="showTab('billing')" data-tab="billing" class="tab-btn shrink-0 rounded-full px-4 h-9 text-sm font-medium text-foreground/70 hover:bg-surface-container-highest flex items-center gap-2"><i data-lucide="receipt" class="w-4 h-4"></i> Billing</button>
+        </div>
+
+        <!-- OVERVIEW tab (collapsed by default) -->
+        <div id="tab-overview" class="tab-panel hidden grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-surface-container rounded-2xl p-5 border border-outline/10 shadow-sm">
+            <h3 class="text-lg font-medium mb-4 flex items-center gap-2"><i data-lucide="id-card" class="w-5 h-5 text-primary"></i> Demographics</h3>
+            <dl class="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+              <div><dt class="text-foreground/60 text-xs">Full name</dt><dd class="font-medium">Budi Santoso</dd></div>
+              <div><dt class="text-foreground/60 text-xs">MRN</dt><dd class="font-mono">P-001042</dd></div>
+              <div><dt class="text-foreground/60 text-xs">Date of birth</dt><dd>12 Mar 1978</dd></div>
+              <div><dt class="text-foreground/60 text-xs">Blood type</dt><dd>O+</dd></div>
+              <div><dt class="text-foreground/60 text-xs">Phone</dt><dd>+62 812-3344-5566</dd></div>
+              <div><dt class="text-foreground/60 text-xs">Insurance</dt><dd>BPJS · Class 1</dd></div>
+              <div class="col-span-2"><dt class="text-foreground/60 text-xs">Address</dt><dd>Jl. Melati No. 24, Bandung, Jawa Barat</dd></div>
+            </dl>
+          </div>
+          <div class="bg-surface-container rounded-2xl p-5 border border-outline/10 shadow-sm">
+            <h3 class="text-lg font-medium mb-4 flex items-center gap-2"><i data-lucide="contact" class="w-5 h-5 text-primary"></i> Emergency Contact</h3>
+            <dl class="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+              <div><dt class="text-foreground/60 text-xs">Name</dt><dd class="font-medium">Sri Santoso</dd></div>
+              <div><dt class="text-foreground/60 text-xs">Relationship</dt><dd>Spouse</dd></div>
+              <div><dt class="text-foreground/60 text-xs">Phone</dt><dd>+62 813-9988-7766</dd></div>
+              <div><dt class="text-foreground/60 text-xs">Alt. phone</dt><dd>+62 22-7788-990</dd></div>
+            </dl>
+            <div class="mt-4 pt-4 border-t border-outline/10">
+              <p class="text-xs text-foreground/60 mb-1">Allergies</p>
+              <div class="flex flex-wrap gap-1.5"><span class="rounded-full bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300 px-2.5 py-0.5 text-xs">Penicillin</span><span class="rounded-full bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300 px-2.5 py-0.5 text-xs">Aspirin</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TIMELINE tab (active) -->
+        <div id="tab-timeline" class="tab-panel">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 class="text-xl font-semibold">Unified timeline</h3>
+              <p class="text-sm text-foreground/70">Cross-department history — all visits, records and billing in one thread.</p>
+            </div>
+            <div class="flex gap-2">
+              <button class="h-9 rounded-xl border border-outline/20 bg-surface-container-high px-3 text-sm font-medium flex items-center gap-2 hover:bg-surface-container-highest"><i data-lucide="filter" class="w-4 h-4"></i> All types</button>
+              <button onclick="cycleState()" class="h-9 rounded-xl border border-outline/20 bg-surface-container-high px-3 text-sm font-medium flex items-center gap-2 hover:bg-surface-container-highest"><i data-lucide="repeat" class="w-4 h-4"></i> Demo state</button>
+            </div>
+          </div>
+
+          <!-- Populated timeline -->
+          <div id="tl-data" class="bg-surface-container rounded-2xl p-5 sm:p-6 border border-outline/10 shadow-sm">
+            <ol class="relative border-l-2 border-outline/15 ml-3 space-y-6">
+
+              <!-- 2026 -->
+              <li class="ml-6">
+                <span class="absolute -left-[11px] h-5 w-5 rounded-full ring-4 ring-surface-container grid place-items-center bg-rose-500"><i data-lucide="stethoscope" class="w-3 h-3 text-white"></i></span>
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                  <span class="text-sm font-semibold">Visit note — Chest pain follow-up</span>
+                  <span class="rounded-full bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300 px-2 py-0.5 text-[11px] font-medium">Cardiology</span>
+                </div>
+                <p class="text-xs text-foreground/60 mb-2">9 Sep 2026 · 09:40 · Dr. Sari Wibowo</p>
+                <p class="text-sm text-foreground/80">Stable angina, well-controlled. ECG normal sinus rhythm. Continue current beta-blocker; review in 3 months.</p>
+              </li>
+
+              <li class="ml-6">
+                <span class="absolute -left-[11px] h-5 w-5 rounded-full ring-4 ring-surface-container grid place-items-center bg-primary"><i data-lucide="pill" class="w-3 h-3 text-white"></i></span>
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                  <span class="text-sm font-semibold">Prescription issued</span>
+                  <span class="rounded-full bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300 px-2 py-0.5 text-[11px] font-medium">Cardiology</span>
+                </div>
+                <p class="text-xs text-foreground/60 mb-2">9 Sep 2026 · 09:55 · Dr. Sari Wibowo</p>
+                <div class="rounded-xl bg-surface-container-low border border-outline/10 p-3 text-sm space-y-1">
+                  <p><span class="font-medium">Bisoprolol 5mg</span> · 1×/day · 30 tabs</p>
+                  <p><span class="font-medium">Atorvastatin 20mg</span> · 1×/night · 30 tabs</p>
+                </div>
+              </li>
+
+              <li class="ml-6">
+                <span class="absolute -left-[11px] h-5 w-5 rounded-full ring-4 ring-surface-container grid place-items-center bg-emerald-500"><i data-lucide="receipt" class="w-3 h-3 text-white"></i></span>
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                  <span class="text-sm font-semibold">Billing — Consultation & ECG</span>
+                  <span class="rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 px-2 py-0.5 text-[11px] font-medium">Paid</span>
+                </div>
+                <p class="text-xs text-foreground/60 mb-2">9 Sep 2026 · 10:10 · Finance</p>
+                <p class="text-sm text-foreground/80">Invoice <span class="font-mono">INV-2026-4471</span> · <span class="font-semibold">Rp 350.000</span> · BPJS covered Rp 280.000</p>
+              </li>
+
+              <li class="ml-6">
+                <span class="absolute -left-[11px] h-5 w-5 rounded-full ring-4 ring-surface-container grid place-items-center bg-primary"><i data-lucide="activity" class="w-3 h-3 text-white"></i></span>
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                  <span class="text-sm font-semibold">Vitals recorded</span>
+                  <span class="rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-medium flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-primary"></span> General</span>
+                </div>
+                <p class="text-xs text-foreground/60 mb-2">14 Jun 2026 · 08:20 · Nurse Ratna</p>
+                <div class="flex flex-wrap gap-2 text-sm">
+                  <span class="rounded-lg bg-surface-container-low border border-outline/10 px-2.5 py-1">BP <span class="font-medium">128/82</span></span>
+                  <span class="rounded-lg bg-surface-container-low border border-outline/10 px-2.5 py-1">HR <span class="font-medium">74</span></span>
+                  <span class="rounded-lg bg-surface-container-low border border-outline/10 px-2.5 py-1">Temp <span class="font-medium">36.7°C</span></span>
+                  <span class="rounded-lg bg-surface-container-low border border-outline/10 px-2.5 py-1">SpO₂ <span class="font-medium">98%</span></span>
+                </div>
+              </li>
+
+              <!-- Unknown department example -->
+              <li class="ml-6">
+                <span class="absolute -left-[11px] h-5 w-5 rounded-full ring-4 ring-surface-container grid place-items-center bg-outline/60"><i data-lucide="file-question" class="w-3 h-3 text-white"></i></span>
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                  <span class="text-sm font-semibold">Imported lab result — Lipid panel</span>
+                  <span class="rounded-full bg-surface-container-highest text-foreground/60 px-2 py-0.5 text-[11px] font-medium flex items-center gap-1"><i data-lucide="help-circle" class="w-3 h-3"></i> Unknown department</span>
+                </div>
+                <p class="text-xs text-foreground/60 mb-2">3 May 2026 · External lab (Prodia) · source not mapped</p>
+                <p class="text-sm text-foreground/80">Total cholesterol 214 mg/dL · LDL 138 mg/dL. Imported via HL7 feed; department could not be resolved.</p>
+              </li>
+
+              <!-- Undated grouping note -->
+              <li class="ml-6">
+                <span class="absolute -left-[11px] h-5 w-5 rounded-full ring-4 ring-surface-container grid place-items-center bg-amber-500"><i data-lucide="calendar-off" class="w-3 h-3 text-white"></i></span>
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                  <span class="text-sm font-semibold">Scanned referral letter</span>
+                  <span class="rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-medium flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-primary"></span> General</span>
+                </div>
+                <p class="text-xs text-foreground/60 mb-2 flex items-center gap-1"><i data-lucide="alert-circle" class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400"></i> Undated — grouped separately at end of timeline</p>
+                <p class="text-sm text-foreground/80">Referral from Puskesmas Cibaduyut. Document has no legible date; filed under "Undated records".</p>
+              </li>
+            </ol>
+          </div>
+
+          <!-- Empty timeline demo -->
+          <div id="tl-empty" class="hidden bg-surface-container rounded-2xl border border-outline/10 shadow-sm p-10 flex flex-col items-center text-center">
+            <div class="h-14 w-14 rounded-2xl bg-surface-container-highest grid place-items-center mb-4"><i data-lucide="history" class="w-7 h-7 text-foreground/40"></i></div>
+            <p class="font-medium">No history yet</p>
+            <p class="text-sm text-foreground/60 mt-1 max-w-xs">This patient has no recorded visits, prescriptions or billing across any department.</p>
+            <button class="mt-4 h-10 rounded-xl bg-primary text-primary-foreground px-4 text-sm font-medium flex items-center gap-2 hover:opacity-90"><i data-lucide="plus" class="w-4 h-4"></i> Add first entry</button>
+          </div>
+
+          <!-- Skeleton timeline demo -->
+          <div id="tl-skel" class="hidden bg-surface-container rounded-2xl p-5 sm:p-6 border border-outline/10 shadow-sm">
+            <ol class="relative border-l-2 border-outline/15 ml-3 space-y-6">
+              <li class="ml-6"><span class="skl absolute -left-[11px] h-5 w-5 rounded-full ring-4 ring-surface-container"></span><div class="space-y-2"><div class="skl h-4 w-2/5 rounded"></div><div class="skl h-3 w-1/4 rounded"></div><div class="skl h-3 w-3/4 rounded"></div></div></li>
+              <li class="ml-6"><span class="skl absolute -left-[11px] h-5 w-5 rounded-full ring-4 ring-surface-container"></span><div class="space-y-2"><div class="skl h-4 w-1/3 rounded"></div><div class="skl h-3 w-1/5 rounded"></div><div class="skl h-3 w-2/3 rounded"></div></div></li>
+              <li class="ml-6"><span class="skl absolute -left-[11px] h-5 w-5 rounded-full ring-4 ring-surface-container"></span><div class="space-y-2"><div class="skl h-4 w-1/2 rounded"></div><div class="skl h-3 w-1/4 rounded"></div><div class="skl h-3 w-1/2 rounded"></div></div></li>
+            </ol>
+            <p class="mt-4 text-xs text-foreground/40 text-center">Loading timeline…</p>
+          </div>
+        </div>
+
+        <!-- RECORDS tab (placeholder) -->
+        <div id="tab-records" class="tab-panel hidden">
+          <div class="bg-surface-container rounded-2xl border border-outline/10 shadow-sm p-10 flex flex-col items-center text-center">
+            <div class="h-14 w-14 rounded-2xl bg-surface-container-highest grid place-items-center mb-4"><i data-lucide="folder-open" class="w-7 h-7 text-foreground/40"></i></div>
+            <p class="font-medium">Records</p>
+            <p class="text-sm text-foreground/60 mt-1 max-w-xs">Clinical documents, lab reports and attachments would be listed here.</p>
+          </div>
+        </div>
+
+        <!-- BILLING tab (placeholder) -->
+        <div id="tab-billing" class="tab-panel hidden">
+          <div class="bg-surface-container rounded-2xl border border-outline/10 shadow-sm p-10 flex flex-col items-center text-center">
+            <div class="h-14 w-14 rounded-2xl bg-surface-container-highest grid place-items-center mb-4"><i data-lucide="receipt" class="w-7 h-7 text-foreground/40"></i></div>
+            <p class="font-medium">Billing</p>
+            <p class="text-sm text-foreground/60 mt-1 max-w-xs">Invoices, payments and insurance claims would be listed here.</p>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- Mobile bottom nav -->
+    <nav class="lg:hidden sticky bottom-0 z-10 bg-surface-container-high border-t border-outline/10 flex justify-around">
+      <a href="02-admin-dashboard.html" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/60"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="text-[10px]">Dashboard</span></a>
+      <a href="03-patient-list.html" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-primary"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[10px] font-medium">Patients</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/60"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="text-[10px]">Appts</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/60"><i data-lucide="file-text" class="w-5 h-5"></i><span class="text-[10px]">Records</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/60"><i data-lucide="more-horizontal" class="w-5 h-5"></i><span class="text-[10px]">More</span></a>
+    </nav>
+  </div>
+</div>
+
+<script>
+  function showTab(name){
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.add('hidden'));
+    document.getElementById('tab-'+name).classList.remove('hidden');
+    document.querySelectorAll('.tab-btn').forEach(b=>{
+      const on = b.dataset.tab===name;
+      b.classList.toggle('bg-primary', on);
+      b.classList.toggle('text-primary-foreground', on);
+      b.classList.toggle('text-foreground/70', !on);
+      b.classList.toggle('hover:bg-surface-container-highest', !on);
+    });
+  }
+  // cycle timeline: data -> empty -> skeleton
+  const states=['tl-data','tl-empty','tl-skel']; let si=0;
+  function cycleState(){
+    states.forEach(id=>document.getElementById(id).classList.add('hidden'));
+    si=(si+1)%states.length;
+    document.getElementById(states[si]).classList.remove('hidden');
+  }
+  lucide.createIcons();
+</script>
+</body></html>

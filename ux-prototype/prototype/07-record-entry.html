@@ -1,0 +1,275 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Visit note — Hospital MS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen flex">
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="hidden lg:flex flex-col w-64 shrink-0 bg-surface-container-high border-r border-outline/10">
+    <div class="flex h-16 items-center gap-3 px-5 border-b border-outline/10">
+      <div class="h-9 w-9 grid place-items-center rounded-xl bg-primary text-primary-foreground"><i data-lucide="plus" class="w-5 h-5"></i></div>
+      <div class="leading-tight"><p class="text-sm font-semibold">Meridian HMS</p><p class="text-xs text-foreground/60">Clinician</p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="users" class="w-5 h-5"></i> Patients</a>
+      <a href="06-doctor-schedule.html" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="calendar-days" class="w-5 h-5"></i> Appointments</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium bg-primary/10 text-primary"><i data-lucide="file-text" class="w-5 h-5"></i> Records</a>
+    </nav>
+    <div class="p-3 border-t border-outline/10">
+      <div class="flex items-center gap-3 rounded-xl px-3 py-2">
+        <div class="h-9 w-9 grid place-items-center rounded-full bg-primary/15 text-primary text-xs font-semibold">SW</div>
+        <div class="leading-tight"><p class="text-sm font-medium">Dr. Sari Wibowo</p><p class="text-xs text-foreground/60">Cardiology</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="sticky top-0 z-10 h-16 bg-surface-container-high/95 backdrop-blur border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6">
+      <button class="lg:hidden h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <h1 class="text-xl font-semibold truncate">Visit note — Budi Santoso</h1>
+      <div class="ml-auto flex items-center gap-1">
+        <button class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Search"><i data-lucide="search" class="w-5 h-5"></i></button>
+        <button onclick="document.documentElement.classList.toggle('dark')" class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Toggle dark mode">
+          <i data-lucide="sun" class="w-5 h-5 dark:hidden"></i><i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+        </button>
+        <div class="h-9 w-9 grid place-items-center rounded-full ring-2 ring-background bg-primary/15 text-primary text-xs font-semibold ml-1">SW</div>
+      </div>
+    </header>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+      <div class="mx-auto max-w-7xl w-full space-y-6">
+
+        <!-- Demo state switcher -->
+        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+          <span class="text-foreground/60 mr-1">Demo states:</span>
+          <button onclick="setState('form')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Form</button>
+          <button onclick="setState('loading')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Loading</button>
+          <button onclick="setState('blocked')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">No appointment (blocked)</button>
+        </div>
+
+        <!-- Blocking error -->
+        <div id="blockedState" class="hidden rounded-2xl border border-rose-300/50 bg-rose-100 dark:bg-rose-500/15 p-8 flex flex-col items-center text-center gap-3">
+          <div class="h-14 w-14 grid place-items-center rounded-2xl bg-rose-200/60 dark:bg-rose-500/25"><i data-lucide="unlink" class="w-7 h-7 text-rose-700 dark:text-rose-300"></i></div>
+          <p class="text-lg font-medium text-rose-800 dark:text-rose-300">No appointment linked — cannot create note</p>
+          <p class="text-sm text-rose-800/80 dark:text-rose-300/80 max-w-md">A visit note must be attached to an existing appointment. Open the patient's schedule and start the note from a booked slot.</p>
+          <button onclick="setState('form')" class="mt-1 inline-flex items-center gap-2 min-h-[48px] rounded-2xl bg-rose-600 text-white px-4 text-sm font-medium hover:opacity-90"><i data-lucide="calendar-search" class="w-5 h-5"></i> Find appointment</button>
+        </div>
+
+        <!-- Loading skeleton -->
+        <div id="loadingState" class="hidden grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6">
+          <div class="space-y-3">
+            <div class="skl h-16 rounded-2xl"></div>
+            <div class="skl h-40 rounded-2xl"></div>
+            <div class="skl h-32 rounded-2xl"></div>
+            <div class="skl h-40 rounded-2xl"></div>
+          </div>
+          <div class="skl h-72 rounded-2xl"></div>
+        </div>
+
+        <!-- ===== FORM STATE ===== -->
+        <div id="formState" class="grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6">
+          <!-- LEFT: form -->
+          <div class="space-y-6">
+            <!-- Success confirmation -->
+            <div id="savedBanner" class="hidden rounded-2xl border border-emerald-300/50 bg-emerald-100 dark:bg-emerald-500/15 p-4 flex items-center gap-3">
+              <div class="h-9 w-9 shrink-0 grid place-items-center rounded-full bg-emerald-500 text-white"><i data-lucide="check" class="w-5 h-5"></i></div>
+              <p class="text-sm text-emerald-800 dark:text-emerald-300"><span class="font-medium">Visit note saved.</span> Added to Budi Santoso's timeline · 9 Sep 2026 10:24.</p>
+            </div>
+
+            <!-- Context banner -->
+            <div class="rounded-2xl bg-primary/10 border border-primary/25 p-4 flex items-start gap-3">
+              <div class="h-9 w-9 shrink-0 grid place-items-center rounded-full bg-primary text-primary-foreground"><i data-lucide="link" class="w-5 h-5"></i></div>
+              <div class="min-w-0 text-sm">
+                <p class="font-medium">Appointment #A-2291 · 9 Sep 2026 10:00 · Cardiology</p>
+                <p class="text-foreground/70 mt-0.5">Patient: <span class="font-medium text-foreground">Budi Santoso</span> (P-001042, DOB 1978-03-12) · Provider: <span class="font-medium text-foreground">Dr. Sari Wibowo</span></p>
+              </div>
+            </div>
+
+            <form id="noteForm" class="space-y-6">
+              <!-- Clinical fields -->
+              <section class="bg-surface-container rounded-2xl p-5 sm:p-6 border border-outline/10 shadow-sm space-y-5">
+                <h2 class="text-lg font-medium">Clinical</h2>
+                <div>
+                  <label for="chief" class="block text-sm font-medium mb-1.5">Chief complaint</label>
+                  <input id="chief" value="Follow-up hypertension, occasional headaches" class="w-full min-h-[48px] rounded-xl border border-outline/20 bg-background px-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                </div>
+                <div>
+                  <label for="dx" class="block text-sm font-medium mb-1.5">Diagnosis <span class="text-rose-600 dark:text-rose-400">*</span></label>
+                  <input id="dx" class="w-full min-h-[48px] rounded-xl border border-rose-400 bg-background px-3 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30" placeholder="e.g. Essential (primary) hypertension — I10">
+                  <p id="dxError" class="mt-1 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1"><i data-lucide="circle-alert" class="w-3.5 h-3.5"></i> Diagnosis is required</p>
+                </div>
+                <div>
+                  <label for="notes" class="block text-sm font-medium mb-1.5">Clinical notes</label>
+                  <textarea id="notes" rows="4" class="w-full rounded-xl border border-outline/20 bg-background px-3 py-2.5 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 resize-y" placeholder="Assessment, plan, patient education…">BP controlled on current regimen. Advised low-sodium diet and daily home BP log. Continue amlodipine; review in 4 weeks.</textarea>
+                </div>
+              </section>
+
+              <!-- Vitals -->
+              <section class="bg-surface-container rounded-2xl p-5 sm:p-6 border border-outline/10 shadow-sm space-y-4">
+                <h2 class="text-lg font-medium">Vitals</h2>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <label for="bp" class="block text-xs font-medium mb-1 text-foreground/70">Blood pressure</label>
+                    <input id="bp" value="128/82" class="w-full min-h-[44px] rounded-xl border border-outline/20 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                  </div>
+                  <div>
+                    <label for="temp" class="block text-xs font-medium mb-1 text-foreground/70">Temp (°C)</label>
+                    <input id="temp" value="36.6" class="w-full min-h-[44px] rounded-xl border border-outline/20 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                  </div>
+                  <div>
+                    <label for="pulse" class="block text-xs font-medium mb-1 text-foreground/70">Pulse (bpm)</label>
+                    <input id="pulse" value="74" class="w-full min-h-[44px] rounded-xl border border-outline/20 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                  </div>
+                  <div>
+                    <label for="weight" class="block text-xs font-medium mb-1 text-foreground/70">Weight (kg)</label>
+                    <input id="weight" value="-3" class="w-full min-h-[44px] rounded-xl border border-rose-400 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                    <p class="mt-1 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1"><i data-lucide="circle-alert" class="w-3.5 h-3.5"></i> Weight must be positive</p>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Prescriptions -->
+              <section class="bg-surface-container rounded-2xl p-5 sm:p-6 border border-outline/10 shadow-sm space-y-4">
+                <div class="flex items-center justify-between">
+                  <h2 class="text-lg font-medium">Prescriptions</h2>
+                  <span class="text-xs text-foreground/60">2 items</span>
+                </div>
+                <!-- existing lines -->
+                <div class="space-y-2">
+                  <div class="flex items-center gap-3 rounded-xl border border-outline/15 bg-background px-3 py-2.5">
+                    <i data-lucide="pill" class="w-5 h-5 text-primary shrink-0"></i>
+                    <div class="min-w-0 flex-1 text-sm">
+                      <p class="font-medium truncate">Amlodipine <span class="font-normal text-foreground/60">5 mg</span></p>
+                      <p class="text-xs text-foreground/60">Once daily · 30 days</p>
+                    </div>
+                    <button type="button" class="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface-container-highest text-foreground/60" aria-label="Remove Amlodipine"><i data-lucide="x" class="w-4 h-4"></i></button>
+                  </div>
+                  <div class="flex items-center gap-3 rounded-xl border border-outline/15 bg-background px-3 py-2.5">
+                    <i data-lucide="pill" class="w-5 h-5 text-primary shrink-0"></i>
+                    <div class="min-w-0 flex-1 text-sm">
+                      <p class="font-medium truncate">Hydrochlorothiazide <span class="font-normal text-foreground/60">12.5 mg</span></p>
+                      <p class="text-xs text-foreground/60">Once daily (morning) · 30 days</p>
+                    </div>
+                    <button type="button" class="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface-container-highest text-foreground/60" aria-label="Remove Hydrochlorothiazide"><i data-lucide="x" class="w-4 h-4"></i></button>
+                  </div>
+                </div>
+                <!-- add row -->
+                <div class="rounded-xl border border-dashed border-outline/30 p-3 space-y-3">
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <input placeholder="Medication" class="min-h-[44px] rounded-lg border border-outline/20 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                    <input placeholder="Dosage" class="min-h-[44px] rounded-lg border border-rose-400 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                    <input placeholder="Frequency" class="min-h-[44px] rounded-lg border border-rose-400 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                    <input placeholder="Duration" class="min-h-[44px] rounded-lg border border-outline/20 bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <p class="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1"><i data-lucide="circle-alert" class="w-3.5 h-3.5"></i> Dosage and frequency required</p>
+                    <button type="button" class="inline-flex items-center gap-1.5 rounded-xl border border-outline/25 px-3 min-h-[44px] text-sm font-medium hover:bg-surface-container-high"><i data-lucide="plus" class="w-4 h-4"></i> Add prescription</button>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Attachments -->
+              <section class="bg-surface-container rounded-2xl p-5 sm:p-6 border border-outline/10 shadow-sm space-y-4">
+                <h2 class="text-lg font-medium">Attachments</h2>
+                <div class="rounded-xl border-2 border-dashed border-outline/30 p-6 flex flex-col items-center text-center gap-2 hover:border-primary/50 cursor-pointer">
+                  <div class="h-11 w-11 grid place-items-center rounded-2xl bg-surface-container-high"><i data-lucide="upload-cloud" class="w-6 h-6 text-foreground/60"></i></div>
+                  <p class="text-sm font-medium">Drop files or click to upload</p>
+                  <p class="text-xs text-foreground/60">PDF, JPG or PNG · up to 10 MB</p>
+                </div>
+                <div class="flex items-center gap-3 rounded-xl border border-outline/15 bg-background px-3 py-2.5">
+                  <i data-lucide="file-text" class="w-5 h-5 text-rose-500 shrink-0"></i>
+                  <div class="min-w-0 flex-1 text-sm"><p class="font-medium truncate">lab-cbc.pdf</p><p class="text-xs text-foreground/60">248 KB · uploaded</p></div>
+                  <button type="button" class="h-9 w-9 grid place-items-center rounded-lg hover:bg-surface-container-highest text-foreground/60" aria-label="Remove lab-cbc.pdf"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+              </section>
+
+              <!-- Footer actions -->
+              <div class="flex flex-col sm:flex-row sm:justify-end gap-3">
+                <button type="button" onclick="saveNote(true)" class="min-h-[48px] rounded-2xl border border-outline/30 px-5 text-sm font-medium hover:bg-surface-container-high flex items-center justify-center gap-2"><i data-lucide="save" class="w-5 h-5"></i> Save draft</button>
+                <button type="submit" class="min-h-[48px] rounded-2xl bg-primary text-primary-foreground px-6 text-sm font-medium hover:opacity-90 flex items-center justify-center gap-2"><i data-lucide="check-check" class="w-5 h-5"></i> Save visit note</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- RIGHT: timeline preview -->
+          <aside class="lg:sticky lg:top-24 self-start">
+            <div class="bg-surface-container rounded-2xl border border-outline/10 shadow-sm p-5">
+              <div class="flex items-center gap-2 mb-4">
+                <i data-lucide="history" class="w-5 h-5 text-primary"></i>
+                <h2 class="text-lg font-medium">Timeline preview</h2>
+              </div>
+              <p class="text-xs text-foreground/60 mb-4">How this note will append to Budi Santoso's record.</p>
+              <ol class="relative border-l border-outline/20 ml-2 space-y-5">
+                <li class="ml-4">
+                  <span class="absolute -left-1.5 mt-1 h-3 w-3 rounded-full bg-primary ring-2 ring-background"></span>
+                  <div class="rounded-xl border border-primary/30 bg-primary/10 p-3">
+                    <p class="text-xs font-medium text-primary">New · draft preview</p>
+                    <p class="text-sm font-medium mt-0.5">Cardiology visit — Dr. Sari Wibowo</p>
+                    <p class="text-xs text-foreground/70">Dx: <span id="pvDx" class="text-foreground/50 italic">(pending)</span> · BP 128/82 · 2 Rx</p>
+                    <p class="text-[11px] text-foreground/50 mt-1">9 Sep 2026 · 10:00</p>
+                  </div>
+                </li>
+                <li class="ml-4">
+                  <span class="absolute -left-1.5 mt-1 h-3 w-3 rounded-full bg-outline/40 ring-2 ring-background"></span>
+                  <p class="text-sm font-medium">Lab result — CBC</p>
+                  <p class="text-xs text-foreground/60">Within normal limits</p>
+                  <p class="text-[11px] text-foreground/50 mt-0.5">2 Sep 2026</p>
+                </li>
+                <li class="ml-4">
+                  <span class="absolute -left-1.5 mt-1 h-3 w-3 rounded-full bg-outline/40 ring-2 ring-background"></span>
+                  <p class="text-sm font-medium">Cardiology visit — Dr. Sari Wibowo</p>
+                  <p class="text-xs text-foreground/60">Dx: Essential hypertension</p>
+                  <p class="text-[11px] text-foreground/50 mt-0.5">12 Aug 2026</p>
+                </li>
+              </ol>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </main>
+
+    <!-- Mobile bottom nav -->
+    <nav class="lg:hidden sticky bottom-0 z-10 bg-surface-container-high border-t border-outline/10 flex justify-around">
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="text-[10px]">Home</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[10px]">Patients</span></a>
+      <a href="06-doctor-schedule.html" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="text-[10px]">Appts</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-primary"><i data-lucide="file-text" class="w-5 h-5"></i><span class="text-[10px]">Records</span></a>
+    </nav>
+  </div>
+</div>
+
+<script>
+function setState(s){
+  ['formState','loadingState','blockedState'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  const map={form:'formState',loading:'loadingState',blocked:'blockedState'};
+  document.getElementById(map[s]).classList.remove('hidden');
+  lucide.createIcons();
+}
+document.getElementById('noteForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  const dx = document.getElementById('dx').value.trim();
+  const err = document.getElementById('dxError');
+  if(!dx){ err.classList.remove('hidden'); document.getElementById('dx').focus(); lucide.createIcons(); return; }
+  err.classList.add('hidden');
+  document.getElementById('pvDx').textContent = dx;
+  document.getElementById('pvDx').classList.remove('italic','text-foreground/50');
+  document.getElementById('savedBanner').classList.remove('hidden');
+  document.getElementById('savedBanner').scrollIntoView({behavior:'smooth', block:'center'});
+});
+function saveNote(draft){
+  document.getElementById('savedBanner').classList.remove('hidden');
+  document.querySelector('#savedBanner p').innerHTML = '<span class="font-medium">Draft saved.</span> You can finish this note later — it won\'t appear in the timeline until submitted.';
+  document.getElementById('savedBanner').scrollIntoView({behavior:'smooth', block:'center'});
+}
+setState('form');
+lucide.createIcons();
+</script>
+<script>lucide.createIcons();</script></body></html>

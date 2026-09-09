@@ -1,0 +1,277 @@
+<!doctype html><html lang="en" class=""><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Billing — Hospital MS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-screen flex">
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="hidden lg:flex flex-col w-64 shrink-0 bg-surface-container-high border-r border-outline/10">
+    <div class="flex h-16 items-center gap-3 px-5 border-b border-outline/10">
+      <div class="h-9 w-9 grid place-items-center rounded-xl bg-primary text-primary-foreground"><i data-lucide="plus" class="w-5 h-5"></i></div>
+      <div class="leading-tight"><p class="text-sm font-semibold">Meridian HMS</p><p class="text-xs text-foreground/60">Front desk</p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="users" class="w-5 h-5"></i> Patients</a>
+      <a href="05-appointment-booking.html" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium text-foreground/80 hover:bg-surface-container-highest"><i data-lucide="calendar-days" class="w-5 h-5"></i> Appointments</a>
+      <a href="#" class="rounded-xl px-3 py-2.5 flex items-center gap-3 text-sm font-medium bg-primary/10 text-primary"><i data-lucide="receipt" class="w-5 h-5"></i> Billing</a>
+    </nav>
+    <div class="p-3 border-t border-outline/10">
+      <div class="flex items-center gap-3 rounded-xl px-3 py-2">
+        <div class="h-9 w-9 grid place-items-center rounded-full bg-primary/15 text-primary text-xs font-semibold">FH</div>
+        <div class="leading-tight"><p class="text-sm font-medium">Fitri Handayani</p><p class="text-xs text-foreground/60">Receptionist</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="sticky top-0 z-10 h-16 bg-surface-container-high/95 backdrop-blur border-b border-outline/10 flex items-center gap-4 px-4 sm:px-6">
+      <button class="lg:hidden h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <h1 class="text-xl font-semibold truncate">Billing</h1>
+      <div class="ml-auto flex items-center gap-1">
+        <button class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Search"><i data-lucide="search" class="w-5 h-5"></i></button>
+        <button onclick="document.documentElement.classList.toggle('dark')" class="h-11 w-11 grid place-items-center rounded-xl hover:bg-surface-container-highest" aria-label="Toggle dark mode">
+          <i data-lucide="sun" class="w-5 h-5 dark:hidden"></i><i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+        </button>
+        <div class="h-9 w-9 grid place-items-center rounded-full ring-2 ring-background bg-primary/15 text-primary text-xs font-semibold ml-1">FH</div>
+      </div>
+    </header>
+
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+      <div class="mx-auto max-w-7xl w-full space-y-6">
+
+        <!-- Status filter chips (horizontally scrollable) -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-1 -mb-1" id="chipRow"></div>
+
+        <!-- Demo state switcher -->
+        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+          <span class="text-foreground/60 mr-1">Table states:</span>
+          <button onclick="setState('data')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Data</button>
+          <button onclick="setState('loading')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Loading</button>
+          <button onclick="setState('error')" class="rounded-full border border-outline/20 px-2.5 py-1 hover:bg-surface-container-high">Error</button>
+        </div>
+
+        <div class="grid lg:grid-cols-[minmax(0,1fr)_400px] gap-6 items-start">
+          <!-- ===== INVOICE TABLE ===== -->
+          <section class="bg-surface-container rounded-2xl border border-outline/10 shadow-sm overflow-hidden">
+            <!-- Data -->
+            <div id="tableState">
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-surface-container-high text-left text-xs uppercase tracking-wide text-foreground/60">
+                    <tr>
+                      <th class="px-4 py-3 font-medium">Invoice</th>
+                      <th class="px-4 py-3 font-medium">Patient</th>
+                      <th class="px-4 py-3 font-medium">Date</th>
+                      <th class="px-4 py-3 font-medium text-right">Total</th>
+                      <th class="px-4 py-3 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody" class="divide-y divide-outline/10"></tbody>
+                </table>
+              </div>
+              <!-- Empty filter -->
+              <div id="emptyState" class="hidden flex flex-col items-center justify-center text-center gap-3 py-16">
+                <div class="h-14 w-14 grid place-items-center rounded-2xl bg-surface-container-high"><i data-lucide="file-x" class="w-7 h-7 text-foreground/50"></i></div>
+                <p class="text-lg font-medium" id="emptyMsg">No invoices with status Denied</p>
+                <p class="text-sm text-foreground/60 max-w-sm">Nothing matches this filter. Try another status or create a new invoice.</p>
+              </div>
+            </div>
+
+            <!-- Loading skeleton -->
+            <div id="loadingState" class="hidden p-4 space-y-2">
+              <div class="skl h-12 rounded-xl"></div><div class="skl h-12 rounded-xl"></div><div class="skl h-12 rounded-xl"></div>
+              <div class="skl h-12 rounded-xl"></div><div class="skl h-12 rounded-xl"></div>
+            </div>
+
+            <!-- Error -->
+            <div id="errorState" class="hidden flex flex-col items-center justify-center text-center gap-3 py-16">
+              <div class="h-14 w-14 grid place-items-center rounded-2xl bg-rose-100 dark:bg-rose-500/20"><i data-lucide="wifi-off" class="w-7 h-7 text-rose-700 dark:text-rose-300"></i></div>
+              <p class="text-lg font-medium">Couldn't load invoices</p>
+              <p class="text-sm text-foreground/60 max-w-sm">The billing service didn't respond. Check your connection and try again.</p>
+              <button onclick="setState('data')" class="mt-1 inline-flex items-center gap-2 min-h-[48px] rounded-2xl border border-outline/30 px-4 text-sm font-medium hover:bg-surface-container-high"><i data-lucide="refresh-cw" class="w-5 h-5"></i> Retry</button>
+            </div>
+          </section>
+
+          <!-- ===== INVOICE DETAIL PANEL ===== -->
+          <aside class="bg-surface-container rounded-2xl border border-outline/10 shadow-sm p-5 space-y-5 lg:sticky lg:top-24 self-start">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-xs text-foreground/60">Invoice</p>
+                <h2 class="text-xl font-semibold">INV-2026-0042</h2>
+                <p class="text-sm text-foreground/70 mt-0.5">Budi Santoso · P-001042 · 8 Sep 2026</p>
+              </div>
+              <span id="detailStatus" class="rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">Partially paid</span>
+            </div>
+
+            <!-- Line items -->
+            <div>
+              <p class="text-xs font-medium uppercase tracking-wide text-foreground/60 mb-2">Line items</p>
+              <div class="rounded-xl border border-outline/15 divide-y divide-outline/10">
+                <div class="flex items-center justify-between px-3 py-2.5 text-sm">
+                  <div><p class="font-medium">Cardiology consultation</p><p class="text-xs text-foreground/60">Dr. Sari Wibowo</p></div>
+                  <span class="tabular-nums">Rp 350.000</span>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2.5 text-sm">
+                  <div><p class="font-medium">ECG procedure</p><p class="text-xs text-foreground/60">12-lead resting</p></div>
+                  <span class="tabular-nums">Rp 275.000</span>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2.5 text-sm">
+                  <div><p class="font-medium">Amlodipine 5 mg × 30</p><p class="text-xs text-foreground/60">Pharmacy</p></div>
+                  <span class="tabular-nums">Rp 125.000</span>
+                </div>
+              </div>
+              <div class="mt-3 space-y-1 text-sm">
+                <div class="flex justify-between"><span class="text-foreground/70">Subtotal</span><span class="tabular-nums">Rp 750.000</span></div>
+                <div class="flex justify-between"><span class="text-foreground/70">Insurance covered</span><span class="tabular-nums text-emerald-600 dark:text-emerald-400">− Rp 450.000</span></div>
+                <div class="flex justify-between font-semibold text-base pt-1 border-t border-outline/10"><span>Patient total</span><span class="tabular-nums">Rp 300.000</span></div>
+                <div class="flex justify-between"><span class="text-foreground/70">Paid</span><span class="tabular-nums">Rp 150.000</span></div>
+                <div class="flex justify-between font-medium"><span>Outstanding</span><span id="outstanding" class="tabular-nums text-amber-600 dark:text-amber-400">Rp 150.000</span></div>
+              </div>
+              <p class="text-[11px] text-foreground/50 mt-2">Note: a zero-total invoice (fully insured, Rp 0) still records for audit and shows a "No balance due" state.</p>
+            </div>
+
+            <!-- Insurance claim block -->
+            <div class="rounded-xl bg-surface-container-high border border-outline/10 p-3 text-sm space-y-1.5">
+              <div class="flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4 text-primary"></i><span class="font-medium">Insurance claim</span></div>
+              <div class="flex justify-between"><span class="text-foreground/70">Payer</span><span>BPJS Kesehatan</span></div>
+              <div class="flex justify-between"><span class="text-foreground/70">Claim no.</span><span class="tabular-nums">CLM-778120</span></div>
+              <div class="flex justify-between items-center"><span class="text-foreground/70">Status</span><span class="rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300">Submitted</span></div>
+            </div>
+
+            <!-- Payment recording form -->
+            <form id="payForm" class="space-y-3">
+              <p class="text-xs font-medium uppercase tracking-wide text-foreground/60">Record payment</p>
+              <div>
+                <label for="amount" class="block text-sm font-medium mb-1">Amount (Rp)</label>
+                <input id="amount" inputmode="numeric" value="200.000" class="w-full min-h-[48px] rounded-xl border border-outline/20 bg-background px-3 tabular-nums outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                <p id="amountError" class="hidden mt-1 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1"><i data-lucide="circle-alert" class="w-3.5 h-3.5"></i> Amount exceeds outstanding balance Rp 150.000</p>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="method" class="block text-sm font-medium mb-1">Method</label>
+                  <select id="method" class="w-full min-h-[48px] rounded-xl border border-outline/20 bg-background px-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                    <option>Cash</option><option>Debit card</option><option>QRIS</option><option>Bank transfer</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="pdate" class="block text-sm font-medium mb-1">Date</label>
+                  <input id="pdate" type="date" value="2026-09-09" class="w-full min-h-[48px] rounded-xl border border-outline/20 bg-background px-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30">
+                </div>
+              </div>
+              <button type="submit" class="w-full min-h-[48px] rounded-2xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 flex items-center justify-center gap-2"><i data-lucide="banknote" class="w-5 h-5"></i> Record payment</button>
+              <div id="payDone" class="hidden rounded-xl border border-emerald-300/50 bg-emerald-100 dark:bg-emerald-500/15 p-3 text-sm text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+                <i data-lucide="check-circle" class="w-5 h-5 shrink-0"></i>
+                <span>Payment recorded. Invoice status changed <span class="font-medium">Partially paid → Paid</span>. Outstanding now Rp 0.</span>
+              </div>
+            </form>
+          </aside>
+        </div>
+      </div>
+    </main>
+
+    <!-- Mobile bottom nav -->
+    <nav class="lg:hidden sticky bottom-0 z-10 bg-surface-container-high border-t border-outline/10 flex justify-around">
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="text-[10px]">Home</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="users" class="w-5 h-5"></i><span class="text-[10px]">Patients</span></a>
+      <a href="05-appointment-booking.html" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-foreground/70"><i data-lucide="calendar-days" class="w-5 h-5"></i><span class="text-[10px]">Appts</span></a>
+      <a href="#" class="flex flex-col items-center justify-center gap-0.5 h-14 flex-1 text-primary"><i data-lucide="receipt" class="w-5 h-5"></i><span class="text-[10px]">Billing</span></a>
+    </nav>
+  </div>
+</div>
+
+<!-- Extended FAB -->
+<button class="fixed bottom-6 right-6 z-30 h-14 rounded-2xl bg-primary text-primary-foreground px-5 flex items-center gap-2 shadow-lg hover:opacity-90"><i data-lucide="plus" class="w-5 h-5"></i> <span class="font-medium">New invoice</span></button>
+
+<script>
+const INVOICES = [
+  { id:'INV-2026-0042', patient:'Budi Santoso', date:'8 Sep 2026', total:300000, status:'partially_paid', claim:'submitted' },
+  { id:'INV-2026-0041', patient:'Siti Rahayu', date:'8 Sep 2026', total:175000, status:'paid', claim:'paid' },
+  { id:'INV-2026-0040', patient:'Agus Salim', date:'7 Sep 2026', total:920000, status:'denied', claim:'denied' },
+  { id:'INV-2026-0039', patient:'Dewi Lestari', date:'7 Sep 2026', total:210000, status:'submitted', claim:'submitted' },
+  { id:'INV-2026-0038', patient:'Rina Wijaya', date:'6 Sep 2026', total:450000, status:'draft', claim:'none' },
+  { id:'INV-2026-0037', patient:'Hendra Wijaya', date:'6 Sep 2026', total:0, status:'paid', claim:'paid' },
+  { id:'INV-2026-0036', patient:'Nadia Putri', date:'5 Sep 2026', total:680000, status:'denied', claim:'denied' },
+];
+const FILTERS = ['All','Draft','Submitted','Partially paid','Paid','Denied'];
+const KEY = { 'All':null,'Draft':'draft','Submitted':'submitted','Partially paid':'partially_paid','Paid':'paid','Denied':'denied' };
+let active = 'All';
+
+const rupiah = n => 'Rp ' + n.toLocaleString('id-ID');
+function statusChip(s){
+  const map = {
+    draft:['Draft','bg-surface-container-highest text-foreground/70'],
+    submitted:['Submitted','bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300'],
+    partially_paid:['Partially paid','bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'],
+    paid:['Paid','bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'],
+    denied:['Denied','bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300'],
+  };
+  const [l,c]=map[s];
+  return `<span class="rounded-full px-2.5 py-0.5 text-xs font-medium ${c}">${l}</span>`;
+}
+
+function renderChips(){
+  document.getElementById('chipRow').innerHTML = FILTERS.map(f=>{
+    const on = f===active;
+    return `<button onclick="setFilter('${f}')" class="shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium ${on?'bg-primary text-primary-foreground':'border border-outline/20 hover:bg-surface-container-high'}">${f}</button>`;
+  }).join('');
+}
+function renderRows(){
+  const key = KEY[active];
+  const rows = INVOICES.filter(i=>!key || i.status===key);
+  const tb = document.getElementById('tbody');
+  if(rows.length===0){
+    tb.innerHTML='';
+    document.getElementById('emptyMsg').textContent = `No invoices with status ${active}`;
+    document.getElementById('emptyState').classList.remove('hidden');
+    return;
+  }
+  document.getElementById('emptyState').classList.add('hidden');
+  tb.innerHTML = rows.map((i,idx)=>`
+    <tr class="hover:bg-surface-container-high cursor-pointer ${idx===0&&active==='All'?'bg-primary/5':''}">
+      <td class="px-4 py-3 font-medium tabular-nums">${i.id}${i.claim==='denied'?' <span class="ml-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300"><i data-lucide=\\'flag\\' class=\\'w-3 h-3\\'></i>Claim denied</span>':''}</td>
+      <td class="px-4 py-3">${i.patient}</td>
+      <td class="px-4 py-3 text-foreground/70">${i.date}</td>
+      <td class="px-4 py-3 text-right tabular-nums ${i.total===0?'text-foreground/50':''}">${rupiah(i.total)}</td>
+      <td class="px-4 py-3">${statusChip(i.status)}</td>
+    </tr>`).join('');
+  lucide.createIcons();
+}
+function setFilter(f){ active=f; renderChips(); setState('data'); }
+
+function setState(s){
+  ['tableState','loadingState','errorState'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  const map={data:'tableState',loading:'loadingState',error:'errorState'};
+  document.getElementById(map[s]).classList.remove('hidden');
+  if(s==='data') renderRows();
+  lucide.createIcons();
+}
+
+document.getElementById('payForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  const raw = document.getElementById('amount').value.replace(/[^\d]/g,'');
+  const amt = parseInt(raw||'0',10);
+  const err = document.getElementById('amountError');
+  if(amt > 150000){ err.classList.remove('hidden'); lucide.createIcons(); return; }
+  err.classList.add('hidden');
+  document.getElementById('payDone').classList.remove('hidden');
+  document.getElementById('outstanding').textContent = 'Rp 0';
+  document.getElementById('outstanding').className = 'tabular-nums text-emerald-600 dark:text-emerald-400';
+  const ds = document.getElementById('detailStatus');
+  ds.textContent = 'Paid';
+  ds.className = 'rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300';
+  lucide.createIcons();
+});
+
+renderChips();
+setState('data');
+lucide.createIcons();
+</script>
+<script>lucide.createIcons();</script></body></html>
