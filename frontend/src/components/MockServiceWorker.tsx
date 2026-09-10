@@ -14,7 +14,7 @@ export function MockServiceWorker() {
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
     let cancelled = false;
-    void import("@/lib/api/browser").then(async ({ startMockWorker }) => {
+    void import("mockworker").then(async ({ startMockWorker }) => {
       if (!cancelled) await startMockWorker();
     });
     return () => {

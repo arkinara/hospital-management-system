@@ -8,6 +8,6 @@
 
 type WorkerLike = { start: () => Promise<void> };
 
-export function setupWorker(..._handlers: unknown[]): WorkerLike {
+export function setupWorker(): WorkerLike {
   return { start: async () => undefined };
 }
