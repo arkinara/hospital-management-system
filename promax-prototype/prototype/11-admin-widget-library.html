@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · Widget library — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, icon, button, toast, dialog, confirmDialog,
+          btnClass, field, wireFields, banner, breadcrumb, emptyState, metric, filterChip } = UI;
+  const C = Charts;
+  const role = new URLSearchParams(location.search).get('role') || 'Admin';
+  let widgets = DB.widgets.map((w) => ({ ...w }));
+  let pending = null;              // unsaved changes snapshot
+  let roleFilter = new Set();
+
+  const snapshot = () => widgets.map((w) => ({ key: w.key, enabled: w.enabled, locked: w.locked }));
+  const isDirty = () => pending && JSON.stringify(pending) !== JSON.stringify(snapshot());
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([{ label: 'Admin' }, { label: 'Widget library' }])}
+    ${pageHead({
+      title: 'Widget library governance',
+      meta: 'Globally enable or disable widget types, and lock the ones every user must keep. A lock always beats a per-user layout.',
+      actions: `${button({ label: 'Reset to defaults', variant: 'ghost', icon: 'rotate-ccw', attrs: 'data-reset' })}
+                ${button({ label: 'Preview a dashboard', variant: 'outline', icon: 'eye', attrs: 'data-preview' })}`,
+    })}
+
+    ${banner({
+      tone: 'info',
+      title: 'How the three layers resolve',
+      body: 'Role defaults give a new user their starting set. Users then add, remove and reorder freely. An <strong>Admin lock</strong> overrides both — a locked widget cannot be removed or disabled by anyone but you.',
+    })}
+
+    <div data-stagger class="grid gap-3 grid-cols-2 xl:grid-cols-4 my-3">
+      ${metric({ label: 'Widget types', value: widgets.length, deltaLabel: `${widgets.filter((w) => w.enabled).length} globally enabled`, icon: 'layout-grid' })}
+      ${metric({ label: 'Locked widgets', value: widgets.filter((w) => w.locked).length, deltaLabel: 'Users cannot remove these', icon: 'lock' })}
+      ${metric({ label: 'Disabled globally', value: widgets.filter((w) => !w.enabled).length, deltaLabel: 'Hidden from every dashboard', tone: 'inverse', icon: 'eye-off' })}
+      ${metric({ label: 'Custom layouts saved', value: 34, unit: 'of 38 users', delta: 9, deltaLabel: 'users who reordered', icon: 'users' })}
+    </div>
+
+    <div class="card !p-0 overflow-hidden mb-3">
+      <div class="flex flex-wrap items-center gap-2 px-3.5 py-2.5 border-b border-outline bg-surface-1">
+        <p class="text-base font-semibold">Filter by role default</p>
+        <div class="flex flex-wrap gap-1.5" data-role-filters></div>
+      </div>
+      <div class="p-3.5">
+        <div data-states>
+          <div data-state="ready"><div id="grid" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3"></div></div>
+          <div data-state="loading" hidden><div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">${'<div class="rounded-xl border border-outline p-3.5"><div class="skel h-4 w-2/3 mb-2"></div><div class="skel h-3 w-full mb-3"></div><div class="skel h-8"></div></div>'.repeat(6)}</div></div>
+          <div data-state="empty" hidden>${emptyState({ icon: 'layout-grid', title: 'No widget matches this role filter', body: 'Clear the filter to see every widget type in the library.', action: button({ label: 'Clear filter', variant: 'primary', icon: 'filter-x', attrs: 'data-wclear' }) })}</div>
+          <div data-state="error" hidden>${UI.errorState({ title: 'Widget configuration service unreachable' })}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Role default matrix: the single view that answers "what does a new nurse see?" -->
+    ${card(`
+      ${cardHead({ title: 'Role defaults', icon: 'table-2', meta: 'What a brand-new user of each role starts with. Locked widgets are marked.' })}
+      <div class="overflow-x-auto">
+        <table class="dt">
+          <caption class="sr-only">Which widgets are default for each role, and which are locked</caption>
+          <thead><tr>
+            <th scope="col">Widget</th>
+            ${Object.keys(DB.sessions).map((r) => `<th scope="col" class="text-center">${r}</th>`).join('')}
+            <th scope="col" class="text-center">State</th>
+          </tr></thead>
+          <tbody id="matrix"></tbody>
+        </table>
+      </div>
+    `)}
+
+    <!-- Sticky unsaved-changes bar: nothing is committed until it is confirmed -->
+    <div id="saveBar" hidden class="fixed bottom-0 left-0 right-0 z-fab anim-in lg:left-60 border-t border-outline bg-surface-1/97 backdrop-blur pb-safe">
+      <div class="mx-auto max-w-[1400px] px-3 sm:px-4 lg:px-6 py-2.5 flex flex-wrap items-center gap-3">
+        <p class="text-base font-medium flex items-center gap-2 flex-1 min-w-0">
+          ${icon('circle-dot', 'w-4 h-4 text-warning shrink-0')}
+          <span id="saveCount" class="truncate"></span>
+        </p>
+        ${button({ label: 'Discard', variant: 'ghost', attrs: 'data-discard' })}
+        ${button({ label: 'Publish changes', variant: 'primary', icon: 'check', attrs: 'data-publish' })}
+      </div>
+    </div>
+  `);
+
+  /* ─────────── Filters ─────────── */
+  function renderFilters() {
+    const host = document.querySelector('[data-role-filters]');
+    host.innerHTML = Object.keys(DB.sessions).map((r) =>
+      filterChip({ label: r, count: widgets.filter((w) => w.roles.includes(r)).length, active: roleFilter.has(r), key: r })).join('');
+    host.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => {
+      const k = b.dataset.filter;
+      roleFilter.has(k) ? roleFilter.delete(k) : roleFilter.add(k);
+      renderFilters(); renderGrid();
+    }));
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────── Widget cards with two independent switches ─────────── */
+  function toggleRow({ id, label, help, on, disabled, attr }) {
+    return `<div class="flex items-start gap-2.5">
+      <button type="button" ${attr} role="switch" aria-checked="${on}" ${disabled ? 'disabled aria-disabled="true"' : ''} id="${id}"
+        class="mt-0.5 shrink-0 w-10 h-6 rounded-full p-0.5 press cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${on ? 'bg-primary' : 'bg-surface-4'}"
+        aria-describedby="${id}-h">
+        <span class="block w-5 h-5 rounded-full bg-surface-0 shadow-sm transition-transform ${on ? 'translate-x-4' : ''}"></span>
+      </button>
+      <label for="${id}" class="min-w-0 cursor-pointer">
+        <span class="block text-base font-medium">${label}</span>
+        <span id="${id}-h" class="block text-xs text-muted leading-snug">${help}</span>
+      </label>
+    </div>`;
+  }
+
+  function renderGrid() {
+    const rows = widgets.filter((w) => !roleFilter.size || w.roles.some((r) => roleFilter.has(r)));
+    if (!rows.length) { UI.setState('empty'); }
+    document.getElementById('grid').innerHTML = rows.map((w) => `
+      <section class="rounded-xl border ${w.enabled ? 'border-outline bg-surface-0' : 'border-outline bg-surface-2'} p-3.5 flex flex-col gap-3">
+        <header class="flex items-start gap-2.5">
+          <span class="w-9 h-9 shrink-0 rounded-lg grid place-items-center ${w.enabled ? 'bg-primary-container text-primary-container-foreground' : 'bg-surface-3 text-subtle'}">${icon(w.icon, 'w-4.5 h-4.5')}</span>
+          <div class="min-w-0 flex-1">
+            <h3 class="text-base font-semibold font-display truncate ${w.enabled ? '' : 'text-muted'}">${w.name}</h3>
+            <p class="num text-2xs text-subtle truncate">${w.key} · size ${w.size}</p>
+          </div>
+          ${w.locked ? `<span class="shrink-0 inline-flex items-center gap-1 text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-warning-container text-warning-container-foreground">${icon('lock', 'w-3 h-3')}Locked</span>` : ''}
+        </header>
+
+        <p class="text-base ${w.enabled ? 'text-muted' : 'text-subtle'} leading-snug">${w.desc}</p>
+
+        <div class="flex flex-wrap gap-1">
+          ${w.roles.map((r) => `<span class="text-2xs font-medium px-1.5 py-0.5 rounded-md bg-surface-2 border border-outline text-muted">${r}</span>`).join('')}
+        </div>
+
+        <div class="mt-auto pt-3 border-t border-outline space-y-3">
+          ${toggleRow({
+            id: `en-${w.key}`, label: 'Available globally', on: w.enabled, attr: `data-en="${w.key}"`,
+            help: w.enabled ? 'Users of the listed roles can add this widget.' : 'Hidden from every dashboard, including ones that already had it.',
+          })}
+          ${toggleRow({
+            id: `lk-${w.key}`, label: 'Lock on every dashboard', on: w.locked, disabled: !w.enabled, attr: `data-lk="${w.key}"`,
+            help: !w.enabled ? 'Enable the widget before locking it.' : w.locked ? 'Users cannot remove or disable this widget.' : 'Users may remove it from their own layout.',
+          })}
+        </div>
+      </section>`).join('');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    wireGrid();
+    renderMatrix();
+    renderSaveBar();
+  }
+
+  function wireGrid() {
+    document.querySelectorAll('[data-en]').forEach((b) => b.addEventListener('click', () => {
+      if (!pending) pending = snapshot();
+      const w = widgets.find((x) => x.key === b.dataset.en);
+      if (w.enabled && w.locked) {
+        // Disabling a locked widget is contradictory — resolve it explicitly.
+        confirmDialog({
+          title: `Disable the locked widget “${w.name}”?`,
+          tone: 'warning',
+          message: 'This widget is currently locked onto every dashboard. Disabling it removes the lock as well.',
+          consequence: [`${w.roles.join(', ')} dashboards lose this widget.`, 'The lock is cleared, so re-enabling it later starts unlocked.'],
+          confirmLabel: 'Disable and unlock',
+          onConfirm: () => { w.enabled = false; w.locked = false; renderGrid(); },
+        });
+        return;
+      }
+      w.enabled = !w.enabled;
+      if (!w.enabled) w.locked = false;
+      renderGrid();
+      UI.announce(`${w.name} ${w.enabled ? 'enabled' : 'disabled'} globally`);
+    }));
+    document.querySelectorAll('[data-lk]').forEach((b) => b.addEventListener('click', () => {
+      if (!pending) pending = snapshot();
+      const w = widgets.find((x) => x.key === b.dataset.lk);
+      if (!w.enabled) return;
+      w.locked = !w.locked;
+      renderGrid();
+      UI.announce(`${w.name} ${w.locked ? 'locked on every dashboard' : 'unlocked'}`);
+    }));
+  }
+
+  /* ─────────── Role default matrix ─────────── */
+  function renderMatrix() {
+    document.getElementById('matrix').innerHTML = widgets.map((w) => `<tr>
+      <td><span class="flex items-center gap-2 min-w-0">${icon(w.icon, 'w-4 h-4 text-muted shrink-0')}
+        <span class="truncate ${w.enabled ? 'font-medium' : 'text-subtle'}">${w.name}</span></span></td>
+      ${Object.keys(DB.sessions).map((r) => {
+        const def = w.roles.includes(r);
+        return `<td class="text-center">${def
+          ? `<span class="inline-flex items-center gap-1 text-xs font-semibold ${w.enabled ? 'text-success' : 'text-subtle'}" title="Default for ${r}">
+              ${icon(w.locked ? 'lock' : 'check', 'w-3.5 h-3.5')}<span class="sr-only">${w.locked ? 'Locked default' : 'Default'} for ${r}</span></span>`
+          : `<span class="text-subtle" title="Not a default for ${r}">${icon('minus', 'w-3.5 h-3.5')}<span class="sr-only">Not default for ${r}</span></span>`}</td>`;
+      }).join('')}
+      <td class="text-center">${w.enabled ? (w.locked ? chip('draft', { label: 'Locked', size: 'sm' }) : chip('active', { label: 'Enabled', size: 'sm' })) : chip('inactive', { label: 'Disabled', size: 'sm' })}</td>
+    </tr>`).join('');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────── Unsaved-changes bar ─────────── */
+  function renderSaveBar() {
+    const bar = document.getElementById('saveBar');
+    if (!isDirty()) { bar.hidden = true; document.body.style.paddingBottom = ''; return; }
+    const changes = snapshot().filter((s, i) => JSON.stringify(s) !== JSON.stringify(pending[i])).length;
+    document.getElementById('saveCount').textContent = `${changes} widget${changes === 1 ? '' : 's'} changed — not published yet`;
+    bar.hidden = false;
+    document.body.style.paddingBottom = '72px';
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  document.querySelector('[data-publish]').addEventListener('click', (e) => {
+    const done = UI.submitting(e.currentTarget, 'Publishing…');
+    setTimeout(() => {
+      done();
+      const before = pending;
+      pending = null;
+      renderSaveBar();
+      toast('Widget library published.', {
+        tone: 'success',
+        detail: 'Dashboards pick this up on next load. Locked widgets reappear immediately.',
+        undo: () => { before.forEach((s) => { const w = widgets.find((x) => x.key === s.key); w.enabled = s.enabled; w.locked = s.locked; }); pending = null; renderGrid(); toast('Publish rolled back.', { tone: 'neutral' }); },
+      });
+    }, 900);
+  });
+  document.querySelector('[data-discard]').addEventListener('click', () => {
+    pending.forEach((s) => { const w = widgets.find((x) => x.key === s.key); w.enabled = s.enabled; w.locked = s.locked; });
+    pending = null;
+    renderGrid();
+    toast('Unpublished changes discarded.', { tone: 'neutral' });
+  });
+
+  document.querySelector('[data-reset]').addEventListener('click', () => {
+    confirmDialog({
+      title: 'Reset the widget library to defaults?',
+      tone: 'warning',
+      message: 'Every widget returns to its shipped enabled and locked state.',
+      consequence: ['Per-user layouts are not deleted, but disabled widgets vanish from them.', 'Locks currently set by you are cleared.', 'This can be undone from the toast.'],
+      confirmLabel: 'Reset library',
+      onConfirm: () => {
+        const before = snapshot();
+        widgets = DB.widgets.map((w) => ({ ...w }));
+        pending = null;
+        renderFilters(); renderGrid();
+        toast('Widget library reset to defaults.', { tone: 'neutral', undo: () => { before.forEach((s) => { const w = widgets.find((x) => x.key === s.key); w.enabled = s.enabled; w.locked = s.locked; }); renderGrid(); toast('Reset reversed.', { tone: 'success' }); } });
+      },
+    });
+  });
+
+  /* ─────────── Dashboard preview ─────────── */
+  document.querySelector('[data-preview]').addEventListener('click', () => {
+    const d = dialog({
+      title: 'Preview a role dashboard',
+      size: 'lg',
+      body: `<div id="pv1" class="mb-4"></div><div id="pvOut"></div>`,
+    });
+    d.body.querySelector('#pv1').innerHTML = field({
+      id: 'pvRole', label: 'Role', type: 'select',
+      options: Object.keys(DB.sessions).map((r) => ({ label: r, value: r })),
+      help: 'Shows the widget set a brand-new user of this role receives on first sign-in.',
+    });
+    wireFields(d.body);
+    const draw = (r) => {
+      const set = widgets.filter((w) => w.roles.includes(r) && w.enabled);
+      const hidden = widgets.filter((w) => w.roles.includes(r) && !w.enabled);
+      d.body.querySelector('#pvOut').innerHTML = set.length ? `
+        <div class="grid sm:grid-cols-2 gap-2.5">
+          ${set.map((w) => `<div class="rounded-lg border ${w.locked ? 'border-warning/50 bg-warning-container/40' : 'border-outline bg-surface-1'} p-3">
+            <p class="flex items-center gap-2 text-base font-medium">${icon(w.icon, 'w-4 h-4 text-muted')}<span class="truncate">${w.name}</span>
+              ${w.locked ? `<span class="ml-auto shrink-0 text-2xs font-semibold inline-flex items-center gap-1">${icon('lock', 'w-3 h-3')}Locked</span>` : ''}</p>
+            <p class="text-xs text-muted mt-1 leading-snug">${w.desc}</p></div>`).join('')}
+        </div>
+        <p class="text-xs text-muted mt-3 pt-3 border-t border-outline">
+          <span class="num font-semibold">${set.filter((w) => w.locked).length}</span> of these are locked and cannot be removed by the user.
+          ${hidden.length ? `<span class="num font-semibold">${hidden.length}</span> role default${hidden.length === 1 ? ' is' : 's are'} currently disabled globally and will not appear.` : ''}</p>
+        <a href="${DB.dashboardFor[r]}?role=${r}" class="${btnClass('outline', 'sm')} mt-3">${icon('external-link', 'w-3.5 h-3.5')}<span>Open the real ${r} dashboard</span></a>`
+        : emptyState({ icon: 'layout-grid', title: `No widgets for ${r}`, body: 'Every widget defaulted to this role is disabled globally, so their dashboard would be empty. Enable at least one.' });
+      lucide.createIcons({ nameAttr: 'data-lucide' });
+    };
+    draw('Admin');
+    d.body.querySelector('#pvRole').addEventListener('change', (e) => draw(e.target.value));
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  });
+
+  document.querySelectorAll('[data-wclear]').forEach((b) => b.addEventListener('click', () => { roleFilter.clear(); renderFilters(); renderGrid(); UI.setState('ready'); }));
+
+  UI.shell({ title: 'Widget library', subtitle: 'Admin · dashboard governance', active: 'widgets', role, roleAware: false });
+  renderFilters();
+  renderGrid();
+  C.wire(document);
+})();
+</script>
+</body>
+</html>

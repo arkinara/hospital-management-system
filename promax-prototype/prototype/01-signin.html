@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body class="bg-background text-foreground antialiased">
+
+<div class="min-h-dvh lg:grid lg:grid-cols-[1.05fr_1fr]">
+
+  <!-- ───────────────── Trust panel ─────────────────
+       Sign-in is where a clinical system earns confidence: who owns it, that it is
+       up, and that access is audited. On mobile this collapses to a slim header so
+       the form is above the fold. -->
+  <aside class="relative hidden lg:flex flex-col justify-between p-10 xl:p-14 bg-surface-1 border-r border-outline overflow-hidden">
+    <div class="absolute inset-0 opacity-[0.55] dark:opacity-40 pointer-events-none" aria-hidden="true"
+         style="background-image:radial-gradient(circle at 18% 12%, rgb(var(--primary)/.16), transparent 42%), radial-gradient(circle at 82% 78%, rgb(var(--accent)/.12), transparent 46%)"></div>
+
+    <div class="relative">
+      <div class="flex items-center gap-2.5">
+        <span class="w-10 h-10 rounded-xl bg-primary text-primary-foreground grid place-items-center">
+          <i data-lucide="cross" class="w-5 h-5" aria-hidden="true"></i>
+        </span>
+        <span class="leading-tight">
+          <span class="block text-md font-semibold font-display">Sirkaya Hospital</span>
+          <span class="block text-xs text-muted">Management System · Phase 1</span>
+        </span>
+      </div>
+
+      <h2 class="mt-12 text-3xl font-semibold font-display leading-tight max-w-md">
+        One patient record.<br>Every department.
+      </h2>
+      <p class="mt-3 text-md text-muted max-w-md leading-relaxed">
+        Cross-department history, conflict-aware scheduling, and billing that is tracked
+        rather than reconciled at month end.
+      </p>
+
+      <ul class="mt-9 space-y-4 max-w-md">
+        <li class="flex gap-3">
+          <span class="w-8 h-8 shrink-0 rounded-lg bg-surface-0 border border-outline grid place-items-center text-primary">
+            <i data-lucide="git-merge" class="w-4 h-4" aria-hidden="true"></i></span>
+          <span>
+            <span class="block text-base font-medium">Unified timeline</span>
+            <span class="block text-base text-muted">Notes, labs and prescriptions from every department in one chronology.</span>
+          </span>
+        </li>
+        <li class="flex gap-3">
+          <span class="w-8 h-8 shrink-0 rounded-lg bg-surface-0 border border-outline grid place-items-center text-primary">
+            <i data-lucide="calendar-check-2" class="w-4 h-4" aria-hidden="true"></i></span>
+          <span>
+            <span class="block text-base font-medium">Conflict-aware booking</span>
+            <span class="block text-base text-muted">Double-bookings are blocked before submission, not discovered after.</span>
+          </span>
+        </li>
+        <li class="flex gap-3">
+          <span class="w-8 h-8 shrink-0 rounded-lg bg-surface-0 border border-outline grid place-items-center text-primary">
+            <i data-lucide="shield-check" class="w-4 h-4" aria-hidden="true"></i></span>
+          <span>
+            <span class="block text-base font-medium">Role × module permissions</span>
+            <span class="block text-base text-muted">Enforced on every API call, not only hidden in the interface.</span>
+          </span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Live status: a genuine trust signal, and it doubles as the offline affordance -->
+    <div class="relative flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
+      <span class="inline-flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-success" aria-hidden="true"></span>
+        All services operational
+      </span>
+      <span class="inline-flex items-center gap-1.5 num">
+        <i data-lucide="clock" class="w-3.5 h-3.5" aria-hidden="true"></i> 09:41 WIB · 9 Sep 2026
+      </span>
+      <span class="inline-flex items-center gap-1.5">
+        <i data-lucide="scroll-text" class="w-3.5 h-3.5" aria-hidden="true"></i> Access is logged and audited
+      </span>
+    </div>
+  </aside>
+
+  <!-- ───────────────── Form ───────────────── -->
+  <main class="flex flex-col min-h-dvh">
+    <header class="flex items-center gap-3 h-14 px-4 sm:px-6 border-b border-outline lg:border-0 lg:justify-end">
+      <span class="lg:hidden flex items-center gap-2.5 flex-1 min-w-0">
+        <span class="w-8 h-8 rounded-lg bg-primary text-primary-foreground grid place-items-center shrink-0">
+          <i data-lucide="cross" class="w-4 h-4" aria-hidden="true"></i></span>
+        <span class="text-base font-semibold font-display truncate">Sirkaya Hospital</span>
+      </span>
+      <button type="button" id="themeBtn" class="w-11 h-11 rounded-lg grid place-items-center text-muted hover:bg-surface-2 press" aria-label="Toggle dark mode">
+        <i data-lucide="moon-star" class="w-5 h-5" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="flex-1 grid place-items-center px-4 sm:px-6 py-8">
+      <div class="w-full max-w-[26rem]">
+        <h1 class="text-2xl font-semibold font-display">Sign in</h1>
+        <p class="mt-1.5 text-base text-muted">Use your hospital account. Sessions expire after 30 minutes of inactivity.</p>
+
+        <!-- Failed attempt: says what happened, what to do next, and never leaks
+             which half of the credential pair was wrong. -->
+        <div id="authError" class="mt-5" hidden></div>
+
+        <form id="signin" class="mt-6 space-y-4" novalidate>
+          <div data-error-summary hidden></div>
+          <div id="fEmail"></div>
+          <div id="fPassword"></div>
+
+          <p id="capsHint" class="flex items-center gap-1.5 text-xs text-warning font-medium" hidden>
+            <i data-lucide="arrow-big-up" class="w-3.5 h-3.5" aria-hidden="true"></i> Caps Lock is on
+          </p>
+
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <label class="inline-flex items-center gap-2 min-h-11 cursor-pointer select-none">
+              <input type="checkbox" name="trust" class="w-4 h-4 accent-[rgb(var(--primary))] cursor-pointer">
+              <span class="text-base">Trust this device for 14 days</span>
+            </label>
+            <a href="#reset" id="forgot" class="text-base font-medium text-primary min-h-11 inline-flex items-center hover:underline underline-offset-2">Forgot password?</a>
+          </div>
+
+          <button type="submit" id="submitBtn" class="w-full inline-flex items-center justify-center gap-2 min-h-12 rounded-lg bg-primary text-primary-foreground font-semibold text-md press cursor-pointer">
+            <i data-lucide="log-in" class="w-4.5 h-4.5" aria-hidden="true"></i><span>Sign in</span>
+          </button>
+
+          <p class="text-xs text-muted text-center leading-relaxed">
+            Two-factor is required for Admin and Doctor accounts. You will be asked for a code after this step.
+          </p>
+        </form>
+
+        <!-- Prototype affordance, clearly separated from the real form so nobody
+             mistakes it for a production shortcut. -->
+        <div class="mt-8 pt-6 border-t border-outline">
+          <p class="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-subtle">
+            <i data-lucide="flask-conical" class="w-3.5 h-3.5" aria-hidden="true"></i> Prototype · jump straight to a role
+          </p>
+          <div class="mt-3 grid grid-cols-2 gap-2" id="roleJump"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="px-4 sm:px-6 py-4 border-t border-outline flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+      <span>© 2026 Sirkaya Hospital</span>
+      <a href="#" class="hover:text-foreground hover:underline underline-offset-2">Privacy</a>
+      <a href="#" class="hover:text-foreground hover:underline underline-offset-2">Terms</a>
+      <span class="flex-1"></span>
+      <span class="num">v0.9.4 · build 2026.09.09</span>
+    </footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  const { field, wireFields, validateForm, banner, submitting, toast, icon, button, dialog, avatar } = UI;
+
+  document.getElementById('fEmail').innerHTML = field({
+    id: 'email', label: 'Work email', type: 'email', required: true,
+    placeholder: 'name@sirkaya.health', icon: 'mail', autocomplete: 'username',
+    help: 'The address your department administrator issued.',
+  });
+  document.getElementById('fPassword').innerHTML = field({
+    id: 'password', label: 'Password', type: 'password', required: true,
+    placeholder: 'Enter your password', autocomplete: 'current-password',
+  });
+
+  // Role jump cards
+  const dash = DB.dashboardFor;
+  const roleIcon = { Admin: 'shield-check', Doctor: 'stethoscope', Nurse: 'heart-pulse', Receptionist: 'concierge-bell' };
+  document.getElementById('roleJump').innerHTML = Object.keys(DB.sessions).map((r) => {
+    const s = DB.sessions[r];
+    return `<a href="${dash[r]}?role=${r}" class="flex items-center gap-2.5 min-h-12 px-3 rounded-lg border border-outline bg-surface-0 hover:bg-surface-2 hover:border-outline-strong press">
+      <span class="w-8 h-8 shrink-0 rounded-lg bg-primary-container text-primary-container-foreground grid place-items-center">${icon(roleIcon[r], 'w-4 h-4')}</span>
+      <span class="min-w-0 text-left leading-tight">
+        <span class="block text-base font-semibold truncate">${r}</span>
+        <span class="block text-2xs text-muted truncate">${s.name}</span>
+      </span></a>`;
+  }).join('');
+
+  wireFields(document);
+  lucide.createIcons({ nameAttr: 'data-lucide' });
+
+  // Theme toggle mirrors the shell's behaviour so the choice survives the jump in.
+  const themeBtn = document.getElementById('themeBtn');
+  const syncTheme = () => {
+    const dark = PromaxTheme.theme === 'dark';
+    themeBtn.innerHTML = icon(dark ? 'sun' : 'moon-star', 'w-5 h-5');
+    themeBtn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  };
+  themeBtn.addEventListener('click', () => { PromaxTheme.toggleTheme(); syncTheme(); });
+  syncTheme();
+
+  // Caps Lock warning — a real cause of "wrong password" loops.
+  const caps = document.getElementById('capsHint');
+  document.addEventListener('keyup', (e) => {
+    if (typeof e.getModifierState !== 'function') return;
+    caps.hidden = !e.getModifierState('CapsLock');
+  });
+
+  // Submit: validate → busy state → outcome. Two failures surface the recovery path.
+  let attempts = 0;
+  const errHost = document.getElementById('authError');
+  document.getElementById('signin').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    if (!validateForm(form)) return;
+
+    const btn = document.getElementById('submitBtn');
+    const done = submitting(btn, 'Signing in…');
+    setTimeout(() => {
+      done();
+      attempts += 1;
+      if (attempts === 1) {
+        errHost.hidden = false;
+        errHost.innerHTML = banner({
+          tone: 'danger',
+          title: 'Email or password is incorrect',
+          body: 'For security we do not say which one. You have <strong>4 attempts</strong> left before the account locks for 15 minutes.',
+          actions: button({ label: 'Reset password', variant: 'outline', size: 'sm', icon: 'key-round', attrs: 'data-reset' }),
+          dismissible: false,
+        });
+        lucide.createIcons({ nameAttr: 'data-lucide' });
+        errHost.querySelector('[data-reset]').addEventListener('click', openReset);
+        errHost.querySelector('[role]').focus?.();
+        UI.announce('Email or password is incorrect. Four attempts remaining.');
+      } else {
+        errHost.hidden = true;
+        toast('Signed in as Rahmat Hidayat (Admin).', { tone: 'success', detail: 'Redirecting to your dashboard…' });
+        setTimeout(() => { location.href = dash.Admin + '?role=Admin'; }, 700);
+      }
+    }, 850);
+  });
+
+  function openReset() {
+    const d = dialog({
+      title: 'Reset your password',
+      size: 'sm',
+      body: `<p class="text-base text-muted mb-4">We will email a single-use link that expires in 30 minutes. If the address is not registered, nothing is sent — and we will not tell you either way.</p>
+        <div id="rEmail"></div>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        { label: 'Send reset link', variant: 'primary', icon: 'send', onClick: () => { toast('Reset link sent, if that address is registered.', { tone: 'info' }); } },
+      ],
+    });
+    d.body.querySelector('#rEmail').innerHTML = field({ id: 'rmail', label: 'Work email', type: 'email', required: true, icon: 'mail', autocomplete: 'username', placeholder: 'name@sirkaya.health' });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+  document.getElementById('forgot').addEventListener('click', (e) => { e.preventDefault(); openReset(); });
+})();
+</script>
+</body>
+</html>

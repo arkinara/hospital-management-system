@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · Departments — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, avatar, icon, button, toast, dialog,
+          confirmDialog, btnClass, field, wireFields, banner, breadcrumb, emptyState, metric, meter } = UI;
+  const C = Charts;
+  const role = new URLSearchParams(location.search).get('role') || 'Admin';
+  let depts = DB.departments.map((d) => ({ ...d }));
+
+  const beds = () => depts.reduce((a, d) => a + d.beds, 0);
+  const occ = () => depts.reduce((a, d) => a + d.occupied, 0);
+
+  const DEPT_ICON = { GEN: 'stethoscope', PED: 'baby', CAR: 'heart-pulse', EMG: 'siren' };
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([{ label: 'Admin' }, { label: 'Departments' }])}
+    ${pageHead({
+      title: 'Departments',
+      meta: `<span class="num">${depts.length}</span> departments · <span class="num">${occ()}</span> of <span class="num">${beds()}</span> beds occupied (<span class="num">${DB.pct(occ(), beds())}%</span>)`,
+      actions: `${button({ label: 'Capacity report', variant: 'ghost', icon: 'file-chart-column', attrs: 'data-report' })}
+                ${button({ label: 'New department', variant: 'primary', icon: 'plus', attrs: 'data-new' })}`,
+    })}
+
+    <div id="alerts" class="mb-3"></div>
+
+    <div data-stagger class="grid gap-3 grid-cols-2 xl:grid-cols-4 mb-3">
+      ${metric({ label: 'Total beds', value: beds(), deltaLabel: `${beds() - occ()} available`, icon: 'bed-double' })}
+      ${metric({ label: 'Occupancy', value: DB.pct(occ(), beds()), unit: '%', delta: 4, deltaLabel: 'vs 7-day average', tone: 'inverse', icon: 'activity', spark: C.sparkline([78, 80, 79, 83, 84, 81, 79, 86, 89], { tone: 'warning' }) })}
+      ${metric({ label: 'Clinicians assigned', value: DB.doctors.length, unit: `${DB.doctors.filter((d) => d.onDuty).length} on duty`, icon: 'users' })}
+      ${metric({ label: 'Departments at capacity', value: depts.filter((d) => d.occupied >= d.beds).length, deltaLabel: 'Emergency full', tone: 'inverse', icon: 'triangle-alert' })}
+    </div>
+
+    <div class="grid gap-3 lg:grid-cols-[1fr_340px] items-start">
+      <div class="min-w-0">
+        <div data-states>
+          <div data-state="ready"><div id="grid" class="grid gap-3 md:grid-cols-2"></div></div>
+          <div data-state="loading" hidden><div class="grid gap-3 md:grid-cols-2">${'<div class="card"><div class="skel h-5 w-1/3 mb-3"></div><div class="skel h-2 mb-3"></div><div class="skel h-16"></div></div>'.repeat(4)}</div></div>
+          <div data-state="empty" hidden>${emptyState({ icon: 'building-2', title: 'No departments yet', body: 'A hospital needs at least one department before patients can be registered or appointments booked.', action: button({ label: 'Create the first department', variant: 'primary', icon: 'plus', attrs: 'data-new' }) })}</div>
+          <div data-state="error" hidden>${UI.errorState({ title: 'Department service unreachable' })}</div>
+        </div>
+      </div>
+
+      <aside class="space-y-3 min-w-0">
+        ${card(`${cardHead({ title: 'Bed utilisation', icon: 'chart-column-big', meta: 'Occupied vs free, by department' })}
+          ${C.bars({
+            labels: depts.map((d) => d.id),
+            stacked: true,
+            series: [
+              { label: 'Occupied', tone: 'primary', values: depts.map((d) => d.occupied) },
+              { label: 'Free', tone: 'info', pattern: true, values: depts.map((d) => d.beds - d.occupied) },
+            ],
+            height: 190, yUnit: ' beds',
+            summary: 'Bed utilisation by department. Emergency is at 16 of 16 beds with none free; Cardiology has 1 free of 20; Pediatric has the most headroom with 9 free of 24.',
+            caption: 'Occupied and free beds by department, 9 September 2026',
+          })}`)}
+
+        ${card(`${cardHead({ title: 'Clinician coverage', icon: 'user-check', meta: 'On shift right now' })}
+          ${C.hbars({
+            rows: depts.map((d) => ({ label: d.name, value: DB.doctors.filter((x) => x.dept === d.id && x.onDuty).length, tone: DB.doctors.filter((x) => x.dept === d.id && x.onDuty).length < 2 ? 'danger' : 'primary' })),
+            unit: '', valueLabel: (v) => v + ' on duty',
+            summary: 'Clinicians on duty by department: General 3, Pediatric 2, Cardiology 1, Emergency 2. Cardiology is below its minimum of 2.',
+            caption: 'Clinicians on duty by department',
+          })}
+          <p class="mt-3 pt-3 border-t border-outline text-xs text-muted flex items-start gap-1.5">
+            ${icon('alert-triangle', 'w-3.5 h-3.5 text-warning shrink-0 mt-px')}
+            <span><strong class="text-foreground">Cardiology has 1 clinician on duty</strong> against a minimum of 2. Dr. Bayu Setiawan is off-shift and could be called in.</span></p>`)}
+
+        ${card(`${cardHead({ title: 'Scaling notes', icon: 'trending-up' })}
+          <p class="text-base text-muted leading-relaxed">Departments are additive: creating one gives it its own bed pool, clinician roster and appointment calendar without touching the others. That is how the same deployment serves a single-doctor clinic and a multi-department hospital.</p>`)}
+      </aside>
+    </div>
+  `);
+
+  document.getElementById('alerts').innerHTML = banner({
+    tone: 'danger',
+    title: 'Emergency has no free beds',
+    body: '16 of 16 occupied with 2 patients holding in triage. Pediatric (9 free) and General (9 free) can take overflow with a transfer order.',
+    actions: `${button({ label: 'Open overflow transfer', variant: 'danger', size: 'sm', icon: 'arrow-right-left', attrs: 'data-overflow' })}
+              ${button({ label: 'Page duty manager', variant: 'outline', size: 'sm', icon: 'bell-ring', attrs: 'data-page' })}`,
+  });
+
+  /* ─────────── Department cards ─────────── */
+  function renderGrid() {
+    document.getElementById('grid').innerHTML = depts.map((d) => {
+      const staff = DB.doctors.filter((x) => x.dept === d.id);
+      const onDuty = staff.filter((x) => x.onDuty);
+      const full = d.occupied >= d.beds;
+      const tight = !full && d.occupied / d.beds >= 0.9;
+      const todayAppts = DB.appointments.filter((a) => a.dept === d.id).length;
+      return `<section class="card !p-0 overflow-hidden">
+        <header class="flex items-start gap-2.5 p-3.5 border-b border-outline ${full ? 'bg-danger-container' : tight ? 'bg-warning-container' : 'bg-surface-1'}">
+          <span class="w-9 h-9 shrink-0 rounded-lg grid place-items-center ${full ? 'bg-danger text-surface-0' : 'bg-primary-container text-primary-container-foreground'}">${icon(DEPT_ICON[d.id], 'w-4.5 h-4.5')}</span>
+          <div class="min-w-0 flex-1">
+            <h3 class="text-lg font-semibold font-display truncate">${d.name}</h3>
+            <p class="num text-2xs ${full || tight ? '' : 'text-muted'}">${d.id} · ${staff.length} clinician${staff.length === 1 ? '' : 's'} · ${todayAppts} appointment${todayAppts === 1 ? '' : 's'} today</p>
+          </div>
+          ${full ? `<span class="shrink-0">${chip('unpaid', { label: 'At capacity', size: 'sm' })}</span>` : tight ? `<span class="shrink-0">${chip('draft', { label: '90%+ full', size: 'sm' })}</span>` : ''}
+          <button type="button" data-dmore="${d.id}" class="w-8 h-8 -mr-1 shrink-0 rounded-md grid place-items-center text-muted hover:bg-surface-3 press" aria-label="Actions for ${d.name}" aria-haspopup="menu">${icon('more-vertical', 'w-4 h-4')}</button>
+        </header>
+
+        <div class="p-3.5 space-y-3.5">
+          ${meter({ label: 'Beds occupied', value: d.occupied, max: d.beds, sub: `${d.beds - d.occupied} available · ${d.beds} total` })}
+
+          <div>
+            <p class="text-2xs uppercase tracking-wide text-subtle font-semibold mb-2">Clinicians</p>
+            <ul class="space-y-1.5">
+              ${staff.map((s) => `<li class="flex items-center gap-2.5">
+                ${avatar(s.name, 'w-6 h-6 text-2xs')}
+                <span class="flex-1 min-w-0"><span class="block text-base truncate">${s.name}</span>
+                <span class="block text-2xs text-muted truncate">${s.spec}</span></span>
+                ${s.onDuty
+                  ? `<span class="num text-2xs font-semibold text-success shrink-0">${s.shift}</span>`
+                  : `<span class="text-2xs text-subtle shrink-0">Off shift</span>`}</li>`).join('')}
+            </ul>
+            ${onDuty.length < 2 ? `<p class="text-xs text-warning font-medium mt-2 flex items-center gap-1.5">${icon('alert-triangle', 'w-3.5 h-3.5')}Below the 2-clinician minimum on this shift</p>` : ''}
+          </div>
+
+          <div class="flex flex-wrap gap-2 pt-1">
+            ${button({ label: 'Assign clinician', variant: 'outline', size: 'sm', icon: 'user-plus', attrs: `data-assign="${d.id}"` })}
+            ${button({ label: 'Edit', variant: 'ghost', size: 'sm', icon: 'square-pen', attrs: `data-edit="${d.id}"` })}
+          </div>
+        </div>
+      </section>`;
+    }).join('');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    wireCards();
+  }
+
+  function wireCards() {
+    document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openEdit(b.dataset.edit)));
+    document.querySelectorAll('[data-assign]').forEach((b) => b.addEventListener('click', () => openAssign(b.dataset.assign)));
+    document.querySelectorAll('[data-dmore]').forEach((b) => b.addEventListener('click', () => openMore(b.dataset.dmore)));
+  }
+
+  function openEdit(id) {
+    const d0 = depts.find((x) => x.id === id);
+    const d = dialog({
+      title: `Edit ${d0.name}`,
+      size: 'md',
+      body: `<form id="dForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="d1"></div><div id="d2"></div></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="d3"></div><div id="d4"></div></div>
+          <div id="bedWarn"></div>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Save changes', variant: 'primary', icon: 'check',
+          onClick: () => {
+            const form = d.body.querySelector('#dForm');
+            if (!UI.validateForm(form)) return false;
+            const newBeds = +d.body.querySelector('#dBeds').value;
+            if (newBeds < d0.occupied) {
+              UI.setFieldError(d.body.querySelector('#dBeds'), `Cannot set ${newBeds} beds — ${d0.occupied} are currently occupied. Discharge or transfer patients first.`);
+              return false;
+            }
+            const before = { ...d0 };
+            d0.name = d.body.querySelector('#dName').value;
+            d0.beds = newBeds;
+            renderGrid();
+            toast(`${d0.name} updated.`, { tone: 'success', undo: () => { Object.assign(d0, before); renderGrid(); toast('Changes reverted.', { tone: 'neutral' }); } });
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#d1').innerHTML = field({ id: 'dName', label: 'Department name', required: true, value: d0.name });
+    d.body.querySelector('#d2').innerHTML = field({ id: 'dCode', label: 'Code', required: true, mono: true, value: d0.id, attrs: 'maxlength="4"', help: 'Used on MRNs, invoices and lab requisitions. Changing it does not rewrite history.' });
+    d.body.querySelector('#d3').innerHTML = field({ id: 'dBeds', label: 'Bed capacity', type: 'number', required: true, mono: true, value: String(d0.beds), inputmode: 'numeric', help: `${d0.occupied} currently occupied.` });
+    d.body.querySelector('#d4').innerHTML = field({ id: 'dMin', label: 'Minimum clinicians per shift', type: 'select', options: [{ label: '1' }, { label: '2', selected: true }, { label: '3' }, { label: '4' }] });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  function openAssign(id) {
+    const d0 = depts.find((x) => x.id === id);
+    const others = DB.doctors.filter((x) => x.dept !== id);
+    const d = dialog({
+      title: `Assign a clinician to ${d0.name}`,
+      size: 'md',
+      body: `<p class="text-base text-muted mb-3">Reassigning moves a clinician's future appointments to the new department. Past encounters keep their original department tag, so the patient history stays accurate.</p>
+        <ul class="divide-y divide-outline rounded-lg border border-outline max-h-72 overflow-y-auto">
+          ${others.map((x) => `<li><label class="flex items-center gap-2.5 px-3 min-h-14 cursor-pointer hover:bg-surface-2">
+            <input type="radio" name="assign" value="${x.id}" class="w-4 h-4 accent-[rgb(var(--primary))] cursor-pointer">
+            ${avatar(x.name, 'w-8 h-8 text-2xs')}
+            <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${x.name}</span>
+            <span class="block text-2xs text-muted truncate">${x.spec} · currently ${DB.deptName(x.dept)}</span></span>
+            ${x.onDuty ? `<span class="num text-2xs text-success shrink-0">${x.shift}</span>` : '<span class="text-2xs text-subtle shrink-0">Off shift</span>'}
+          </label></li>`).join('')}
+        </ul>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Assign', variant: 'primary', icon: 'user-check',
+          onClick: () => {
+            const picked = d.body.querySelector('input[name="assign"]:checked');
+            if (!picked) { toast('Select a clinician first.', { tone: 'warning' }); return false; }
+            const doc = DB.doctors.find((x) => x.id === picked.value);
+            const before = doc.dept;
+            doc.dept = id;
+            renderGrid();
+            toast(`${doc.name} assigned to ${d0.name}.`, { tone: 'success', detail: '2 future appointments moved.', undo: () => { doc.dept = before; renderGrid(); toast('Assignment reverted.', { tone: 'neutral' }); } });
+          },
+        },
+      ],
+    });
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  function openMore(id) {
+    const d0 = depts.find((x) => x.id === id);
+    dialog({
+      title: `${d0.name} actions`,
+      size: 'sm',
+      body: `<ul class="-mx-2">
+        ${[['View department schedule', 'calendar-days'], ['Bed board', 'bed-double'], ['Export patient list', 'download'], ['Capacity history', 'chart-line']]
+          .map(([l, ic]) => `<li><button type="button" class="w-full flex items-center gap-2.5 px-2.5 min-h-12 rounded-lg text-base hover:bg-surface-2 press">${icon(ic, 'w-4 h-4 text-muted')}<span>${l}</span></button></li>`).join('')}
+        <li class="mt-2 pt-2 border-t border-outline"><button type="button" data-close-dept class="w-full flex items-center gap-2.5 px-2.5 min-h-12 rounded-lg text-base text-danger hover:bg-danger-container press">${icon('building-2', 'w-4 h-4')}<span>Close this department</span></button></li>
+      </ul>`,
+    });
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    document.querySelector('[data-close-dept]')?.addEventListener('click', () => {
+      const staff = DB.doctors.filter((x) => x.dept === id).length;
+      confirmDialog({
+        title: `Close ${d0.name}?`,
+        message: d0.occupied > 0
+          ? `${d0.name} still has ${d0.occupied} occupied beds. A department cannot be closed while patients are admitted to it.`
+          : `${d0.name} will stop accepting new patients and disappear from booking.`,
+        consequence: d0.occupied > 0
+          ? [`Discharge or transfer ${d0.occupied} patients first.`, `Reassign ${staff} clinicians.`, 'Then closure becomes available.']
+          : [`${staff} clinicians need reassigning.`, 'Historical records keep the department tag so patient history stays intact.', 'Future appointments in this department are cancelled and patients notified.'],
+        confirmLabel: d0.occupied > 0 ? 'Understood' : 'Close department',
+        tone: 'danger',
+        onConfirm: () => {
+          if (d0.occupied > 0) return;
+          const at = depts.indexOf(d0);
+          depts = depts.filter((x) => x.id !== id);
+          renderGrid();
+          toast(`${d0.name} closed.`, { tone: 'neutral', undo: () => { depts.splice(at, 0, d0); renderGrid(); toast(`${d0.name} reopened.`, { tone: 'success' }); } });
+        },
+      });
+    });
+  }
+
+  /* ─────────── New department ─────────── */
+  document.querySelectorAll('[data-new]').forEach((btn) => btn.addEventListener('click', () => {
+    const d = dialog({
+      title: 'New department',
+      size: 'md',
+      dirty: () => !!d.body.querySelector('#nName')?.value,
+      body: `<p class="text-base text-muted mb-4">A new department gets its own bed pool, clinician roster and appointment calendar immediately. Nothing about the existing departments changes.</p>
+        <form id="ndForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="q1"></div><div id="q2"></div></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="q3"></div><div id="q4"></div></div>
+          <div id="q5"></div>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Create department', variant: 'primary', icon: 'plus',
+          onClick: () => {
+            const form = d.body.querySelector('#ndForm');
+            if (!UI.validateForm(form)) return false;
+            const code = d.body.querySelector('#nCode').value.toUpperCase();
+            if (depts.some((x) => x.id === code)) {
+              UI.setFieldError(d.body.querySelector('#nCode'), `Code ${code} is already used by ${depts.find((x) => x.id === code).name}. Pick a different one.`);
+              return false;
+            }
+            const created = { id: code, name: d.body.querySelector('#nName').value, beds: +d.body.querySelector('#nBeds').value || 0, occupied: 0, doctors: 0, color: 'info' };
+            depts.push(created);
+            renderGrid();
+            toast(`${created.name} created.`, { tone: 'success', detail: 'Assign clinicians to make it bookable.', undo: () => { depts = depts.filter((x) => x.id !== code); renderGrid(); toast('Department removed.', { tone: 'neutral' }); } });
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#q1').innerHTML = field({ id: 'nName', label: 'Department name', required: true, placeholder: 'e.g. Orthopaedics' });
+    d.body.querySelector('#q2').innerHTML = field({ id: 'nCode', label: 'Code', required: true, mono: true, placeholder: 'ORT', attrs: 'maxlength="4"', help: '2–4 letters. Appears on invoices and lab requisitions.' });
+    d.body.querySelector('#q3').innerHTML = field({ id: 'nBeds', label: 'Bed capacity', type: 'number', required: true, mono: true, value: '0', inputmode: 'numeric', help: 'Set 0 for an outpatient-only department.' });
+    d.body.querySelector('#q4').innerHTML = field({ id: 'nMin', label: 'Minimum clinicians per shift', type: 'select', options: [{ label: '1', selected: true }, { label: '2' }, { label: '3' }] });
+    d.body.querySelector('#q5').innerHTML = field({ id: 'nDesc', label: 'Description', type: 'textarea', rows: 2, optional: true, placeholder: 'Scope of the department, referral criteria…' });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }));
+
+  /* ─────────── Alert actions ─────────── */
+  document.querySelector('[data-overflow]').addEventListener('click', () => {
+    dialog({
+      title: 'Emergency overflow transfer',
+      size: 'md',
+      body: `<p class="text-base text-muted mb-3">Two patients are holding in triage with no Emergency bed available. Select a receiving department for each.</p>
+        <ul class="space-y-2.5">
+          ${DB.patients.filter((p) => p.dept === 'EMG' && p.status === 'admitted').map((p) => `<li class="rounded-lg border border-outline p-3">
+            <div class="flex items-center gap-2.5 mb-2.5">
+              ${avatar(p.name, 'w-8 h-8 text-2xs')}
+              <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${p.name}</span>
+              <span class="num block text-2xs text-muted">${p.mrn} · ${DB.age(p.dob)}y</span></span>
+              ${UI.acuityBadge(p.acuity)}
+            </div>
+            <select class="w-full min-h-11 rounded-lg bg-surface-0 border border-outline-strong px-3 text-base" aria-label="Receiving department for ${p.name}">
+              <option>Keep in Emergency triage</option>
+              <option>General — 9 beds free</option>
+              <option>Pediatric — 9 beds free</option>
+              <option>Cardiology — 1 bed free</option>
+            </select></li>`).join('')}
+        </ul>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        { label: 'Transfer patients', variant: 'primary', icon: 'arrow-right-left', onClick: () => { const e = depts.find((x) => x.id === 'EMG'); const g = depts.find((x) => x.id === 'GEN'); if (e && g) { e.occupied -= 2; g.occupied += 2; } renderGrid(); toast('2 patients transferred to General.', { tone: 'success', detail: 'Emergency now has 2 beds free.' }); } },
+      ],
+    });
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  });
+  document.querySelector('[data-page]').addEventListener('click', (e) => {
+    const done = UI.submitting(e.currentTarget, 'Paging…');
+    setTimeout(() => { done(); toast('Duty manager paged — acknowledged in 40s.', { tone: 'success' }); }, 900);
+  });
+  document.querySelector('[data-report]').addEventListener('click', () => toast('Capacity report queued for the last 30 days.', { tone: 'info', detail: 'PDF will be emailed when ready.' }));
+
+  UI.shell({ title: 'Departments', subtitle: 'Admin · capacity & rosters', active: 'departments', role, roleAware: false });
+  renderGrid();
+  C.wire(document);
+})();
+</script>
+</body>
+</html>

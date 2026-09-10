@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Billing & claims — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, avatar, icon, button, toast, dialog,
+          confirmDialog, btnClass, field, wireFields, banner, breadcrumb, emptyState, metric, table, filterChip } = UI;
+  const C = Charts;
+  const params = new URLSearchParams(location.search);
+  const role = params.get('role') || 'Admin';
+  const canCreate = (DB.permissions[role].Billing || '').includes('c');
+  let selectedId = params.get('invoice') || 'INV-2026-0918';
+  let statusFilter = new Set();
+
+  const totals = DB.invoices.reduce((a, i) => ({ billed: a.billed + i.total, paid: a.paid + i.paid }), { billed: 0, paid: 0 });
+  const outstanding = totals.billed - totals.paid;
+
+  /* Claim lifecycle as a stepper: the receptionist and the payer desk both need to
+     see where a claim actually is, not just its latest label. */
+  const CLAIM_STEPS = [
+    { key: 'draft', label: 'Draft', icon: 'pencil-line' },
+    { key: 'submitted', label: 'Submitted', icon: 'send' },
+    { key: 'review', label: 'Payer review', icon: 'search' },
+    { key: 'approved', label: 'Approved', icon: 'shield-check' },
+    { key: 'settled', label: 'Settled', icon: 'banknote' },
+  ];
+  const CLAIM_AT = { none: -1, draft: 0, submitted: 1, review: 2, approved: 3, denied: 2 };
+
+  const invoice = () => DB.invoices.find((i) => i.id === selectedId) || DB.invoices[0];
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([{ label: 'Billing' }, { label: 'Invoices & claims' }])}
+    ${pageHead({
+      title: 'Billing & insurance claims',
+      meta: `September 2026 · <span class="num">${DB.invoices.length}</span> invoices shown of <span class="num">256</span> this month`,
+      actions: `${button({ label: 'Claim batch', variant: 'outline', icon: 'files', attrs: 'data-batch' })}
+        ${canCreate ? button({ label: 'New invoice', variant: 'primary', icon: 'receipt-text', attrs: 'data-new' }) : ''}`,
+    })}
+
+    <div id="alerts" class="mb-3"></div>
+
+    <div data-stagger class="grid gap-3 grid-cols-2 xl:grid-cols-4 mb-3">
+      ${metric({ label: 'Billed this month', value: '1.32', unit: 'Rp bn', delta: 7, deltaLabel: 'vs August', icon: 'file-text', spark: C.sparkline(DB.revenue.map((r) => r.billed), { tone: 'primary' }) })}
+      ${metric({ label: 'Collected', value: '1.06', unit: 'Rp bn', delta: 4, deltaLabel: '80% collection rate', icon: 'banknote', spark: C.sparkline(DB.revenue.map((r) => r.collected), { tone: 'success' }) })}
+      ${metric({ label: 'Outstanding', value: DB.jt(outstanding).replace('Rp ', '').replace(' jt', ''), unit: 'Rp mn', delta: 12, deltaLabel: 'across 5 invoices', tone: 'inverse', icon: 'wallet', spark: C.sparkline([18, 21, 19, 24, 22, 26, 25, 27, 29], { tone: 'warning' }) })}
+      ${metric({ label: 'Claims at risk', value: 6, unit: 'over 60d', delta: 20, deltaLabel: 'Rp 41 mn exposed', tone: 'inverse', icon: 'shield-alert', spark: C.sparkline([2, 3, 3, 4, 4, 5, 5, 6, 6], { tone: 'danger' }) })}
+    </div>
+
+    <div class="grid gap-3 xl:grid-cols-[1.35fr_1fr] items-start">
+      <!-- ─────────── Invoice list ─────────── -->
+      <div class="min-w-0">
+        <div class="card !p-0 overflow-hidden">
+          <div class="flex flex-wrap items-center gap-2 px-3.5 py-2.5 border-b border-outline bg-surface-1">
+            <div class="relative flex-1 min-w-[160px]">
+              <label for="iq" class="sr-only">Search invoices by number or patient</label>
+              <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted">${icon('search', 'w-4 h-4')}</span>
+              <input id="iq" type="search" placeholder="Invoice number or patient…"
+                class="w-full h-10 rounded-lg bg-surface-2 border border-outline pl-8.5 pr-3 text-base focus-inset" style="padding-left:2.15rem">
+            </div>
+            <div class="flex flex-wrap gap-1.5" data-status-filters></div>
+          </div>
+          <div id="tbl"></div>
+        </div>
+
+        ${card(`${cardHead({ title: 'Collections trend', icon: 'chart-column-big', meta: 'Billed vs collected, September · Rp million' })}
+          <div data-states>
+            <div data-state="ready">${C.bars({
+              labels: DB.revenue.map((r) => r.d),
+              series: [
+                { label: 'Billed', tone: 'primary', values: DB.revenue.map((r) => r.billed) },
+                { label: 'Collected', tone: 'success', values: DB.revenue.map((r) => r.collected) },
+              ],
+              height: 190, yUnit: ' Rp mn',
+              summary: 'Billed versus collected revenue for 1 to 9 September 2026 in millions of rupiah. Collection tracks billing closely until 9 September, where Rp 183 million billed against Rp 121 million collected — the widest single-day gap this month.',
+              caption: 'Daily billed and collected revenue, September 2026 (Rp million)',
+            })}
+            <p class="mt-3 pt-3 border-t border-outline text-xs text-muted flex items-start gap-1.5">
+              ${icon('trending-down', 'w-3.5 h-3.5 text-warning shrink-0 mt-px')}
+              <span>Today's gap of <strong class="text-foreground">Rp 62 mn</strong> is mostly two unpaid emergency admissions still awaiting BPJS submission.</span></p></div>
+            <div data-state="loading" hidden><div class="skel h-[190px] rounded-lg"></div></div>
+            <div data-state="empty" hidden>${emptyState({ icon: 'receipt', title: 'No invoices this period', body: 'Nothing has been billed in the selected date range.' })}</div>
+            <div data-state="error" hidden>${UI.errorState({ title: 'Billing service unreachable' })}</div>
+          </div>`, 'mt-3')}
+      </div>
+
+      <!-- ─────────── Invoice detail ─────────── -->
+      <aside class="min-w-0 space-y-3" id="detail"></aside>
+    </div>
+  `);
+
+  /* ─────────── Alerts ─────────── */
+  document.getElementById('alerts').innerHTML = banner({
+    tone: 'danger',
+    title: 'Claim denied — appeal window closes in 12 days',
+    body: '<span class="num">INV-2026-0914</span> (Agus Salim, Mandiri Inhealth, <span class="num">Rp 1.150.000</span>) was denied on 8 Sep: <em>referral letter missing</em>. Appeals must be filed by 21 Sep.',
+    actions: `${button({ label: 'Open the claim', variant: 'danger', size: 'sm', icon: 'file-search', attrs: 'data-open-denied' })}
+              ${button({ label: 'Attach referral & resubmit', variant: 'outline', size: 'sm', icon: 'upload', attrs: 'data-resubmit' })}`,
+  });
+
+  /* ─────────── Status facets ─────────── */
+  function renderFilters() {
+    const host = document.querySelector('[data-status-filters]');
+    host.innerHTML = ['paid', 'partially_paid', 'unpaid'].map((s) =>
+      filterChip({ label: UI.STATUS[s].label, count: DB.invoices.filter((i) => i.status === s).length, active: statusFilter.has(s), key: s })).join('');
+    host.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => {
+      const k = b.dataset.filter;
+      statusFilter.has(k) ? statusFilter.delete(k) : statusFilter.add(k);
+      renderFilters(); renderTable();
+    }));
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────── Invoice table ─────────── */
+  let q = '';
+  function renderTable() {
+    const rows = DB.invoices.filter((i) => {
+      if (statusFilter.size && !statusFilter.has(i.status)) return false;
+      if (q && !`${i.id} ${DB.byMrn(i.patient).name}`.toLowerCase().includes(q.toLowerCase())) return false;
+      return true;
+    });
+
+    table('#tbl', {
+      label: 'Invoices',
+      caption: 'Invoices for September 2026 with payment status and insurance claim state',
+      rows,
+      rowKey: (i) => i.id,
+      rowLabel: (i) => `invoice ${i.id}`,
+      select: canCreate,
+      sort: { key: 'date', dir: 'desc' },
+      maxHeight: '420px',
+      bulkActions: [
+        { label: 'Submit claims', icon: 'send', variant: 'primary', onClick: (ids) => toast(`${ids.length} claim${ids.length > 1 ? 's' : ''} submitted to the payer.`, { tone: 'success', undo: () => toast('Submission recalled.', { tone: 'neutral' }) }) },
+        { label: 'Send reminder', icon: 'mail', variant: 'subtle', onClick: (ids) => toast(`Payment reminder sent for ${ids.length} invoice${ids.length > 1 ? 's' : ''}.`, { tone: 'info' }) },
+      ],
+      columns: [
+        { key: 'id', label: 'Invoice', mono: true, width: '124px', cell: (i) => `<button type="button" data-pick="${i.id}" class="font-semibold text-primary hover:underline underline-offset-2">${i.id}</button>` },
+        { key: 'patient', label: 'Patient', cell: (i) => `<span class="truncate font-medium">${DB.byMrn(i.patient).name}</span>`, sortValue: (i) => DB.byMrn(i.patient).name },
+        { key: 'date', label: 'Date', mono: true, cell: (i) => `<span class="text-muted">${i.date.slice(5)}</span>` },
+        { key: 'total', label: 'Total', align: 'right', mono: true, cell: (i) => DB.rp(i.total) },
+        { key: 'due', label: 'Due', align: 'right', mono: true, sortValue: (i) => i.total - i.paid, cell: (i) => (i.total - i.paid) ? `<span class="font-semibold text-danger">${DB.rp(i.total - i.paid)}</span>` : '<span class="text-subtle">—</span>' },
+        { key: 'status', label: 'Payment', cell: (i) => chip(i.status) },
+        { key: 'claim', label: 'Claim', cell: (i) => chip(i.claim) },
+      ],
+      mobileCard: (i) => `<span class="flex items-center gap-2.5">
+        <span class="flex-1 min-w-0">
+          <span class="block text-base font-medium truncate">${DB.byMrn(i.patient).name}</span>
+          <span class="block text-2xs text-muted num truncate">${i.id} · ${i.date} · ${DB.rp(i.total)}</span>
+        </span>
+        <span class="shrink-0 flex flex-col items-end gap-1">${chip(i.status, { size: 'sm' })}${chip(i.claim, { size: 'sm' })}</span></span>`,
+      empty: {
+        icon: 'receipt',
+        title: statusFilter.size || q ? 'No invoice matches this filter' : 'Nothing billed yet',
+        body: statusFilter.size || q ? 'Clear the payment-status filter or search a different invoice number.' : 'Invoices appear here as soon as a visit is closed and coded.',
+        action: button({ label: 'Clear filters', variant: 'primary', icon: 'filter-x', attrs: 'data-bclear' }),
+      },
+      error: { title: 'Billing service unreachable', body: 'Invoice data could not be loaded. Payments already recorded are safe; this list needs a live connection.' },
+      footer: `<span>Showing <span class="num">${rows.length}</span> · outstanding <span class="num font-semibold text-danger">${DB.rp(rows.reduce((a, i) => a + (i.total - i.paid), 0))}</span></span>
+        <button type="button" data-exp class="font-medium text-primary hover:underline underline-offset-2">Export CSV</button>`,
+    });
+
+    document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); selectedId = b.dataset.pick; renderDetail(); }));
+    document.querySelectorAll('[data-bclear]').forEach((b) => b.addEventListener('click', () => { statusFilter.clear(); q = ''; document.getElementById('iq').value = ''; renderFilters(); renderTable(); }));
+    document.querySelector('[data-exp]')?.addEventListener('click', () => toast(`${rows.length} invoices exported.`, { tone: 'success' }));
+  }
+
+  /* ─────────── Invoice detail with claim stepper ─────────── */
+  function renderDetail() {
+    const inv = invoice();
+    const p = DB.byMrn(inv.patient);
+    const lines = DB.invoiceLines.slice(0, inv.id === 'INV-2026-0918' ? 7 : 4);
+    const sub = lines.reduce((a, l) => a + l.qty * l.unit, 0);
+    const admin = Math.round(sub * 0.02);
+    const total = sub + admin;
+    const due = inv.total - inv.paid;
+    const at = CLAIM_AT[inv.claim];
+
+    document.getElementById('detail').innerHTML = `
+      ${card(`
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div class="min-w-0">
+            <p class="num text-lg font-bold font-display">${inv.id}</p>
+            <p class="text-base text-muted truncate">${p.name} · <span class="num">${p.mrn}</span></p>
+            <p class="text-2xs text-subtle num mt-0.5">Issued ${inv.date} · ${inv.insurer}</p>
+          </div>
+          <div class="shrink-0 flex flex-col items-end gap-1.5">${chip(inv.status)}${chip(inv.claim)}</div>
+        </div>
+
+        <!-- Amounts: due is the number that matters, so it is the largest -->
+        <div class="well p-3.5 mb-3">
+          <div class="flex items-end justify-between gap-3">
+            <div>
+              <p class="text-2xs uppercase tracking-wide text-subtle font-semibold">Amount due</p>
+              <p class="num text-3xl font-bold leading-none mt-1 ${due ? 'text-danger' : 'text-success'}">${due ? DB.rp(due) : 'Settled'}</p>
+            </div>
+            <dl class="text-right space-y-0.5">
+              <div class="flex justify-end gap-3"><dt class="text-xs text-muted">Total</dt><dd class="num text-xs w-28">${DB.rp(inv.total)}</dd></div>
+              <div class="flex justify-end gap-3"><dt class="text-xs text-muted">Paid</dt><dd class="num text-xs w-28 text-success">${DB.rp(inv.paid)}</dd></div>
+            </dl>
+          </div>
+          ${inv.total ? `<div class="mt-3 h-2 rounded-full bg-surface-3 overflow-hidden" role="meter" aria-valuenow="${inv.paid}" aria-valuemin="0" aria-valuemax="${inv.total}" aria-label="Payment progress">
+            <div class="h-full rounded-full bg-success" style="width:${DB.pct(inv.paid, inv.total)}%"></div></div>
+            <p class="num text-2xs text-muted mt-1">${DB.pct(inv.paid, inv.total)}% collected</p>` : ''}
+        </div>
+
+        ${canCreate && due ? `<div class="flex flex-wrap gap-2 mb-3">
+          ${button({ label: 'Record payment', variant: 'primary', icon: 'banknote', attrs: 'data-pay' })}
+          ${button({ label: 'Send reminder', variant: 'outline', icon: 'mail', attrs: 'data-remind' })}
+          <button type="button" data-inv-more class="w-11 h-11 rounded-lg grid place-items-center text-muted border border-outline hover:bg-surface-2 press" aria-label="More invoice actions">${icon('more-vertical', 'w-4 h-4')}</button>
+        </div>` : ''}
+
+        <!-- Line items -->
+        <h3 class="text-base font-semibold font-display mb-2">Line items</h3>
+        <div class="overflow-x-auto -mx-1">
+          <table class="dt">
+            <caption class="sr-only">Charge lines on invoice ${inv.id}</caption>
+            <thead><tr><th scope="col">Item</th><th scope="col" class="text-right">Qty</th><th scope="col" class="text-right">Unit</th><th scope="col" class="text-right">Amount</th></tr></thead>
+            <tbody>
+              ${lines.map((l) => `<tr>
+                <td><span class="block text-base truncate max-w-[220px]">${l.desc}</span><span class="num text-2xs text-subtle">${l.code} · ${DB.deptName(l.dept)}</span></td>
+                <td class="text-right num">${l.qty}</td>
+                <td class="text-right num text-muted">${DB.rp(l.unit)}</td>
+                <td class="text-right num font-semibold">${DB.rp(l.qty * l.unit)}</td></tr>`).join('')}
+            </tbody>
+            <tfoot>
+              <tr><td colspan="3" class="text-right text-muted pt-2.5">Subtotal</td><td class="text-right num pt-2.5">${DB.rp(sub)}</td></tr>
+              <tr><td colspan="3" class="text-right text-muted">Administration (2%)</td><td class="text-right num">${DB.rp(admin)}</td></tr>
+              <tr><td colspan="3" class="text-right font-semibold">Invoice total</td><td class="text-right num font-bold">${DB.rp(total)}</td></tr>
+            </tfoot>
+          </table>
+        </div>
+      `)}
+
+      ${card(`
+        ${cardHead({ title: 'Insurance claim', icon: 'shield-check', meta: `${inv.insurer}${inv.claim === 'none' ? ' · self-pay, no claim' : ''}` })}
+        ${inv.claim === 'none'
+          ? emptyState({ icon: 'shield-off', title: 'Self-pay invoice', body: 'No insurance claim applies. The patient settles this invoice directly at the cashier or by transfer.' })
+          : `<ol class="relative space-y-0">
+              ${CLAIM_STEPS.map((s, i) => {
+                const denied = inv.claim === 'denied' && i === 2;
+                const done = i < at, on = i === at;
+                const tone = denied ? 'danger' : done ? 'success' : on ? 'info' : 'neutral';
+                return `<li class="relative flex gap-3 pb-4 last:pb-0">
+                  ${i < CLAIM_STEPS.length - 1 ? `<span class="absolute left-[13px] top-7 bottom-0 w-px ${done ? 'bg-success' : 'bg-outline'}" aria-hidden="true"></span>` : ''}
+                  <span class="relative z-[1] w-7 h-7 shrink-0 rounded-full grid place-items-center ${UI.TONE_CHIP[tone]} ring-4 ring-[rgb(var(--s0))]">
+                    ${icon(denied ? 'x' : done ? 'check' : s.icon, 'w-3.5 h-3.5')}</span>
+                  <div class="min-w-0 flex-1 pt-0.5">
+                    <p class="text-base font-medium ${on || done ? '' : 'text-subtle'}">${denied ? 'Denied by payer' : s.label}</p>
+                    ${denied ? `<p class="text-base text-danger mt-0.5">Reason: referral letter missing. Appeal by <span class="num">21 Sep 2026</span>.</p>` : ''}
+                    ${done ? `<p class="num text-2xs text-subtle mt-0.5">${['08 Sep 14:20', '08 Sep 16:05', '09 Sep 08:10', '09 Sep 09:15'][i] || ''}</p>` : ''}
+                    ${on && !denied ? `<p class="text-xs text-muted mt-0.5">Awaiting payer response · typical turnaround 5 working days</p>` : ''}
+                  </div></li>`;
+              }).join('')}
+            </ol>
+            ${inv.claim === 'denied' ? `<div class="mt-3">${banner({ tone: 'danger', dismissible: false, title: 'Action required', body: 'Attach the referral letter from General and resubmit. 12 days remain in the appeal window.', actions: button({ label: 'Attach & resubmit', variant: 'danger', size: 'sm', icon: 'upload', attrs: 'data-resubmit2' }) })}</div>` : ''}
+            ${inv.claim === 'draft' ? `<div class="mt-3">${button({ label: 'Submit claim to ' + inv.insurer, variant: 'primary', icon: 'send', attrs: 'data-submit-claim' })}</div>` : ''}`}
+      `)}
+
+      ${card(`${cardHead({ title: 'Payment history', icon: 'history' })}
+        ${inv.paid ? `<ul class="divide-y divide-outline">
+          <li class="py-2.5 flex items-center gap-2.5">
+            <span class="w-8 h-8 shrink-0 rounded-md bg-success-container text-success-container-foreground grid place-items-center">${icon('banknote', 'w-4 h-4')}</span>
+            <span class="flex-1 min-w-0"><span class="block text-base font-medium num">${DB.rp(inv.paid)}</span>
+            <span class="block text-2xs text-muted">Bank transfer · BCA · ref <span class="num">TRX-88401</span></span></span>
+            <span class="num text-2xs text-subtle shrink-0">09 Sep 10:12</span></li>
+        </ul>` : emptyState({ icon: 'wallet', title: 'No payment recorded', body: 'Nothing has been received against this invoice yet. Record a payment when the cashier confirms it.' })}`)}
+    `;
+
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    wireDetail();
+  }
+
+  function wireDetail() {
+    document.querySelector('[data-pay]')?.addEventListener('click', openPayment);
+    document.querySelector('[data-remind]')?.addEventListener('click', () => toast('Reminder sent by SMS and email.', { tone: 'success', undo: () => toast('Reminder recalled.', { tone: 'neutral' }) }));
+    document.querySelector('[data-submit-claim]')?.addEventListener('click', (e) => {
+      const done = UI.submitting(e.currentTarget, 'Submitting…');
+      setTimeout(() => { done(); invoice().claim = 'submitted'; renderDetail(); renderTable(); toast('Claim submitted.', { tone: 'success', detail: 'Payer acknowledgement expected within 24 hours.' }); }, 900);
+    });
+    document.querySelectorAll('[data-resubmit],[data-resubmit2]').forEach((b) => b.addEventListener('click', () => {
+      dialog({
+        title: 'Attach referral & resubmit claim',
+        size: 'md',
+        body: `<p class="text-base text-muted mb-4">The payer denied this claim for a missing referral. Attach the referral issued by General on 30 Aug, then resubmit.</p>
+          <div class="rounded-xl border-2 border-dashed border-outline-strong p-5 text-center">
+            ${icon('upload-cloud', 'w-6 h-6 text-muted mx-auto mb-2')}
+            <p class="text-base font-medium">Drop the referral letter here</p>
+            <p class="text-xs text-muted mt-1">PDF up to 20 MB</p>
+          </div>
+          <label class="flex items-start gap-2.5 mt-4 min-h-11 cursor-pointer">
+            <input type="checkbox" checked class="w-4 h-4 mt-1 accent-[rgb(var(--primary))] cursor-pointer">
+            <span class="text-base">Pull the referral automatically from the patient record (recommended)</span></label>`,
+        actions: [
+          { label: 'Cancel', variant: 'ghost' },
+          { label: 'Resubmit claim', variant: 'primary', icon: 'send', onClick: () => { const inv = DB.invoices.find((i) => i.id === 'INV-2026-0914'); if (inv) inv.claim = 'submitted'; selectedId = 'INV-2026-0914'; renderDetail(); renderTable(); toast('Claim resubmitted with referral attached.', { tone: 'success' }); } },
+        ],
+      });
+      lucide.createIcons({ nameAttr: 'data-lucide' });
+    }));
+    document.querySelector('[data-inv-more]')?.addEventListener('click', () => {
+      dialog({
+        title: 'Invoice actions',
+        size: 'sm',
+        body: `<ul class="-mx-2">
+          ${[['Print invoice', 'printer'], ['Email to patient', 'mail'], ['Add a line item', 'plus'], ['Apply discount', 'percent'], ['Download PDF', 'download']]
+            .map(([l, ic]) => `<li><button type="button" class="w-full flex items-center gap-2.5 px-2.5 min-h-12 rounded-lg text-base hover:bg-surface-2 press">${icon(ic, 'w-4 h-4 text-muted')}<span>${l}</span></button></li>`).join('')}
+          <li class="mt-2 pt-2 border-t border-outline"><button type="button" data-void class="w-full flex items-center gap-2.5 px-2.5 min-h-12 rounded-lg text-base text-danger hover:bg-danger-container press">${icon('file-x', 'w-4 h-4')}<span>Void this invoice</span></button></li>
+        </ul>`,
+      });
+      lucide.createIcons({ nameAttr: 'data-lucide' });
+      document.querySelector('[data-void]')?.addEventListener('click', () => {
+        confirmDialog({
+          title: `Void ${selectedId}?`,
+          message: 'Voiding cancels the invoice. It stays in the ledger with a void marker so the audit trail is intact.',
+          consequence: ['Any submitted insurance claim is withdrawn.', 'Payments already received must be refunded separately.', 'A replacement invoice must be raised manually.'],
+          confirmLabel: 'Void invoice',
+          onConfirm: () => toast(`${selectedId} voided.`, { tone: 'neutral', undo: () => toast('Void reversed — invoice is active.', { tone: 'success' }) }),
+        });
+      });
+    });
+  }
+
+  /* ─────────── Record payment ─────────── */
+  function openPayment() {
+    const inv = invoice();
+    const due = inv.total - inv.paid;
+    const d = dialog({
+      title: 'Record a payment',
+      size: 'md',
+      body: `<div class="well p-3 mb-4 flex items-center justify-between gap-3">
+          <span class="min-w-0"><span class="block text-base font-medium truncate">${DB.byMrn(inv.patient).name}</span>
+          <span class="num text-2xs text-muted">${inv.id}</span></span>
+          <span class="text-right shrink-0"><span class="block text-2xs text-subtle uppercase tracking-wide font-semibold">Due</span>
+          <span class="num text-lg font-bold text-danger">${DB.rp(due)}</span></span>
+        </div>
+        <form id="payForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div id="p1"></div>
+          <div class="flex flex-wrap gap-1.5" id="quick"></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="p2"></div><div id="p3"></div></div>
+          <div id="p4"></div>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Record payment', variant: 'primary', icon: 'check',
+          onClick: () => {
+            const form = d.body.querySelector('#payForm');
+            if (!UI.validateForm(form)) return false;
+            const amt = +d.body.querySelector('#payAmt').value;
+            if (!amt || amt <= 0) { UI.setFieldError(d.body.querySelector('#payAmt'), 'Enter an amount greater than zero.'); return false; }
+            if (amt > due) { UI.setFieldError(d.body.querySelector('#payAmt'), `Amount exceeds the ${DB.rp(due)} outstanding. Reduce it, or raise a credit note instead.`); return false; }
+            inv.paid += amt;
+            inv.status = inv.paid >= inv.total ? 'paid' : 'partially_paid';
+            renderDetail(); renderTable();
+            toast(`${DB.rp(amt)} recorded against ${inv.id}.`, { tone: 'success', detail: inv.status === 'paid' ? 'Invoice fully settled.' : `${DB.rp(inv.total - inv.paid)} still outstanding.` });
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#p1').innerHTML = field({ id: 'payAmt', label: 'Amount received (IDR)', type: 'number', required: true, mono: true, inputmode: 'numeric', placeholder: String(due), help: `Maximum ${DB.rp(due)}. Overpayments need a credit note.` });
+    d.body.querySelector('#p2').innerHTML = field({ id: 'payMethod', label: 'Method', type: 'select', required: true, options: ['Cash', 'Bank transfer', 'Debit card', 'Credit card', 'QRIS'] });
+    d.body.querySelector('#p3').innerHTML = field({ id: 'payDate', label: 'Received on', type: 'date', required: true, value: DB.TODAY, attrs: `max="${DB.TODAY}"` });
+    d.body.querySelector('#p4').innerHTML = field({ id: 'payRef', label: 'Reference', optional: true, mono: true, placeholder: 'e.g. TRX-88401', help: 'Bank reference or receipt number, for reconciliation.' });
+    d.body.querySelector('#quick').innerHTML = [['Full amount', due], ['Half', Math.round(due / 2)], ['Rp 500.000', 500000]]
+      .filter(([, v]) => v > 0 && v <= due)
+      .map(([l, v]) => `<button type="button" data-q="${v}" class="${btnClass('subtle', 'sm')}">${l}</button>`).join('');
+    d.body.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => {
+      const input = d.body.querySelector('#payAmt');
+      input.value = b.dataset.q;
+      UI.setFieldError(input, '');
+    }));
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────── Page wiring ─────────── */
+  UI.shell({ title: 'Billing', subtitle: 'Invoices & insurance claims', active: 'billing', role, roleAware: false });
+  renderFilters();
+  renderTable();
+  renderDetail();
+  C.wire(document);
+
+  let qt;
+  document.getElementById('iq').addEventListener('input', (e) => {
+    clearTimeout(qt);
+    qt = setTimeout(() => { q = e.target.value; renderTable(); }, 200);
+  });
+  document.querySelector('[data-open-denied]')?.addEventListener('click', () => { selectedId = 'INV-2026-0914'; renderDetail(); document.getElementById('detail').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+  document.querySelector('[data-batch]').addEventListener('click', () => {
+    const drafts = DB.invoices.filter((i) => i.claim === 'draft');
+    dialog({
+      title: 'Submit claim batch',
+      size: 'md',
+      body: `<p class="text-base text-muted mb-3"><span class="num font-semibold">${drafts.length}</span> claims are in draft and ready to submit. Review before sending — a submitted claim can only be recalled within 30 minutes.</p>
+        <ul class="divide-y divide-outline rounded-lg border border-outline">
+          ${drafts.map((i) => `<li class="flex items-center gap-2.5 px-3 py-2.5">
+            <input type="checkbox" checked class="w-4 h-4 accent-[rgb(var(--primary))] cursor-pointer" aria-label="Include ${i.id}">
+            <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${DB.byMrn(i.patient).name}</span>
+            <span class="num text-2xs text-muted">${i.id} · ${i.insurer}</span></span>
+            <span class="num text-base font-semibold shrink-0">${DB.rp(i.total)}</span></li>`).join('')}
+        </ul>
+        <p class="num text-base font-semibold text-right mt-3">Batch total ${DB.rp(drafts.reduce((a, i) => a + i.total, 0))}</p>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        { label: `Submit ${drafts.length} claims`, variant: 'primary', icon: 'send', onClick: () => { drafts.forEach((i) => { i.claim = 'submitted'; }); renderTable(); renderDetail(); toast(`${drafts.length} claims submitted.`, { tone: 'success', undo: () => { drafts.forEach((i) => { i.claim = 'draft'; }); renderTable(); renderDetail(); toast('Batch recalled.', { tone: 'neutral' }); } }); } },
+      ],
+    });
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  });
+  document.querySelector('[data-new]')?.addEventListener('click', () => {
+    const d = dialog({
+      title: 'New invoice',
+      size: 'md',
+      dirty: () => true,
+      body: `<form id="niForm" novalidate class="space-y-3">
+        <div data-error-summary hidden></div>
+        <div id="n1"></div>
+        <div class="grid sm:grid-cols-2 gap-3"><div id="n2"></div><div id="n3"></div></div>
+        <div id="n4"></div>
+        <p class="text-xs text-muted flex items-start gap-1.5">${icon('info', 'w-3.5 h-3.5 shrink-0 mt-px')}
+          <span>Charge lines are pulled automatically from the encounter's coded procedures. You can add manual lines afterwards.</span></p>
+      </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        { label: 'Create invoice', variant: 'primary', icon: 'receipt-text', onClick: () => { if (!UI.validateForm(d.body.querySelector('#niForm'))) return false; toast('Invoice INV-2026-0919 created as draft.', { tone: 'success' }); } },
+      ],
+    });
+    d.body.querySelector('#n1').innerHTML = field({ id: 'niPat', label: 'Patient', type: 'select', required: true, options: [{ label: 'Select…', value: '' }, ...DB.patients.map((x) => ({ label: `${x.name} · ${x.mrn}`, value: x.mrn }))] });
+    d.body.querySelector('#n2').innerHTML = field({ id: 'niEnc', label: 'Encounter', type: 'select', required: true, options: [{ label: 'Select…', value: '' }, { label: '9 Sep 2026 08:00 · Cardiology' }, { label: '8 Sep 2026 15:30 · General' }] });
+    d.body.querySelector('#n3').innerHTML = field({ id: 'niPayer', label: 'Payer', type: 'select', required: true, options: ['BPJS Kesehatan', 'Mandiri Inhealth', 'Prudential', 'Self-pay'] });
+    d.body.querySelector('#n4').innerHTML = field({ id: 'niNote', label: 'Internal note', type: 'textarea', rows: 2, optional: true });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  });
+})();
+</script>
+</body>
+</html>

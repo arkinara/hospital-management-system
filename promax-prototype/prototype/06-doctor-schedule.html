@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Doctor schedule — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, avatar, icon, button, toast, dialog,
+          confirmDialog, btnClass, field, wireFields, banner, breadcrumb, emptyState, metric } = UI;
+  const C = Charts;
+  const params = new URLSearchParams(location.search);
+  const role = params.get('role') || 'Doctor';
+  let view = 'day';
+  let doctorId = params.get('doctor') || (role === 'Doctor' ? 'D01' : 'D01');
+  const doctor = () => DB.byDoctor(doctorId);
+
+  /* A clinic day rendered on a real time axis: gaps are visible as gaps, and an
+     over-running consultation shows as a squeeze rather than a hidden clash. */
+  const DAY_START = 8, DAY_END = 15, PX_PER_MIN = 1.15;
+  /** Bookings need 15 minutes' notice; now is 09:41, so 09:56 is the cut-off. */
+  const CLOSED_BEFORE = '09:56';
+  const toMin = (t) => { const [h, m] = t.split(':').map(Number); return (h - DAY_START) * 60 + m; };
+  const dayHeight = (DAY_END - DAY_START) * 60 * PX_PER_MIN;
+
+  const blocks = DB.slots.map((s) => {
+    const appt = DB.appointments.find((a) => a.time === s.time && a.doctor === doctorId);
+    return { ...s, appt, dur: 30 };
+  });
+
+  const WEEK = [
+    { d: 'Mon 8', count: 12, hours: 7 }, { d: 'Tue 9', count: 9, hours: 7, today: true },
+    { d: 'Wed 10', count: 11, hours: 7 }, { d: 'Thu 11', count: 6, hours: 4 },
+    { d: 'Fri 12', count: 13, hours: 7 }, { d: 'Sat 13', count: 4, hours: 3 }, { d: 'Sun 14', count: 0, hours: 0 },
+  ];
+
+  const booked = blocks.filter((b) => b.status === 'booked').length;
+  // Only slots that are still bookable under the notice rule count as open.
+  const open = blocks.filter((b) => b.status === 'open' && b.time >= CLOSED_BEFORE).length;
+  const passed = blocks.filter((b) => b.status === 'open' && b.time < CLOSED_BEFORE).length;
+  const noShows = DB.appointments.filter((a) => a.doctor === doctorId && a.status === 'no_show').length;
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([{ label: 'Appointments', href: `05-appointment-booking.html?role=${role}` }, { label: 'Schedule' }])}
+    ${pageHead({
+      title: 'Clinic schedule',
+      meta: `${doctor().name} · ${DB.deptName(doctor().dept)} · shift <span class="num">${doctor().shift}</span>`,
+      actions: `${button({ label: 'Block time', variant: 'outline', icon: 'calendar-x', attrs: 'data-block' })}
+                ${button({ label: 'Add appointment', variant: 'primary', icon: 'calendar-plus', attrs: 'data-add' })}`,
+    })}
+
+    <div id="alerts" class="mb-3"></div>
+
+    <div data-stagger class="grid gap-3 grid-cols-2 xl:grid-cols-4 mb-3">
+      ${metric({ label: 'Booked today', value: booked, unit: `of ${blocks.length} slots`, deltaLabel: `${Math.round((booked / blocks.length) * 100)}% utilisation`, icon: 'calendar-check' })}
+      ${metric({ label: 'Open slots', value: open, deltaLabel: `bookable now · ${passed} passed`, icon: 'calendar-plus' })}
+      ${metric({ label: 'Mean consult', value: 26, unit: 'min', delta: -8, deltaLabel: 'vs your 30-min blocks', tone: 'inverse', icon: 'timer', spark: C.sparkline([31, 29, 30, 27, 26, 28, 26], { tone: 'info' }) })}
+      ${metric({ label: 'No-shows this week', value: noShows + 2, delta: 12, deltaLabel: 'Tue is worst', tone: 'inverse', icon: 'user-x', spark: C.sparkline([1, 2, 1, 3, 2, 0, 0], { tone: 'accent' }) })}
+    </div>
+
+    <div class="grid gap-3 lg:grid-cols-[1fr_320px] items-start">
+      <div class="min-w-0">
+        <div class="card !p-0 overflow-hidden">
+          <!-- Toolbar: clinician, date navigation and day/week toggle -->
+          <div class="flex flex-wrap items-center gap-2 px-3.5 py-2.5 border-b border-outline bg-surface-1">
+            <div class="flex items-center gap-1">
+              <button type="button" data-prev class="w-9 h-9 rounded-md grid place-items-center text-muted hover:bg-surface-3 press" aria-label="Previous day">${icon('chevron-left', 'w-4 h-4')}</button>
+              <button type="button" data-today class="${btnClass('subtle', 'sm')}">Today</button>
+              <button type="button" data-next class="w-9 h-9 rounded-md grid place-items-center text-muted hover:bg-surface-3 press" aria-label="Next day">${icon('chevron-right', 'w-4 h-4')}</button>
+            </div>
+            <p class="text-base font-semibold num">Tue 9 Sep 2026</p>
+            <span class="flex-1"></span>
+            <div class="w-full sm:w-52" id="docPick"></div>
+            <div class="flex items-center gap-0.5 rounded-lg bg-surface-0 border border-outline p-0.5" role="group" aria-label="Calendar view">
+              ${['day', 'week'].map((v) => `<button type="button" data-view="${v}" aria-pressed="${v === 'day'}"
+                class="px-3 h-8 rounded-md text-xs font-semibold capitalize press ${v === 'day' ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-surface-3'}">${v}</button>`).join('')}
+            </div>
+          </div>
+
+          <div data-states>
+            <div data-state="ready">
+              <div id="dayView" class="p-3.5"></div>
+              <div id="weekView" class="p-3.5" hidden></div>
+            </div>
+            <div data-state="loading" hidden><div class="p-3.5 space-y-2">${'<div class="skel h-[52px] rounded-lg"></div>'.repeat(8)}</div></div>
+            <div data-state="empty" hidden>${emptyState({ icon: 'calendar-off', title: 'No clinic session today', body: 'This clinician has no scheduled session on Tuesdays. Their next clinic is Wednesday 10 September at 08:00.', action: button({ label: 'Go to Wed 10 Sep', variant: 'primary', icon: 'calendar-search' }) })}</div>
+            <div data-state="error" hidden>${UI.errorState({ title: 'Schedule could not be loaded', body: 'The scheduling service returned 503. Existing appointments are unaffected; this view needs a live connection to show current availability.' })}</div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="space-y-3 min-w-0">
+        ${card(`${cardHead({ title: 'Day at a glance', icon: 'chart-column-big', meta: 'Slot state distribution' })}
+          ${C.donut({
+            slices: [
+              { label: 'Booked', value: booked, tone: 'primary' },
+              { label: 'Open', value: open, tone: 'success' },
+              { label: 'Passed', value: passed, tone: 'neutral' },
+              { label: 'Blocked', value: blocks.filter((b) => b.status === 'blocked').length, tone: 'info' },
+              { label: 'Held', value: blocks.filter((b) => b.status === 'held').length, tone: 'accent' },
+            ],
+            centerLabel: String(blocks.length), unit: 'slots',
+            summary: `Slot distribution today: ${booked} booked, ${open} still bookable, ${passed} open but past the booking cut-off, ${blocks.filter((b) => b.status === 'blocked').length} blocked for the cath lab and lunch, and 1 held for an emergency referral.`,
+            caption: 'Slot states for 9 September 2026',
+          })}`)}
+
+        ${card(`${cardHead({ title: 'Waiting room', icon: 'armchair', meta: 'Checked in, not yet seen' })}
+          <ul class="divide-y divide-outline -mx-1">
+            ${DB.appointments.filter((a) => a.status === 'checked_in').map((a) => {
+              const p = DB.byMrn(a.patient);
+              return `<li class="flex items-center gap-2.5 px-1 py-2.5">
+                ${avatar(p.name)}
+                <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${p.name}</span>
+                <span class="block text-2xs text-muted num">${a.time} · ${a.reason}</span></span>
+                <span class="num text-xs font-semibold shrink-0 ${a.wait > 15 ? 'text-danger' : 'text-muted'}">${a.wait}m</span></li>`;
+            }).join('')}
+          </ul>
+          <p class="mt-2.5 pt-2.5 border-t border-outline text-xs text-muted">Longest wait <span class="num font-semibold text-danger">21 minutes</span> — above the 15-minute target. Consider bringing 11:00 forward.</p>`)}
+
+        ${card(`${cardHead({ title: 'Blocked periods', icon: 'calendar-x' })}
+          <ul class="space-y-2">
+            ${blocks.filter((b) => b.status === 'blocked' || b.status === 'held').map((b) => `<li class="flex items-center gap-2.5 text-base">
+              <span class="num text-xs font-semibold w-11 shrink-0">${b.time}</span>
+              <span class="flex-1 min-w-0 truncate text-muted">${b.reason}</span>
+              ${chip(b.status, { size: 'sm' })}</li>`).join('')}
+          </ul>`)}
+      </aside>
+    </div>
+  `);
+
+  /* ─────────── Day view on a time axis ─────────── */
+  function renderDay() {
+    const host = document.getElementById('dayView');
+    const hours = Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => DAY_START + i);
+    host.innerHTML = `
+      <div class="relative" style="height:${dayHeight}px">
+        <!-- Hour rules -->
+        ${hours.map((h) => `<div class="absolute left-0 right-0 flex items-start gap-2" style="top:${(h - DAY_START) * 60 * PX_PER_MIN}px">
+          <span class="num text-2xs text-subtle w-11 shrink-0 -mt-1.5 text-right">${String(h).padStart(2, '0')}:00</span>
+          <span class="flex-1 h-px bg-outline"></span></div>`).join('')}
+
+        <!-- Now line: 09:41 -->
+        <div class="absolute left-0 right-0 z-[2] flex items-center gap-2" style="top:${toMin('09:41') * PX_PER_MIN}px" aria-hidden="true">
+          <span class="num text-2xs font-bold text-danger w-11 shrink-0 text-right -mt-px">09:41</span>
+          <span class="flex-1 h-0.5 bg-danger relative"><span class="absolute -left-1 -top-[3px] w-2 h-2 rounded-full bg-danger"></span></span>
+        </div>
+
+        <!-- Slots -->
+        <div class="absolute left-[52px] right-0 top-0 bottom-0">
+          ${blocks.map((b) => {
+            const top = toMin(b.time) * PX_PER_MIN;
+            const h = b.dur * PX_PER_MIN - 3;
+            const p = b.appt ? DB.byMrn(b.appt.patient) : null;
+            // Same 15-minute notice rule the booking page enforces, so an open slot
+            // that has already passed is not offered here either.
+            const bookable = b.status === 'open' && b.time >= CLOSED_BEFORE;
+            const skin = bookable
+              ? 'bg-surface-0 border-dashed border-outline-strong text-muted hover:border-primary hover:bg-primary-container/40 cursor-pointer'
+              : {
+                  booked: 'bg-primary-container border-primary/40 text-primary-container-foreground',
+                  open: 'bg-surface-2 border-dashed border-outline text-subtle',
+                  blocked: 'bg-surface-2 border-outline text-subtle',
+                  held: 'bg-warning-container border-warning/40 text-warning-container-foreground',
+                }[b.status];
+            const noShow = b.appt && b.appt.status === 'no_show';
+            const label = p
+              ? `<span class="text-base font-semibold truncate">${p.name}</span>`
+              : `<span class="text-base ${bookable ? 'font-medium' : ''} truncate">${
+                  bookable ? 'Open — click to book' : b.status === 'open' ? 'Passed — too late to book' : b.reason
+                }</span>`;
+            return `<div class="absolute left-0 right-0" style="top:${top}px;height:${h}px">
+              <${bookable ? 'button type="button" data-open-slot="' + b.time + '"' : 'div'}
+                class="w-full h-full text-left rounded-lg border px-2.5 py-1.5 overflow-hidden press ${skin} ${noShow ? 'opacity-70' : ''}"
+                ${bookable ? `aria-label="Book the ${b.time} slot"` : ''}>
+                <span class="flex items-center gap-1.5 min-w-0">
+                  <span class="num text-2xs font-bold shrink-0">${b.time}</span>
+                  ${label}
+                  ${noShow ? chip('no_show', { size: 'sm' }) : ''}
+                </span>
+                ${p ? `<span class="block text-2xs truncate opacity-80">${b.appt.reason} · ${p.mrn}${p.allergies.length ? ' · allergies on file' : ''}</span>` : ''}
+              </${bookable ? 'button' : 'div'}>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <p class="mt-3 pt-3 border-t border-outline text-xs text-muted flex items-start gap-1.5">
+        ${icon('info', 'w-3.5 h-3.5 shrink-0 mt-px')}
+        <span>The <span class="num">11:00–12:00</span> gap is the only stretch long enough to absorb an urgent referral today. Blocked periods are cath lab and lunch.</span></p>`;
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    host.querySelectorAll('[data-open-slot]').forEach((b) => b.addEventListener('click', () => {
+      location.href = `05-appointment-booking.html?role=${role}&doctor=${doctorId}&slot=${b.dataset.openSlot}`;
+    }));
+  }
+
+  /* ─────────── Week view ─────────── */
+  function renderWeek() {
+    const host = document.getElementById('weekView');
+    const maxCount = Math.max(...WEEK.map((w) => w.count));
+    host.innerHTML = `
+      <div class="grid grid-cols-7 gap-2">
+        ${WEEK.map((w) => `<div class="min-w-0">
+          <p class="text-2xs font-semibold text-center num mb-1.5 ${w.today ? 'text-primary' : 'text-muted'}">${w.d}${w.today ? ' •' : ''}</p>
+          <button type="button" class="w-full rounded-lg border p-2 text-center press ${w.today ? 'border-primary bg-primary-container' : w.count ? 'border-outline bg-surface-0 hover:bg-surface-2' : 'border-outline bg-surface-2 text-subtle'}"
+            aria-label="${w.d}: ${w.count} appointments over ${w.hours} clinic hours">
+            <span class="num block text-xl font-bold">${w.count || '—'}</span>
+            <span class="block text-2xs ${w.today ? '' : 'text-muted'}">${w.count ? 'appts' : 'closed'}</span>
+            <span class="block mt-1.5 h-1.5 rounded-full bg-surface-3 overflow-hidden">
+              <span class="block h-full rounded-full bg-primary" style="width:${maxCount ? (w.count / maxCount) * 100 : 0}%"></span></span>
+            <span class="num block text-2xs text-subtle mt-1">${w.hours}h</span>
+          </button></div>`).join('')}
+      </div>
+      <div class="mt-4 pt-4 border-t border-outline">
+        ${C.bars({
+          labels: WEEK.map((w) => w.d.split(' ')[0]),
+          series: [
+            { label: 'Booked', tone: 'primary', values: WEEK.map((w) => w.count) },
+            { label: 'Capacity', tone: 'info', pattern: true, values: WEEK.map((w) => w.hours * 2) },
+          ],
+          height: 180, yUnit: ' appts',
+          summary: 'Booked appointments against capacity for the week of 8 September. Friday is the fullest day at 13 of 14 slots; Thursday runs a half day.',
+          caption: 'Weekly booked appointments versus slot capacity',
+        })}
+      </div>`;
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    C.wire(host);
+  }
+
+  /* ─────────── Alerts ─────────── */
+  document.getElementById('alerts').innerHTML = banner({
+    tone: 'warning',
+    title: 'One patient did not attend at 09:30',
+    body: 'Joko Prasetyo (<span class="num">P-001244</span>) has now missed 2 appointments. Under scheduling rules the next booking requires a deposit.',
+    actions: `${button({ label: 'Call patient', variant: 'outline', size: 'sm', icon: 'phone-call', attrs: 'data-call' })}
+              ${button({ label: 'Release the slot', variant: 'ghost', size: 'sm', icon: 'calendar-plus', attrs: 'data-release' })}`,
+  });
+  lucide.createIcons({ nameAttr: 'data-lucide' });
+
+  /* ─────────── Wiring ─────────── */
+  document.getElementById('docPick').innerHTML = field({
+    id: 'docSel', label: 'Clinician', type: 'select',
+    options: DB.doctors.filter((d) => d.onDuty).map((d) => ({ label: `${d.name} · ${DB.deptName(d.dept)}`, value: d.id, selected: d.id === doctorId })),
+  });
+  // The select's own label is redundant next to the toolbar; keep it for screen readers only.
+  document.querySelector('#docPick label').className = 'sr-only';
+  wireFields(document);
+  document.getElementById('docSel').addEventListener('change', (e) => {
+    const url = new URL(location.href);
+    url.searchParams.set('doctor', e.target.value);
+    location.href = url.toString();
+  });
+
+  document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+    view = b.dataset.view;
+    document.querySelectorAll('[data-view]').forEach((x) => {
+      const on = x === b;
+      x.setAttribute('aria-pressed', String(on));
+      x.className = `px-3 h-8 rounded-md text-xs font-semibold capitalize press ${on ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-surface-3'}`;
+    });
+    document.getElementById('dayView').hidden = view !== 'day';
+    document.getElementById('weekView').hidden = view !== 'week';
+    UI.announce(`${view} view`);
+  }));
+
+  document.querySelector('[data-add]').addEventListener('click', () => { location.href = `05-appointment-booking.html?role=${role}&doctor=${doctorId}`; });
+  document.querySelector('[data-prev]').addEventListener('click', () => toast('Mon 8 Sep loaded — 12 appointments.', { tone: 'info' }));
+  document.querySelector('[data-next]').addEventListener('click', () => toast('Wed 10 Sep loaded — 11 appointments.', { tone: 'info' }));
+  document.querySelector('[data-today]').addEventListener('click', () => toast('Already on today.', { tone: 'neutral' }));
+  document.querySelector('[data-call]').addEventListener('click', () => toast('Dialling +62 819 6612 085…', { tone: 'info' }));
+  document.querySelector('[data-release]').addEventListener('click', () => toast('09:30 released and bookable.', { tone: 'success', undo: () => toast('Slot restored to no-show.', { tone: 'neutral' }) }));
+
+  document.querySelector('[data-block]').addEventListener('click', () => {
+    const d = dialog({
+      title: 'Block time in the schedule',
+      size: 'md',
+      body: `<p class="text-base text-muted mb-4">Blocked periods cannot be booked by reception. Existing appointments in the range are never overwritten — you will be asked to move them.</p>
+        <form id="blkForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div id="b1"></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="b2"></div><div id="b3"></div></div>
+          <div id="b4"></div>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Block this time', variant: 'primary', icon: 'calendar-x',
+          onClick: () => {
+            if (!UI.validateForm(d.body.querySelector('#blkForm'))) return false;
+            toast('13:00–14:00 blocked on Tue 9 Sep.', { tone: 'success', detail: '1 appointment needs moving.', undo: () => toast('Block removed.', { tone: 'neutral' }) });
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#b1').innerHTML = field({ id: 'blkDate', label: 'Date', type: 'date', required: true, value: DB.TODAY, attrs: `min="${DB.TODAY}"` });
+    d.body.querySelector('#b2').innerHTML = field({ id: 'blkFrom', label: 'From', type: 'time', required: true, value: '13:00', mono: true });
+    d.body.querySelector('#b3').innerHTML = field({ id: 'blkTo', label: 'To', type: 'time', required: true, value: '14:00', mono: true });
+    d.body.querySelector('#b4').innerHTML = field({ id: 'blkWhy', label: 'Reason', required: true, placeholder: 'e.g. Cath lab, teaching round, leave', help: 'Shown to reception so they can explain the gap to patients.' });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  });
+
+  UI.shell({ title: 'Schedule', subtitle: `${doctor().name} · ${DB.deptName(doctor().dept)}`, active: 'appointments', role, roleAware: false });
+  renderDay();
+  renderWeek();
+  C.wire(document);
+})();
+</script>
+</body>
+</html>

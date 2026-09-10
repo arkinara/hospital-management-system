@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · Permissions — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, icon, button, toast, dialog, confirmDialog,
+          btnClass, field, wireFields, banner, breadcrumb, emptyState, metric } = UI;
+  const role = new URLSearchParams(location.search).get('role') || 'Admin';
+
+  const ROLES = Object.keys(DB.permissions);
+  const ACTIONS = [
+    { f: 'v', label: 'View', icon: 'eye', help: 'Read records in this module' },
+    { f: 'c', label: 'Create', icon: 'plus', help: 'Add new records' },
+    { f: 'e', label: 'Edit', icon: 'square-pen', help: 'Change existing records' },
+    { f: 'd', label: 'Delete', icon: 'trash-2', help: 'Remove or void records' },
+  ];
+
+  // Working copy; the saved baseline is what we diff against.
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  let saved = clone(DB.permissions);
+  let draft = clone(DB.permissions);
+
+  const has = (r, m, f) => (draft[r][m] || '').includes(f);
+  const hasSaved = (r, m, f) => (saved[r][m] || '').includes(f);
+  const changed = (r, m, f) => has(r, m, f) !== hasSaved(r, m, f);
+  const diffCount = () => ROLES.reduce((a, r) => a + DB.modules.reduce((b, m) => b + ACTIONS.filter((x) => changed(r, m, x.f)).length, 0), 0);
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([{ label: 'Admin' }, { label: 'Permissions' }])}
+    ${pageHead({
+      title: 'Role × module permissions',
+      meta: 'The single source of truth for what each role can do. The navigation, the page actions and every API route read this same matrix.',
+      actions: `${button({ label: 'Compare with saved', variant: 'ghost', icon: 'git-compare', attrs: 'data-diff' })}
+                ${button({ label: 'Reset to shipped defaults', variant: 'outline', icon: 'rotate-ccw', attrs: 'data-reset' })}`,
+    })}
+
+    ${banner({
+      tone: 'info',
+      title: 'The interface check is a convenience; the API check is the boundary',
+      body: 'Turning a permission off hides the relevant navigation and buttons, and every FastAPI route independently re-checks the caller against this matrix before touching data. A hidden button is never the security control.',
+    })}
+
+    <div data-stagger class="grid gap-3 grid-cols-2 xl:grid-cols-4 my-3">
+      ${metric({ label: 'Roles', value: ROLES.length, deltaLabel: 'Admin is immutable', icon: 'users' })}
+      ${metric({ label: 'Modules', value: DB.modules.length, deltaLabel: '4 actions each', icon: 'boxes' })}
+      ${metric({ label: 'Grants active', value: ROLES.reduce((a, r) => a + DB.modules.reduce((b, m) => b + (draft[r][m] || '').length, 0), 0), unit: `of ${ROLES.length * DB.modules.length * 4}`, icon: 'key-round' })}
+      ${metric({ label: 'Delete rights', value: ROLES.reduce((a, r) => a + DB.modules.filter((m) => has(r, m, 'd')).length, 0), deltaLabel: 'Kept deliberately scarce', tone: 'inverse', icon: 'trash-2' })}
+    </div>
+
+    <div class="card !p-0 overflow-hidden">
+      <div class="flex flex-wrap items-center gap-3 px-3.5 py-2.5 border-b border-outline bg-surface-1">
+        <p class="text-base font-semibold flex-1 min-w-0">Permission matrix</p>
+        <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted">
+          ${ACTIONS.map((a) => `<li class="inline-flex items-center gap-1">${icon(a.icon, 'w-3 h-3')}${a.label}</li>`).join('')}
+        </ul>
+      </div>
+
+      <div data-states>
+        <div data-state="ready">
+          <!-- Desktop: one row per module, one cell group per role -->
+          <div class="hidden md:block overflow-x-auto">
+            <table class="dt" id="matrix">
+              <caption class="sr-only">Permission matrix: for each module, which of view, create, edit and delete each role may perform</caption>
+              <thead>
+                <tr>
+                  <th scope="col" rowspan="2" class="align-bottom" style="min-width:150px">Module</th>
+                  ${ROLES.map((r) => `<th scope="colgroup" colspan="4" class="text-center border-l border-outline">
+                    <span class="inline-flex items-center gap-1.5">${r}${r === 'Admin' ? icon('lock', 'w-3 h-3') : ''}</span></th>`).join('')}
+                </tr>
+                <tr>
+                  ${ROLES.map((r) => ACTIONS.map((a, i) => `<th scope="col" class="text-center font-normal ${i === 0 ? 'border-l border-outline' : ''}" title="${a.label} — ${a.help}">
+                    <span aria-hidden="true">${icon(a.icon, 'w-3.5 h-3.5 mx-auto text-muted')}</span><span class="sr-only">${r} ${a.label}</span></th>`).join('')).join('')}
+                </tr>
+              </thead>
+              <tbody id="mbody"></tbody>
+            </table>
+          </div>
+
+          <!-- Mobile: role-by-role accordions instead of a 25-column table -->
+          <div class="md:hidden divide-y divide-outline" id="mmobile"></div>
+        </div>
+        <div data-state="loading" hidden>${UI.skeletonRows(6, 5)}</div>
+        <div data-state="empty" hidden>${emptyState({ icon: 'key-round', title: 'No roles configured', body: 'A system with no roles cannot authorise anybody. Create at least one role to continue.' })}</div>
+        <div data-state="error" hidden>${UI.errorState({ title: 'Permission service unreachable', body: 'The matrix could not be loaded. Existing sessions keep the permissions they were issued; nothing has changed.' })}</div>
+      </div>
+    </div>
+
+    ${card(`
+      ${cardHead({ title: 'Effective access by role', icon: 'shield-check', meta: 'A plain-English read-back of the matrix above' })}
+      <div id="summary" class="grid gap-3 md:grid-cols-2"></div>
+    `, 'mt-3')}
+
+    <!-- Unsaved bar -->
+    <div id="saveBar" hidden class="fixed bottom-0 left-0 right-0 z-fab anim-in lg:left-60 border-t border-outline bg-surface-1/97 backdrop-blur pb-safe">
+      <div class="mx-auto max-w-[1400px] px-3 sm:px-4 lg:px-6 py-2.5 flex flex-wrap items-center gap-3">
+        <p class="text-base font-medium flex items-center gap-2 flex-1 min-w-0">
+          ${icon('circle-dot', 'w-4 h-4 text-warning shrink-0')}<span id="saveCount" class="truncate"></span>
+        </p>
+        ${button({ label: 'Review changes', variant: 'ghost', icon: 'git-compare', attrs: 'data-diff' })}
+        ${button({ label: 'Discard', variant: 'ghost', attrs: 'data-discard' })}
+        ${button({ label: 'Save matrix', variant: 'primary', icon: 'check', attrs: 'data-save' })}
+      </div>
+    </div>
+  `);
+
+  /* ─────────── Matrix cell ───────────
+     A checkbox, not a coloured square: it is focusable, announces its own label,
+     and reads correctly to a screen reader as "Nurse, Records, create". */
+  function cell(r, m, a, first) {
+    const on = has(r, m, a.f);
+    const locked = r === 'Admin';
+    const diff = changed(r, m, a.f);
+    return `<td class="text-center ${first ? 'border-l border-outline' : ''} ${diff ? 'bg-warning-container/50' : ''}">
+      <input type="checkbox" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''}
+        data-perm="${r}|${m}|${a.f}"
+        class="w-4 h-4 accent-[rgb(var(--primary))] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed align-middle"
+        aria-label="${r} may ${a.label.toLowerCase()} in ${m}${locked ? ' (Admin is immutable)' : ''}"
+        title="${r} · ${m} · ${a.label}${locked ? ' — Admin cannot be restricted' : ''}">
+      ${diff ? `<span class="sr-only">changed</span>` : ''}</td>`;
+  }
+
+  function renderMatrix() {
+    document.getElementById('mbody').innerHTML = DB.modules.map((m) => `<tr>
+      <th scope="row" class="font-medium text-left !normal-case !text-sm !tracking-normal !bg-transparent !static">
+        <span class="flex items-center gap-2">${icon({ Patients: 'users', Appointments: 'calendar-days', Records: 'file-text', Billing: 'receipt-text', Admin: 'shield-check', Reports: 'bar-chart-3' }[m], 'w-4 h-4 text-muted')}${m}</span></th>
+      ${ROLES.map((r) => ACTIONS.map((a, i) => cell(r, m, a, i === 0)).join('')).join('')}
+    </tr>`).join('');
+
+    document.getElementById('mmobile').innerHTML = ROLES.map((r) => `
+      <details ${r === 'Nurse' ? 'open' : ''}>
+        <summary class="flex items-center gap-2 px-3.5 min-h-12 cursor-pointer hover:bg-surface-2 select-none">
+          <span class="flex-1 text-base font-semibold">${r}</span>
+          ${r === 'Admin' ? `<span class="text-2xs text-muted inline-flex items-center gap-1">${icon('lock', 'w-3 h-3')}immutable</span>` : ''}
+          ${icon('chevron-down', 'w-4 h-4 text-muted')}
+        </summary>
+        <div class="px-3.5 pb-3.5 space-y-2.5">
+          ${DB.modules.map((m) => `<fieldset class="rounded-lg border border-outline p-2.5">
+            <legend class="text-xs font-semibold px-1">${m}</legend>
+            <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+              ${ACTIONS.map((a) => `<label class="inline-flex items-center gap-1.5 min-h-11 cursor-pointer">
+                <input type="checkbox" ${has(r, m, a.f) ? 'checked' : ''} ${r === 'Admin' ? 'disabled' : ''}
+                  data-perm="${r}|${m}|${a.f}" class="w-4 h-4 accent-[rgb(var(--primary))] cursor-pointer disabled:opacity-40"
+                  aria-label="${r} may ${a.label.toLowerCase()} in ${m}">
+                <span class="text-base ${has(r, m, a.f) ? '' : 'text-muted'}">${a.label}</span></label>`).join('')}
+            </div></fieldset>`).join('')}
+        </div></details>`).join('');
+
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    wireCells();
+    renderSummary();
+    renderSaveBar();
+  }
+
+  function wireCells() {
+    document.querySelectorAll('[data-perm]').forEach((cb) => cb.addEventListener('change', () => {
+      const [r, m, f] = cb.dataset.perm.split('|');
+      const cur = draft[r][m] || '';
+      let next = cb.checked ? cur + f : cur.replace(f, '');
+
+      // Dependency: create, edit or delete without view is meaningless, so view
+      // is granted alongside — and revoking view revokes the rest.
+      if (cb.checked && f !== 'v' && !next.includes('v')) {
+        next += 'v';
+        toast(`View added automatically — ${m} cannot be ${f === 'c' ? 'created' : f === 'e' ? 'edited' : 'deleted'} without it.`, { tone: 'info' });
+      }
+      if (!cb.checked && f === 'v' && next.length) {
+        next = '';
+        toast(`Create, edit and delete removed too — they require view access to ${m}.`, { tone: 'info' });
+      }
+      draft[r][m] = ['v', 'c', 'e', 'd'].filter((x) => next.includes(x)).join('');
+      renderMatrix();
+    }));
+  }
+
+  /* ─────────── Plain-English read-back ─────────── */
+  function renderSummary() {
+    document.getElementById('summary').innerHTML = ROLES.map((r) => {
+      const lines = DB.modules.map((m) => {
+        const p = draft[r][m] || '';
+        if (!p) return { m, text: 'no access', tone: 'subtle' };
+        const acts = ACTIONS.filter((a) => p.includes(a.f)).map((a) => a.label.toLowerCase());
+        return { m, text: acts.join(', '), tone: p.includes('d') ? 'danger' : 'foreground' };
+      });
+      const navCount = DB.modules.filter((m) => has(r, m, 'v')).length;
+      return `<div class="rounded-xl border border-outline bg-surface-1 p-3.5">
+        <div class="flex items-center gap-2 mb-2.5">
+          <h3 class="text-base font-semibold font-display flex-1">${r}</h3>
+          <span class="num text-2xs text-muted">${navCount} nav item${navCount === 1 ? '' : 's'}</span>
+        </div>
+        <ul class="space-y-1.5">
+          ${lines.map((l) => `<li class="flex items-baseline gap-2 text-base">
+            <span class="w-24 shrink-0 text-muted text-xs">${l.m}</span>
+            <span class="flex-1 ${l.tone === 'subtle' ? 'text-subtle' : l.tone === 'danger' ? 'text-danger font-medium' : ''}">${l.text}</span></li>`).join('')}
+        </ul>
+        <a href="${DB.dashboardFor[r]}?role=${r}" class="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline underline-offset-2 mt-2.5">
+          See the ${r} view ${icon('arrow-right', 'w-3 h-3')}</a>
+      </div>`;
+    }).join('');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────── Save bar & diff ─────────── */
+  function renderSaveBar() {
+    const bar = document.getElementById('saveBar');
+    const n = diffCount();
+    if (!n) { bar.hidden = true; document.body.style.paddingBottom = ''; return; }
+    document.getElementById('saveCount').textContent = `${n} permission${n === 1 ? '' : 's'} changed — not saved yet`;
+    bar.hidden = false;
+    document.body.style.paddingBottom = '72px';
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  function diffRows() {
+    const rows = [];
+    ROLES.forEach((r) => DB.modules.forEach((m) => ACTIONS.forEach((a) => {
+      if (changed(r, m, a.f)) rows.push({ r, m, a: a.label, granted: has(r, m, a.f) });
+    })));
+    return rows;
+  }
+
+  function openDiff() {
+    const rows = diffRows();
+    dialog({
+      title: 'Pending permission changes',
+      size: 'lg',
+      body: rows.length ? `<p class="text-base text-muted mb-3"><span class="num font-semibold">${rows.length}</span> change${rows.length === 1 ? '' : 's'} compared with the saved matrix. Grants are the ones worth a second look.</p>
+        <div class="overflow-x-auto rounded-lg border border-outline">
+          <table class="dt"><caption class="sr-only">Pending permission changes</caption>
+            <thead><tr><th scope="col">Role</th><th scope="col">Module</th><th scope="col">Action</th><th scope="col">Change</th></tr></thead>
+            <tbody>${rows.map((x) => `<tr>
+              <td class="font-medium">${x.r}</td><td>${x.m}</td><td>${x.a}</td>
+              <td>${x.granted
+                ? `<span class="inline-flex items-center gap-1 text-xs font-semibold text-success">${icon('plus', 'w-3.5 h-3.5')}Granted</span>`
+                : `<span class="inline-flex items-center gap-1 text-xs font-semibold text-danger">${icon('minus', 'w-3.5 h-3.5')}Revoked</span>`}</td></tr>`).join('')}</tbody>
+          </table></div>
+        <p class="text-xs text-muted mt-3">Users keep their current permissions until they next sign in. Revocations on the API side take effect immediately.</p>`
+        : `<p class="text-base text-muted">Nothing has changed since the last save.</p>`,
+      actions: rows.length
+        ? [{ label: 'Keep editing', variant: 'ghost' }, { label: 'Save matrix', variant: 'primary', icon: 'check', onClick: save }]
+        : [{ label: 'Close', variant: 'ghost' }],
+    });
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  function save() {
+    const rows = diffRows();
+    const grants = rows.filter((x) => x.granted);
+    confirmDialog({
+      title: `Save ${rows.length} permission change${rows.length === 1 ? '' : 's'}?`,
+      tone: grants.some((g) => g.a === 'Delete') ? 'danger' : 'info',
+      message: 'This changes what every user of the affected roles can do across the whole system.',
+      consequence: [
+        `${grants.length} grant${grants.length === 1 ? '' : 's'} and ${rows.length - grants.length} revocation${rows.length - grants.length === 1 ? '' : 's'}.`,
+        grants.some((g) => g.a === 'Delete') ? 'A delete right is being granted — deletions are recoverable for 30 days only.' : 'No new delete rights are granted.',
+        'The change is written to the immutable audit log against your account.',
+      ],
+      confirmLabel: 'Save matrix',
+      onConfirm: () => {
+        const before = clone(saved);
+        saved = clone(draft);
+        renderMatrix();
+        toast('Permission matrix saved.', {
+          tone: 'success',
+          detail: 'API enforcement is live immediately; interfaces update at next sign-in.',
+          undo: () => { saved = before; draft = clone(before); renderMatrix(); toast('Matrix rolled back.', { tone: 'neutral' }); },
+        });
+      },
+    });
+  }
+
+  document.querySelectorAll('[data-diff]').forEach((b) => b.addEventListener('click', openDiff));
+  document.querySelector('[data-save]').addEventListener('click', save);
+  document.querySelector('[data-discard]').addEventListener('click', () => {
+    draft = clone(saved);
+    renderMatrix();
+    toast('Unsaved permission changes discarded.', { tone: 'neutral' });
+  });
+  document.querySelector('[data-reset]').addEventListener('click', () => {
+    confirmDialog({
+      title: 'Reset to the shipped defaults?',
+      tone: 'warning',
+      message: 'Every role returns to the permission set the product ships with. Any local policy you have built here is lost.',
+      consequence: ['Doctor loses Billing access if you had granted it.', 'Nurse returns to view-only on Patients and append-only on Records.', 'Admin is unaffected — it is always full access.'],
+      confirmLabel: 'Reset matrix',
+      onConfirm: () => { draft = clone(DB.permissions); renderMatrix(); toast('Matrix reset to defaults — review, then save.', { tone: 'warning' }); },
+    });
+  });
+
+  UI.shell({ title: 'Permissions', subtitle: 'Admin · role-based access control', active: 'permissions', role, roleAware: false });
+  renderMatrix();
+  Charts.wire(document);
+})();
+</script>
+</body>
+</html>

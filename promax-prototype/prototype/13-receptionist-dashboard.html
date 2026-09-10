@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Receptionist dashboard — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, acuityBadge, avatar, icon, button, toast, dialog,
+          confirmDialog, btnClass, field, wireFields, banner, emptyState, metric, table, dashboard } = UI;
+  const C = Charts;
+  const role = 'Receptionist';
+
+  /* The walk-in queue is the receptionist's actual job: people standing in front of
+     them, in arrival order, with the wait clock running. */
+  let queue = [
+    { id: 'Q-01', name: 'Hendra Gunawan', mrn: 'P-001213', arrived: '09:12', wait: 29, reason: 'Chest pain, referred from clinic', dept: 'EMG', acuity: 'critical', state: 'waiting' },
+    { id: 'Q-02', name: 'Ayu Kartika', mrn: 'P-001255', arrived: '09:20', wait: 21, reason: 'Fever 3 days, mother present', dept: 'PED', acuity: 'standard', state: 'waiting' },
+    { id: 'Q-03', name: 'Nur Aisyah', mrn: null, arrived: '09:31', wait: 10, reason: 'First visit — cough and fatigue', dept: 'GEN', acuity: 'routine', state: 'registering' },
+    { id: 'Q-04', name: 'Dedi Kurniawan', mrn: 'P-001108', arrived: '09:36', wait: 5, reason: 'Repeat prescription', dept: 'GEN', acuity: 'routine', state: 'waiting' },
+  ];
+
+  const WIDGETS = [
+    {
+      key: 'registration-queue', name: 'Registration queue', icon: 'clipboard-list', locked: false,
+      span: 'xl:col-span-2', meta: `${queue.length} waiting`,
+      body: () => `<div data-states>
+        <div data-state="ready"><ul id="queue" class="divide-y divide-outline -mx-1"></ul></div>
+        <div data-state="loading" hidden>${UI.skeletonRows(4, 4)}</div>
+        <div data-state="empty" hidden>${emptyState({ icon: 'party-popper', title: 'Nobody waiting', body: 'The queue is clear. Walk-ins appear here the moment they take a ticket at the kiosk.', action: button({ label: 'Register a walk-in', variant: 'primary', icon: 'user-plus', attrs: 'data-walkin' }) })}</div>
+        <div data-state="error" hidden>${UI.errorState({ title: 'Queue service unreachable', body: 'The kiosk feed dropped. Ask waiting patients to check in at the desk and register them manually — nothing is lost.' })}</div>
+      </div>`,
+    },
+    {
+      key: 'todays-appointments', name: "Today's appointments", icon: 'calendar-clock', locked: true,
+      span: 'xl:col-span-2', meta: '61 today',
+      body: () => `<div id="w-appts"></div>`,
+    },
+    {
+      key: 'payments-due', name: 'Payments to collect', icon: 'wallet', locked: false,
+      body: () => `<ul class="divide-y divide-outline -mx-1">
+        ${DB.patients.filter((p) => p.balance > 0).slice(0, 5).map((p) => `<li class="flex items-center gap-2.5 px-1 py-2.5">
+          ${avatar(p.name)}
+          <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${p.name}</span>
+          <span class="block text-2xs text-muted num truncate">${p.mrn} · ${p.insurer}</span></span>
+          <span class="num text-base font-semibold text-danger shrink-0">${DB.rp(p.balance)}</span></li>`).join('')}
+      </ul>
+      <a href="08-billing.html?role=Receptionist" class="${btnClass('outline', 'sm')} w-full mt-3">${icon('receipt-text', 'w-3.5 h-3.5')}<span>Open billing</span></a>`,
+    },
+    {
+      key: 'wait-times', name: 'Wait times by department', icon: 'timer', locked: false,
+      body: () => C.hbars({
+        rows: [
+          { label: 'Emergency', value: 29, tone: 'danger' },
+          { label: 'Pediatric', value: 21, tone: 'warning' },
+          { label: 'General', value: 8, tone: 'success' },
+          { label: 'Cardiology', value: 4, tone: 'success' },
+        ],
+        unit: ' min', valueLabel: (v) => v,
+        summary: 'Current mean wait by department: Emergency 29 minutes, Pediatric 21, General 8, Cardiology 4. Emergency and Pediatric are both above the 15-minute target.',
+        caption: 'Mean patient wait by department, now',
+      }) + `<p class="mt-3 pt-3 border-t border-outline text-xs text-muted flex items-start gap-1.5">
+        ${icon('alert-triangle', 'w-3.5 h-3.5 text-warning shrink-0 mt-px')}
+        <span>Two departments are over the <span class="num">15-minute</span> target. Emergency is at bed capacity, which is the root cause.</span></p>`,
+    },
+  ];
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${pageHead({
+      title: 'Front desk',
+      meta: 'Tuesday 9 September 2026 · <span class="num">09:41 WIB</span> · Ika Permata, General',
+      actions: `${button({ label: 'Register walk-in', variant: 'outline', icon: 'user-plus', attrs: 'data-walkin' })}
+                ${button({ label: 'Book appointment', variant: 'primary', icon: 'calendar-plus', attrs: 'data-book' })}`,
+    })}
+
+    <div id="alerts" class="space-y-2.5 mb-4"></div>
+
+    <div data-stagger class="grid gap-3 grid-cols-2 xl:grid-cols-4 mb-4">
+      ${metric({ label: 'Waiting now', value: queue.length, deltaLabel: `longest ${Math.max(...queue.map((q) => q.wait))} min`, icon: 'users', tone: 'inverse' })}
+      ${metric({ label: 'Checked in today', value: 24, unit: 'of 61', delta: 9, deltaLabel: 'vs last Tuesday', icon: 'log-in', spark: C.sparkline([18, 22, 20, 26, 24, 12, 9, 27, 24], { tone: 'primary' }) })}
+      ${metric({ label: 'No-shows', value: 3, delta: 15, deltaLabel: '5% of the day', tone: 'inverse', icon: 'user-x', spark: C.sparkline([2, 3, 2, 4, 3, 1, 0, 4, 3], { tone: 'accent' }) })}
+      ${metric({ label: 'Collected at desk', value: '4.8', unit: 'Rp mn', delta: 6, deltaLabel: 'cash and QRIS', icon: 'banknote', spark: C.sparkline([3.1, 4.2, 3.8, 5.1, 4.4, 2.2, 1.8, 5.4, 4.8], { tone: 'success' }) })}
+    </div>
+
+    <div class="flex items-center gap-2 mb-2.5">
+      <h2 class="text-lg font-semibold font-display">My widgets</h2>
+      <span class="text-xs text-muted">Drag to reorder, or focus a handle and press ← →</span>
+    </div>
+    <div id="grid" class="grid gap-3 md:grid-cols-2 xl:grid-cols-4 items-start"></div>
+  `);
+
+  document.getElementById('alerts').innerHTML = [
+    banner({
+      tone: 'danger',
+      title: 'Hendra Gunawan has waited 29 minutes with critical acuity',
+      body: 'Emergency is at bed capacity. Triage escalation is the correct route — do not leave a critical walk-in in the general queue.',
+      actions: `${button({ label: 'Escalate to triage', variant: 'danger', size: 'sm', icon: 'siren', attrs: 'data-escalate' })}
+                ${button({ label: 'Call the duty nurse', variant: 'outline', size: 'sm', icon: 'phone-call', attrs: 'data-nurse' })}`,
+    }),
+    banner({
+      tone: 'info',
+      title: 'One walk-in has no medical record yet',
+      body: 'Nur Aisyah (arrived <span class="num">09:31</span>) is a first visit. Registration is half-complete — duplicate detection will run on the national ID.',
+      actions: button({ label: 'Finish registration', variant: 'outline', size: 'sm', icon: 'user-plus', attrs: 'data-finish' }),
+    }),
+  ].join('');
+
+  /* ─────────── Queue ─────────── */
+  function renderQueue() {
+    const host = document.getElementById('queue');
+    if (!host) return;
+    if (!queue.length) { UI.setState('empty'); return; }
+    host.innerHTML = queue.map((q) => `<li class="px-1 py-2.5">
+      <div class="flex items-start gap-2.5">
+        ${avatar(q.name, 'w-9 h-9 text-xs')}
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span class="text-base font-semibold truncate">${q.name}</span>
+            ${acuityBadge(q.acuity)}
+            ${q.mrn ? `<span class="num text-2xs text-muted">${q.mrn}</span>` : `<span class="inline-flex items-center gap-1 text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-info-container text-info-container-foreground">${icon('sparkles', 'w-3 h-3')}First visit</span>`}
+          </div>
+          <p class="text-base text-muted truncate mt-0.5">${q.reason}</p>
+          <p class="num text-2xs text-subtle mt-0.5">Arrived ${q.arrived} · ${DB.deptName(q.dept)}</p>
+        </div>
+        <div class="shrink-0 text-right">
+          <p class="num text-md font-bold ${q.wait > 20 ? 'text-danger' : q.wait > 10 ? 'text-warning' : 'text-muted'}">${q.wait}m</p>
+          <p class="text-2xs text-subtle">waiting</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1.5 mt-2 pl-11">
+        ${q.mrn
+          ? button({ label: 'Check in', variant: 'primary', size: 'sm', icon: 'log-in', attrs: `data-checkin="${q.id}"` })
+          : button({ label: 'Complete registration', variant: 'primary', size: 'sm', icon: 'user-plus', attrs: `data-reg="${q.id}"` })}
+        ${button({ label: 'Book', variant: 'outline', size: 'sm', icon: 'calendar-plus', attrs: `data-qbook="${q.id}"` })}
+        ${button({ label: 'Remove', variant: 'ghost', size: 'sm', icon: 'x', attrs: `data-qrm="${q.id}"` })}
+      </div></li>`).join('');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+
+    host.querySelectorAll('[data-checkin]').forEach((b) => b.addEventListener('click', () => {
+      const q = queue.find((x) => x.id === b.dataset.checkin);
+      const at = queue.indexOf(q);
+      queue = queue.filter((x) => x.id !== q.id);
+      renderQueue(); renderCounts();
+      toast(`${q.name} checked in.`, {
+        tone: 'success',
+        detail: `${DB.deptName(q.dept)} notified — clinician sees them on their schedule.`,
+        undo: () => { queue.splice(at, 0, q); renderQueue(); renderCounts(); toast('Check-in reversed.', { tone: 'neutral' }); },
+      });
+    }));
+    host.querySelectorAll('[data-reg]').forEach((b) => b.addEventListener('click', () => openRegister(queue.find((x) => x.id === b.dataset.reg))));
+    host.querySelectorAll('[data-qbook]').forEach((b) => b.addEventListener('click', () => {
+      const q = queue.find((x) => x.id === b.dataset.qbook);
+      location.href = `05-appointment-booking.html?role=${role}${q.mrn ? '&mrn=' + q.mrn : ''}`;
+    }));
+    host.querySelectorAll('[data-qrm]').forEach((b) => b.addEventListener('click', () => {
+      const q = queue.find((x) => x.id === b.dataset.qrm);
+      const at = queue.indexOf(q);
+      confirmDialog({
+        title: `Remove ${q.name} from the queue?`,
+        tone: 'warning',
+        message: 'Use this only when a patient leaves without being seen. The wait is recorded as an abandoned visit.',
+        consequence: ['No clinical record is created.', 'The patient is not notified.', 'This shows in the daily abandonment count.'],
+        confirmLabel: 'Remove from queue',
+        onConfirm: () => {
+          queue = queue.filter((x) => x.id !== q.id);
+          renderQueue(); renderCounts();
+          toast(`${q.name} removed from the queue.`, { tone: 'neutral', undo: () => { queue.splice(at, 0, q); renderQueue(); renderCounts(); toast(`${q.name} restored.`, { tone: 'success' }); } });
+        },
+      });
+    }));
+  }
+
+  /** Keep the queue count audible; the visible tile is re-rendered by the widget. */
+  function renderCounts() {
+    UI.announce(`${queue.length} patients waiting`);
+  }
+
+  function openRegister(q) {
+    const d = dialog({
+      title: `Complete registration — ${q.name}`,
+      size: 'lg',
+      dirty: () => !!d.body.querySelector('#gNid')?.value,
+      body: `<p class="text-base text-muted mb-4">Arrived <span class="num">${q.arrived}</span> · ${q.reason}</p>
+        <form id="gForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div id="dupHost"></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="g1"></div><div id="g2"></div></div>
+          <div class="grid sm:grid-cols-3 gap-3"><div id="g3"></div><div id="g4"></div><div id="g5"></div></div>
+          <div id="g6"></div>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Register & check in', variant: 'primary', icon: 'user-check',
+          onClick: () => {
+            const form = d.body.querySelector('#gForm');
+            if (!UI.validateForm(form)) return false;
+            if (d.body.querySelector('#dupHost').dataset.blocking === '1') {
+              toast('Resolve the possible duplicate first.', { tone: 'warning' });
+              return false;
+            }
+            const at = queue.indexOf(q);
+            queue = queue.filter((x) => x.id !== q.id);
+            renderQueue(); renderCounts();
+            toast(`${q.name} registered as P-001302 and checked in.`, { tone: 'success', undo: () => { queue.splice(at, 0, q); renderQueue(); toast('Registration reversed.', { tone: 'neutral' }); } });
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#g1').innerHTML = field({ id: 'gName', label: 'Full legal name', required: true, value: q.name, icon: 'user' });
+    d.body.querySelector('#g2').innerHTML = field({ id: 'gNid', label: 'National ID (NIK)', required: true, mono: true, inputmode: 'numeric', placeholder: '16 digits', attrs: 'data-rule="nid" maxlength="16"', help: 'Duplicate detection runs as you type.' });
+    d.body.querySelector('#g3').innerHTML = field({ id: 'gDob', label: 'Date of birth', type: 'date', required: true, attrs: 'data-rule="dob" max="2026-09-09"' });
+    d.body.querySelector('#g4').innerHTML = field({ id: 'gSex', label: 'Sex', type: 'select', required: true, options: [{ label: 'Select…', value: '' }, { label: 'Female', value: 'F' }, { label: 'Male', value: 'M' }] });
+    d.body.querySelector('#g5').innerHTML = field({ id: 'gPhone', label: 'Mobile', type: 'tel', required: true, mono: true, attrs: 'data-rule="phone"', placeholder: '+62 8…' });
+    d.body.querySelector('#g6').innerHTML = field({ id: 'gAllergy', label: 'Known allergies', type: 'textarea', rows: 2, optional: true, help: 'Anything entered here becomes a red banner on every screen for this patient.' });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+
+    const dupHost = d.body.querySelector('#dupHost');
+    const nid = d.body.querySelector('#gNid');
+    let t;
+    nid.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const v = nid.value.replace(/\s/g, '');
+        const hit = v.length >= 10 ? DB.patients.find((p) => p.nid.startsWith(v.slice(0, 10))) : null;
+        if (!hit) { dupHost.innerHTML = ''; dupHost.dataset.blocking = '0'; return; }
+        dupHost.dataset.blocking = '1';
+        dupHost.innerHTML = banner({
+          tone: 'warning', dismissible: false,
+          title: 'A record already exists with this national ID',
+          body: `<span class="block mt-1.5 rounded-lg border border-outline bg-surface-0 p-2.5">
+            <span class="flex items-center gap-2.5">${avatar(hit.name, 'w-8 h-8 text-xs')}
+            <span class="min-w-0 flex-1"><span class="block text-base font-semibold truncate">${hit.name}</span>
+            <span class="num block text-2xs text-muted">${hit.mrn} · ${hit.dob} · last seen ${hit.lastVisit}</span></span></span></span>`,
+          actions: `${button({ label: 'Use this record', variant: 'primary', size: 'sm', icon: 'link', attrs: 'data-link' })}
+                    ${button({ label: 'Different person', variant: 'outline', size: 'sm', icon: 'user-plus', attrs: 'data-over' })}`,
+        });
+        lucide.createIcons({ nameAttr: 'data-lucide' });
+        dupHost.querySelector('[data-link]').addEventListener('click', () => { d.close(true); location.href = `04-patient-detail.html?mrn=${hit.mrn}&role=${role}`; });
+        dupHost.querySelector('[data-over]').addEventListener('click', () => {
+          confirmDialog({
+            title: 'Create a second record for this person?',
+            tone: 'warning',
+            message: 'Overriding duplicate detection is logged against your account.',
+            consequence: ['Clinical history will not be merged automatically.', 'Only an Admin can merge two records later.'],
+            confirmLabel: 'Confirm different person',
+            onConfirm: () => { dupHost.dataset.blocking = '0'; dupHost.innerHTML = ''; toast('Override recorded.', { tone: 'warning' }); },
+          });
+        });
+      }, 260);
+    });
+  }
+
+  /* ─────────── Widgets ─────────── */
+  // Re-mounting on reorder keeps the live tables and queue alive after a drag.
+  const dash = dashboard('#grid', { widgets: WIDGETS, onChange: () => mountInner() });
+
+  function mountInner() {
+    renderQueue();
+    const host = document.getElementById('w-appts');
+    if (host) table(host, {
+      label: "Today's appointments",
+      caption: 'Appointments booked for 9 September 2026',
+      rows: DB.appointments,
+      rowKey: (r) => r.id,
+      sort: { key: 'time', dir: 'asc' },
+      maxHeight: '300px',
+      onRow: (r) => `04-patient-detail.html?mrn=${r.patient}&role=${role}`,
+      columns: [
+        { key: 'time', label: 'Time', mono: true, width: '56px' },
+        { key: 'patient', label: 'Patient', cell: (r) => `<span class="font-medium truncate">${DB.byMrn(r.patient).name}</span>`, sortValue: (r) => DB.byMrn(r.patient).name },
+        { key: 'doctor', label: 'Clinician', cell: (r) => `<span class="text-muted truncate">${DB.byDoctor(r.doctor).name}</span>`, sortValue: (r) => DB.byDoctor(r.doctor).name },
+        { key: 'status', label: 'Status', cell: (r) => chip(r.status) },
+        {
+          key: 'act', label: '', sortable: false, align: 'right', width: '96px',
+          cell: (r) => r.status === 'booked'
+            ? `<button type="button" data-ci="${r.id}" class="${btnClass('subtle', 'sm')}">${icon('log-in', 'w-3.5 h-3.5')}<span>Check in</span></button>`
+            : '<span class="text-subtle text-2xs">—</span>',
+        },
+      ],
+      mobileCard: (r) => `<span class="flex items-center gap-2.5">
+        <span class="num text-xs font-semibold w-11 shrink-0">${r.time}</span>
+        <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${DB.byMrn(r.patient).name}</span>
+        <span class="block text-2xs text-muted truncate">${DB.byDoctor(r.doctor).name}</span></span>
+        ${chip(r.status, { size: 'sm' })}</span>`,
+      empty: { icon: 'calendar-off', title: 'Nothing booked today', body: 'The clinic day is clear. Walk-ins will still appear in the registration queue.' },
+      footer: `<span>Showing <span class="num">10</span> of <span class="num">61</span></span><a href="06-doctor-schedule.html?role=${role}" class="font-medium text-primary hover:underline underline-offset-2">Full schedule</a>`,
+    });
+
+    document.querySelectorAll('[data-ci]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const a = DB.appointments.find((x) => x.id === b.dataset.ci);
+      const before = a.status;
+      a.status = 'checked_in';
+      mountInner();
+      toast(`${DB.byMrn(a.patient).name} checked in.`, { tone: 'success', undo: () => { a.status = before; mountInner(); toast('Check-in reversed.', { tone: 'neutral' }); } });
+    }));
+  }
+
+  /* ─────────── Alert & page actions ─────────── */
+  document.querySelector('[data-escalate]').addEventListener('click', (e) => {
+    const done = UI.submitting(e.currentTarget, 'Escalating…');
+    setTimeout(() => {
+      done();
+      const q = queue.find((x) => x.id === 'Q-01');
+      if (q) { q.state = 'triage'; queue = queue.filter((x) => x.id !== 'Q-01'); }
+      renderQueue();
+      toast('Escalated to Emergency triage.', { tone: 'success', detail: 'Duty nurse acknowledged in 12 seconds.' });
+    }, 900);
+  });
+  document.querySelector('[data-nurse]').addEventListener('click', () => toast('Calling duty nurse, Emergency…', { tone: 'info' }));
+  document.querySelector('[data-finish]').addEventListener('click', () => openRegister(queue.find((x) => x.id === 'Q-03')));
+  document.querySelectorAll('[data-walkin]').forEach((b) => b.addEventListener('click', () => openRegister({ id: 'Q-new', name: '', arrived: '09:41', reason: 'Walk-in', dept: 'GEN', acuity: 'routine' })));
+  document.querySelector('[data-book]').addEventListener('click', () => { location.href = `05-appointment-booking.html?role=${role}`; });
+
+  UI.shell({ title: 'Dashboard', subtitle: 'Receptionist · front desk', active: 'dashboard', role });
+  mountInner();
+  C.wire(document);
+})();
+</script>
+</body>
+</html>

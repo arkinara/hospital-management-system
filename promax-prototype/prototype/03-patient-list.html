@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Patient directory — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, chip, acuityBadge, avatar, icon, button, table, toast,
+          dialog, confirmDialog, filterChip, btnClass, field, wireFields, banner, breadcrumb } = UI;
+  const role = new URLSearchParams(location.search).get('role') || 'Admin';
+  const perms = DB.permissions[role].Patients || '';
+  const canCreate = perms.includes('c');
+  const canEdit = perms.includes('e');
+
+  /* Facets are derived from the data, so a count never disagrees with the table. */
+  const facets = {
+    acuity: [
+      { key: 'critical', label: 'Critical' }, { key: 'urgent', label: 'Urgent' },
+      { key: 'standard', label: 'Standard' }, { key: 'routine', label: 'Routine' },
+    ],
+    status: [{ key: 'admitted', label: 'Admitted' }, { key: 'outpatient', label: 'Outpatient' }, { key: 'discharged', label: 'Discharged' }],
+    dept: DB.departments.map((d) => ({ key: d.id, label: d.name })),
+  };
+
+  let state = { q: '', acuity: new Set(), status: new Set(), dept: new Set(), view: 'all' };
+
+  const VIEWS = [
+    { key: 'all', label: 'All patients', icon: 'users' },
+    { key: 'mine', label: 'My department', icon: 'building-2' },
+    { key: 'today', label: 'Seen today', icon: 'calendar-check' },
+    { key: 'balance', label: 'Outstanding balance', icon: 'wallet' },
+  ];
+
+  function filtered() {
+    return DB.patients.filter((p) => {
+      if (state.q) {
+        const hay = `${p.name} ${p.mrn} ${p.nid} ${p.phone}`.toLowerCase();
+        if (!hay.includes(state.q.toLowerCase())) return false;
+      }
+      if (state.acuity.size && !state.acuity.has(p.acuity)) return false;
+      if (state.status.size && !state.status.has(p.status)) return false;
+      if (state.dept.size && !state.dept.has(p.dept)) return false;
+      if (state.view === 'today' && p.lastVisit !== DB.TODAY) return false;
+      if (state.view === 'balance' && p.balance === 0) return false;
+      if (state.view === 'mine' && p.dept !== 'CAR') return false;
+      return true;
+    });
+  }
+
+  const activeCount = () => state.acuity.size + state.status.size + state.dept.size + (state.q ? 1 : 0);
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([{ label: 'Patients', href: null }])}
+    ${pageHead({
+      title: 'Patient directory',
+      meta: `<span class="num">1,284</span> registered patients · <span class="num">12</span> loaded in this prototype`,
+      actions: `${button({ label: 'Import', variant: 'ghost', icon: 'upload', attrs: 'data-import' })}
+        ${canCreate
+          ? button({ label: 'Register patient', variant: 'primary', icon: 'user-plus', attrs: 'data-new' })
+          : `<span class="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg bg-surface-2 border border-outline text-muted text-base" title="Your role can view patients but not create them">
+              ${icon('lock', 'w-4 h-4')} Register patient</span>`}`,
+    })}
+
+    ${!canCreate ? banner({
+      tone: 'info',
+      title: `Read-only for the ${role} role`,
+      body: 'You can open any patient record. Creating and editing demographics is reserved for Receptionist and Admin under the permission matrix.',
+    }) : ''}
+
+    <!-- Saved views: the four questions staff actually arrive with -->
+    <div class="flex items-center gap-1 overflow-x-auto pb-1 mb-3 -mx-1 px-1" role="tablist" aria-label="Saved views">
+      ${VIEWS.map((v) => `<button type="button" role="tab" data-view="${v.key}" aria-selected="${v.key === 'all'}"
+        class="shrink-0 inline-flex items-center gap-1.5 h-10 px-3 rounded-lg text-base font-medium press whitespace-nowrap
+        ${v.key === 'all' ? 'bg-surface-2 text-foreground border border-outline-strong' : 'text-muted hover:bg-surface-2 border border-transparent'}">
+        ${icon(v.icon, 'w-4 h-4')}<span>${v.label}</span></button>`).join('')}
+      <span class="flex-1"></span>
+      <button type="button" data-save-view class="shrink-0 ${btnClass('ghost', 'sm')}">${icon('bookmark-plus', 'w-3.5 h-3.5')}<span class="hidden sm:inline">Save this view</span></button>
+    </div>
+
+    ${card(`
+      <!-- Search + facets -->
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative flex-1 min-w-[200px]">
+            <label for="q" class="sr-only">Search patients by name, MRN, national ID or phone</label>
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted">${icon('search', 'w-4 h-4')}</span>
+            <input id="q" type="search" inputmode="search" placeholder="Name, MRN, national ID or phone…"
+              class="w-full min-h-11 rounded-lg bg-surface-2 border border-outline-strong pl-9 pr-3 text-base focus-inset"
+              aria-describedby="q-help">
+            <p id="q-help" class="sr-only">Results update as you type. Search is debounced by 200 milliseconds.</p>
+          </div>
+          <button type="button" data-adv class="${btnClass('outline')}">${icon('sliders-horizontal', 'w-4 h-4')}<span>Advanced</span></button>
+          <button type="button" data-clear class="${btnClass('ghost')}" hidden>${icon('filter-x', 'w-4 h-4')}<span>Clear filters</span></button>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <div class="flex items-start gap-2 flex-wrap">
+            <span class="text-2xs font-semibold uppercase tracking-wide text-subtle w-14 shrink-0 pt-2.5">Acuity</span>
+            <div class="flex flex-wrap gap-1.5" data-facet="acuity"></div>
+          </div>
+          <div class="flex items-start gap-2 flex-wrap">
+            <span class="text-2xs font-semibold uppercase tracking-wide text-subtle w-14 shrink-0 pt-2.5">Status</span>
+            <div class="flex flex-wrap gap-1.5" data-facet="status"></div>
+          </div>
+          <div class="flex items-start gap-2 flex-wrap">
+            <span class="text-2xs font-semibold uppercase tracking-wide text-subtle w-14 shrink-0 pt-2.5">Dept</span>
+            <div class="flex flex-wrap gap-1.5" data-facet="dept"></div>
+          </div>
+        </div>
+      </div>
+    `, 'mb-3')}
+
+    <div class="card !p-0 overflow-hidden">
+      <div class="flex flex-wrap items-center gap-2 px-3.5 py-2.5 border-b border-outline bg-surface-1">
+        <p class="text-base font-medium" aria-live="polite" id="resultCount"></p>
+        <span class="flex-1"></span>
+        <button type="button" data-export class="${btnClass('ghost', 'sm')}">${icon('download', 'w-3.5 h-3.5')}<span>Export CSV</span></button>
+      </div>
+      <div id="tbl"></div>
+    </div>
+  `);
+
+  /* ── Facet chips ── */
+  function renderFacets() {
+    Object.entries(facets).forEach(([group, items]) => {
+      const host = document.querySelector(`[data-facet="${group}"]`);
+      host.innerHTML = items.map((it) => {
+        const count = DB.patients.filter((p) => (group === 'dept' ? p.dept : p[group]) === it.key).length;
+        return filterChip({ label: it.label, count, active: state[group].has(it.key), key: `${group}:${it.key}` });
+      }).join('');
+    });
+    document.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => {
+      const [group, key] = b.dataset.filter.split(':');
+      state[group].has(key) ? state[group].delete(key) : state[group].add(key);
+      renderFacets(); renderTable();
+    }));
+    document.querySelector('[data-clear]').hidden = activeCount() === 0;
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ── Table ── */
+  let api = null;
+  function renderTable() {
+    const rows = filtered();
+    document.getElementById('resultCount').innerHTML =
+      `<span class="num">${rows.length}</span> patient${rows.length === 1 ? '' : 's'}${activeCount() ? ` · <span class="num">${activeCount()}</span> filter${activeCount() > 1 ? 's' : ''} applied` : ''}`;
+
+    api = table('#tbl', {
+      label: 'Patient directory',
+      caption: 'Registered patients with acuity, department, attending clinician and outstanding balance',
+      rows,
+      rowKey: (p) => p.mrn,
+      rowLabel: (p) => p.name,
+      select: canEdit,
+      sort: { key: 'acuity', dir: 'asc' },
+      onRow: (p) => `04-patient-detail.html?mrn=${p.mrn}&role=${role}`,
+      bulkActions: [
+        { label: 'Assign clinician', icon: 'user-check', variant: 'primary', onClick: (ids) => toast(`${ids.length} patient${ids.length > 1 ? 's' : ''} assigned to Dr. Adi Nugroho.`, { tone: 'success', undo: () => toast('Assignment reverted.', { tone: 'neutral' }) }) },
+        { label: 'Print wristbands', icon: 'printer', variant: 'subtle', onClick: (ids) => toast(`${ids.length} wristband${ids.length > 1 ? 's' : ''} sent to the ward printer.`, { tone: 'info' }) },
+      ],
+      columns: [
+        {
+          key: 'name', label: 'Patient', width: '25%',
+          cell: (p) => `<span class="flex items-center gap-2.5 min-w-0">
+            ${avatar(p.name)}
+            <span class="min-w-0">
+              <span class="flex items-center gap-1.5 min-w-0">
+                <span class="font-medium truncate">${p.name}</span>
+                ${p.allergies.length ? `<span class="shrink-0 text-danger" title="Allergies: ${p.allergies.join(', ')}" aria-label="Has allergies: ${p.allergies.join(', ')}">${icon('alert-triangle', 'w-3.5 h-3.5')}</span>` : ''}
+              </span>
+              <span class="block text-2xs text-muted num">${p.mrn} · ${p.sex} · ${DB.age(p.dob)}y</span>
+            </span></span>`,
+        },
+        { key: 'acuity', label: 'Acuity', cell: (p) => acuityBadge(p.acuity), sortValue: (p) => UI.ACUITY[p.acuity].rank },
+        { key: 'status', label: 'Status', cell: (p) => chip(p.status) },
+        { key: 'dept', label: 'Department', cell: (p) => `<span class="text-muted">${DB.deptName(p.dept)}</span>`, sortValue: (p) => DB.deptName(p.dept) },
+        { key: 'doctor', label: 'Attending', cell: (p) => `<span class="text-muted truncate">${DB.byDoctor(p.doctor).name}</span>`, sortValue: (p) => DB.byDoctor(p.doctor).name },
+        { key: 'lastVisit', label: 'Last visit', mono: true, cell: (p) => `<span class="${p.lastVisit === DB.TODAY ? 'text-success font-semibold' : 'text-muted'}">${p.lastVisit === DB.TODAY ? 'Today' : p.lastVisit.slice(5)}</span>` },
+        { key: 'balance', label: 'Balance', align: 'right', mono: true, cell: (p) => p.balance ? `<span class="font-semibold text-danger">${DB.rp(p.balance)}</span>` : '<span class="text-subtle">—</span>' },
+        {
+          key: 'act', label: '', sortable: false, width: '76px', align: 'right',
+          cell: (p) => `<span class="flex items-center justify-end gap-0.5">
+            <a href="05-appointment-booking.html?mrn=${p.mrn}&role=${role}" class="w-8 h-8 rounded-md grid place-items-center text-muted hover:bg-surface-3 press" title="Book appointment for ${p.name}" aria-label="Book appointment for ${p.name}">${icon('calendar-plus', 'w-4 h-4')}</a>
+            <a href="04-patient-detail.html?mrn=${p.mrn}&role=${role}" class="w-8 h-8 rounded-md grid place-items-center text-muted hover:bg-surface-3 press" title="Open ${p.name}" aria-label="Open record for ${p.name}">${icon('arrow-right', 'w-4 h-4')}</a></span>`,
+        },
+      ],
+      mobileCard: (p) => `<span class="flex items-center gap-2.5">
+        ${avatar(p.name, 'w-9 h-9 text-xs')}
+        <span class="flex-1 min-w-0">
+          <span class="flex items-center gap-1.5"><span class="text-base font-medium truncate">${p.name}</span>
+          ${p.allergies.length ? `<span class="text-danger shrink-0" aria-label="Has allergies">${icon('alert-triangle', 'w-3.5 h-3.5')}</span>` : ''}</span>
+          <span class="block text-2xs text-muted num truncate">${p.mrn} · ${DB.age(p.dob)}y · ${DB.deptName(p.dept)}</span>
+          ${p.balance ? `<span class="block text-2xs text-danger font-semibold num">${DB.rp(p.balance)} outstanding</span>` : ''}
+        </span>
+        <span class="shrink-0 flex flex-col items-end gap-1">${acuityBadge(p.acuity)}${icon('chevron-right', 'w-4 h-4 text-subtle')}</span></span>`,
+      empty: {
+        icon: 'user-search',
+        title: activeCount() ? 'No patient matches these filters' : 'No patients registered yet',
+        body: activeCount()
+          ? 'Try clearing the acuity filter, widening the department, or searching by MRN instead of name.'
+          : 'Register the first patient to begin. Duplicate detection runs automatically on national ID and name plus date of birth.',
+        action: activeCount()
+          ? button({ label: 'Clear all filters', variant: 'primary', icon: 'filter-x', attrs: 'data-empty-clear' })
+          : (canCreate ? button({ label: 'Register patient', variant: 'primary', icon: 'user-plus', attrs: 'data-new' }) : ''),
+        secondary: activeCount() ? button({ label: 'Search all departments', variant: 'outline', icon: 'globe' }) : '',
+      },
+      error: { title: 'Patient service is not responding', body: 'The directory request failed after three retries. Cached results from 09:12 are shown elsewhere in the app; this list needs a live connection.' },
+      footer: `<span>Rows <span class="num">1–${rows.length}</span> of <span class="num">1,284</span></span>
+        <span class="flex items-center gap-1">
+          <button type="button" class="w-8 h-8 rounded-md grid place-items-center text-subtle hover:bg-surface-3 disabled:opacity-30" disabled aria-label="Previous page">${icon('chevron-left', 'w-4 h-4')}</button>
+          <span class="num px-1">1 / 107</span>
+          <button type="button" data-next class="w-8 h-8 rounded-md grid place-items-center text-muted hover:bg-surface-3" aria-label="Next page">${icon('chevron-right', 'w-4 h-4')}</button>
+        </span>`,
+    });
+
+    document.querySelectorAll('[data-empty-clear]').forEach((b) => b.addEventListener('click', clearAll));
+    document.querySelectorAll('[data-new]').forEach((b) => b.addEventListener('click', openRegister));
+    document.querySelector('[data-next]')?.addEventListener('click', () => toast('Page 2 of 107 loaded.', { tone: 'info' }));
+  }
+
+  function clearAll() {
+    state = { q: '', acuity: new Set(), status: new Set(), dept: new Set(), view: state.view };
+    document.getElementById('q').value = '';
+    renderFacets(); renderTable();
+    UI.announce('All filters cleared');
+  }
+
+  /* ─────────────── Registration with live duplicate detection ───────────────
+     The PRD's guarded intake: the duplicate is surfaced BEFORE the record is
+     created, with link / override as an explicit choice rather than a warning
+     the receptionist can click past by accident. */
+  function openRegister() {
+    const d = dialog({
+      title: 'Register new patient',
+      size: 'lg',
+      dirty: () => !!d.body.querySelector('#pName')?.value,
+      body: `<form id="regForm" novalidate class="space-y-4">
+        <div data-error-summary hidden></div>
+        <div id="dupHost"></div>
+        <fieldset class="space-y-3">
+          <legend class="text-base font-semibold mb-1">Identity</legend>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div id="w1"></div><div id="w2"></div>
+          </div>
+          <div class="grid sm:grid-cols-3 gap-3">
+            <div id="w3"></div><div id="w4"></div><div id="w5"></div>
+          </div>
+        </fieldset>
+        <fieldset class="space-y-3 pt-2 border-t border-outline">
+          <legend class="text-base font-semibold mb-1 pt-2">Contact & care</legend>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div id="w6"></div><div id="w7"></div>
+          </div>
+          <div id="w8"></div>
+        </fieldset>
+      </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        { label: 'Save as draft', variant: 'outline', icon: 'save', onClick: () => toast('Draft saved. It will be here for 7 days.', { tone: 'neutral' }) },
+        {
+          label: 'Register patient', variant: 'primary', icon: 'user-plus',
+          onClick: () => {
+            const form = d.body.querySelector('#regForm');
+            if (!UI.validateForm(form)) return false;
+            if (d.body.querySelector('#dupHost').dataset.blocking === '1') {
+              toast('Resolve the possible duplicate before registering.', { tone: 'warning' });
+              d.body.querySelector('#dupHost [role]')?.scrollIntoView({ block: 'center' });
+              return false;
+            }
+            toast('Patient registered as P-001301.', { tone: 'success', detail: 'MRN assigned and wristband queued.' });
+          },
+        },
+      ],
+    });
+
+    const b = d.body;
+    b.querySelector('#w1').innerHTML = field({ id: 'pName', label: 'Full legal name', required: true, placeholder: 'As printed on the national ID', icon: 'user', autocomplete: 'name' });
+    b.querySelector('#w2').innerHTML = field({ id: 'pNid', label: 'National ID (NIK)', required: true, mono: true, inputmode: 'numeric', placeholder: '16 digits', attrs: 'data-rule="nid" maxlength="16"', help: 'Duplicate detection runs on this field as you type.' });
+    b.querySelector('#w3').innerHTML = field({ id: 'pDob', label: 'Date of birth', type: 'date', required: true, attrs: 'data-rule="dob" max="2026-09-09"' });
+    b.querySelector('#w4').innerHTML = field({ id: 'pSex', label: 'Sex', type: 'select', required: true, options: [{ label: 'Select…', value: '' }, { label: 'Female', value: 'F' }, { label: 'Male', value: 'M' }] });
+    b.querySelector('#w5').innerHTML = field({ id: 'pBlood', label: 'Blood group', type: 'select', optional: true, options: ['Unknown', 'O+', 'O−', 'A+', 'A−', 'B+', 'B−', 'AB+', 'AB−'] });
+    b.querySelector('#w6').innerHTML = field({ id: 'pPhone', label: 'Mobile number', required: true, type: 'tel', inputmode: 'tel', icon: 'phone', autocomplete: 'tel', placeholder: '+62 8…', attrs: 'data-rule="phone"' });
+    b.querySelector('#w7').innerHTML = field({ id: 'pDept', label: 'Department', type: 'select', required: true, options: [{ label: 'Select…', value: '' }, ...DB.departments.map((x) => ({ label: x.name, value: x.id }))] });
+    b.querySelector('#w8').innerHTML = field({ id: 'pAllergy', label: 'Known allergies', type: 'textarea', rows: 2, optional: true, placeholder: 'One per line, or leave blank if none known', help: 'Anything entered here shows as a red banner on every screen for this patient.' });
+    wireFields(b);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+
+    // Live duplicate check, debounced. Matches on NIK first, then name + DOB.
+    const dupHost = b.querySelector('#dupHost');
+    const nameIn = b.querySelector('#pName'), nidIn = b.querySelector('#pNid'), dobIn = b.querySelector('#pDob');
+    let t;
+    const check = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const nid = nidIn.value.replace(/\s/g, '');
+        const name = nameIn.value.trim().toLowerCase();
+        let hit = null, reason = '';
+        if (nid.length >= 10) {
+          hit = DB.patients.find((p) => p.nid.startsWith(nid.slice(0, 10)));
+          if (hit) reason = 'national ID';
+        }
+        if (!hit && name.length > 3) {
+          hit = DB.patients.find((p) => p.name.toLowerCase().includes(name) || name.includes(p.name.toLowerCase().split(' ')[0]));
+          if (hit) reason = 'name and date of birth';
+        }
+        if (!hit) { dupHost.innerHTML = ''; dupHost.dataset.blocking = '0'; return; }
+        dupHost.dataset.blocking = '1';
+        dupHost.innerHTML = banner({
+          tone: 'warning', dismissible: false,
+          title: 'Possible duplicate found — resolve before saving',
+          body: `An existing record matches on <strong>${reason}</strong>:
+            <span class="block mt-2 rounded-lg border border-outline bg-surface-0 p-2.5">
+              <span class="flex items-center gap-2.5">
+                ${avatar(hit.name, 'w-8 h-8 text-xs')}
+                <span class="min-w-0 flex-1"><span class="block text-base font-semibold truncate">${hit.name}</span>
+                <span class="block text-2xs text-muted num">${hit.mrn} · ${hit.dob} · ${DB.deptName(hit.dept)} · last seen ${hit.lastVisit}</span></span>
+              </span></span>`,
+          actions: `${button({ label: 'Use this record instead', variant: 'primary', size: 'sm', icon: 'link', attrs: 'data-dup-link' })}
+            ${button({ label: 'Not the same person — continue', variant: 'outline', size: 'sm', icon: 'user-plus', attrs: 'data-dup-override' })}`,
+        });
+        lucide.createIcons({ nameAttr: 'data-lucide' });
+        dupHost.querySelector('[data-dup-link]').addEventListener('click', () => {
+          d.close(true);
+          location.href = `04-patient-detail.html?mrn=${hit.mrn}&role=${role}`;
+        });
+        dupHost.querySelector('[data-dup-override]').addEventListener('click', () => {
+          confirmDialog({
+            title: 'Create a second record for this person?',
+            tone: 'warning',
+            message: 'Overriding duplicate detection is recorded in the audit log against your account.',
+            consequence: [`Existing record ${hit.mrn} stays untouched.`, 'Clinical history will not be merged automatically.', 'Merging two records later requires an Admin.'],
+            confirmLabel: 'I confirm this is a different person',
+            onConfirm: () => { dupHost.dataset.blocking = '0'; dupHost.innerHTML = ''; toast('Duplicate check overridden — logged.', { tone: 'warning' }); },
+          });
+        });
+      }, 260);
+    };
+    [nameIn, nidIn, dobIn].forEach((i) => i.addEventListener('input', check));
+  }
+
+  /* ── Advanced filter sheet ── */
+  function openAdvanced() {
+    const d = dialog({
+      title: 'Advanced filters',
+      size: 'md',
+      body: `<div class="space-y-4">
+        <div class="grid sm:grid-cols-2 gap-3"><div id="a1"></div><div id="a2"></div></div>
+        <div class="grid sm:grid-cols-2 gap-3"><div id="a3"></div><div id="a4"></div></div>
+        <div id="a5"></div>
+        <label class="flex items-start gap-2.5 min-h-11 cursor-pointer">
+          <input type="checkbox" class="w-4 h-4 mt-1 accent-[rgb(var(--primary))] cursor-pointer">
+          <span><span class="block text-base font-medium">Only patients with an outstanding balance</span>
+          <span class="block text-xs text-muted">Useful before a payer-desk chase round.</span></span></label>
+      </div>`,
+      actions: [
+        { label: 'Reset', variant: 'ghost', onClick: () => { clearAll(); return true; } },
+        { label: 'Apply filters', variant: 'primary', icon: 'filter', onClick: () => toast('Advanced filters applied.', { tone: 'info' }) },
+      ],
+    });
+    d.body.querySelector('#a1').innerHTML = field({ id: 'aAgeMin', label: 'Age from', type: 'number', mono: true, placeholder: '0' });
+    d.body.querySelector('#a2').innerHTML = field({ id: 'aAgeMax', label: 'Age to', type: 'number', mono: true, placeholder: '120' });
+    d.body.querySelector('#a3').innerHTML = field({ id: 'aFrom', label: 'Last visit from', type: 'date' });
+    d.body.querySelector('#a4').innerHTML = field({ id: 'aTo', label: 'Last visit to', type: 'date' });
+    d.body.querySelector('#a5').innerHTML = field({ id: 'aInsurer', label: 'Payer', type: 'select', options: ['Any', 'BPJS Kesehatan', 'Mandiri Inhealth', 'Prudential', 'Self-pay'] });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ── Wire page ── */
+  UI.shell({ title: 'Patients', subtitle: 'Directory & registration', active: 'patients', role, roleAware: false });
+
+  renderFacets();
+  renderTable();
+
+  // Search is debounced so a 12-key query does not trigger 12 renders.
+  let qt;
+  document.getElementById('q').addEventListener('input', (e) => {
+    clearTimeout(qt);
+    qt = setTimeout(() => { state.q = e.target.value; renderFacets(); renderTable(); }, 200);
+  });
+  document.querySelector('[data-clear]').addEventListener('click', clearAll);
+  document.querySelector('[data-adv]').addEventListener('click', openAdvanced);
+  document.querySelectorAll('[data-new]').forEach((b) => b.addEventListener('click', openRegister));
+  document.querySelector('[data-import]').addEventListener('click', () => toast('Bulk import accepts CSV with a header row.', { tone: 'info', detail: 'Template available in the Admin module.' }));
+  document.querySelector('[data-export]').addEventListener('click', (e) => {
+    const done = UI.submitting(e.currentTarget, 'Preparing…');
+    setTimeout(() => { done(); toast(`${filtered().length} rows exported to CSV.`, { tone: 'success' }); }, 700);
+  });
+  document.querySelector('[data-save-view]').addEventListener('click', () => {
+    if (!activeCount()) { toast('Apply at least one filter before saving a view.', { tone: 'warning' }); return; }
+    toast('View saved as “My filter set”.', { tone: 'success', undo: () => toast('Saved view discarded.', { tone: 'neutral' }) });
+  });
+  document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+    state.view = b.dataset.view;
+    document.querySelectorAll('[data-view]').forEach((x) => {
+      const on = x === b;
+      x.setAttribute('aria-selected', String(on));
+      x.className = `shrink-0 inline-flex items-center gap-1.5 h-10 px-3 rounded-lg text-base font-medium press whitespace-nowrap ${on ? 'bg-surface-2 text-foreground border border-outline-strong' : 'text-muted hover:bg-surface-2 border border-transparent'}`;
+    });
+    renderTable();
+  }));
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nurse dashboard — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, acuityBadge, avatar, icon, button, toast, dialog,
+          confirmDialog, btnClass, field, wireFields, banner, emptyState, metric, table, dashboard } = UI;
+  const C = Charts;
+  const role = 'Nurse';
+  const me = DB.sessions.Nurse;                  // Wati Lestari, Cardiology
+
+  /* A nurse's shift is a task list against named patients, not a data browser. */
+  let assigned = [
+    { mrn: 'P-001042', bed: 'CAR-04', vitalsDue: '10:00', vitalsAt: '07:42', tasks: 2, note: 'Post-PCI day 1. BP above target.' },
+    { mrn: 'P-000997', bed: 'GEN-11', vitalsDue: '10:00', vitalsAt: null, tasks: 3, note: 'Wound dressing change due. Sulfa and latex allergy.' },
+    { mrn: 'P-001255', bed: 'PED-07', vitalsDue: '10:30', vitalsAt: '08:15', tasks: 1, note: 'Febrile 3 days. Mother at bedside.' },
+    { mrn: 'P-001213', bed: 'EMG-02', vitalsDue: '09:45', vitalsAt: null, tasks: 4, note: 'Triage hold, no Emergency bed. Aspirin allergy.' },
+  ];
+
+  let carePlan = [
+    { id: 'T-1', mrn: 'P-000997', text: 'Wound dressing change — left lower leg', due: '10:00', done: false, priority: 'high' },
+    { id: 'T-2', mrn: 'P-001213', text: 'Repeat ECG and report to Dr. Rendra', due: '09:50', done: false, priority: 'high' },
+    { id: 'T-3', mrn: 'P-001042', text: 'Administer bisoprolol 5 mg', due: '10:00', done: false, priority: 'normal' },
+    { id: 'T-4', mrn: 'P-001255', text: 'Paracetamol syrup, weight-based dose', due: '10:30', done: false, priority: 'normal' },
+    { id: 'T-5', mrn: 'P-001042', text: 'Fluid balance chart update', due: '11:00', done: true, priority: 'normal' },
+    { id: 'T-6', mrn: 'P-001255', text: 'Explain discharge criteria to mother', due: '12:00', done: false, priority: 'low' },
+  ];
+
+  const WIDGETS = [
+    {
+      key: 'assigned-patients', name: 'My patients this shift', icon: 'user-check', locked: false,
+      span: 'xl:col-span-2', meta: `${assigned.length} beds`,
+      body: () => `<div data-states>
+        <div data-state="ready"><ul id="assigned" class="divide-y divide-outline -mx-1"></ul></div>
+        <div data-state="loading" hidden>${UI.skeletonRows(4, 3)}</div>
+        <div data-state="empty" hidden>${emptyState({ icon: 'bed', title: 'No patients assigned', body: 'The ward coordinator has not assigned you any beds for this shift yet. Check with the duty nurse.', action: button({ label: 'Request assignment', variant: 'primary', icon: 'hand', attrs: 'data-request' }) })}</div>
+        <div data-state="error" hidden>${UI.errorState({ title: 'Ward assignment service unreachable', body: 'Your assignment list could not load. Use the printed handover sheet at the nurses’ station until this recovers.' })}</div>
+      </div>`,
+    },
+    {
+      key: 'vitals-entry', name: 'Quick vitals entry', icon: 'stethoscope', locked: false,
+      span: 'xl:col-span-2',
+      body: () => `<div id="vitalsForm"></div>`,
+    },
+    {
+      key: 'care-plan', name: 'Care plan due this shift', icon: 'list-checks', locked: false,
+      span: 'xl:col-span-2',
+      body: () => `<div id="plan"></div>`,
+    },
+    {
+      key: 'vitals-trend', name: 'Ward BP trend', icon: 'activity', locked: false,
+      body: () => C.line({
+        labels: DB.vitals.map((v) => v.at),
+        height: 180,
+        refBands: [{ from: 90, to: 120, tone: 'success', label: 'normal' }],
+        series: [
+          { label: 'Systolic', tone: 'danger', values: DB.vitals.map((v) => v.sys) },
+          { label: 'Diastolic', tone: 'primary', values: DB.vitals.map((v) => v.dia) },
+        ],
+        summary: 'Blood pressure trend for Budi Santoso over seven days: systolic fell from 156 to 145 mmHg then settled at 148, still above the normal band.',
+        caption: 'Blood pressure trend, bed CAR-04',
+      }),
+    },
+  ];
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${pageHead({
+      title: `Shift handover, ${me.name.split(' ')[0]}`,
+      meta: `Tuesday 9 September 2026 · <span class="num">07:00–15:00</span> · ${me.dept} ward`,
+      actions: `${button({ label: 'Handover notes', variant: 'outline', icon: 'notebook-pen', attrs: 'data-handover' })}
+                ${button({ label: 'Record vitals', variant: 'primary', icon: 'stethoscope', attrs: 'data-vitals' })}`,
+    })}
+
+    <div id="alerts" class="space-y-2.5 mb-4"></div>
+
+    <div data-stagger class="grid gap-3 grid-cols-2 xl:grid-cols-4 mb-4">
+      ${metric({ label: 'Patients assigned', value: assigned.length, deltaLabel: 'across 3 departments', icon: 'bed-double' })}
+      ${metric({ label: 'Vitals overdue', value: assigned.filter((a) => !a.vitalsAt).length, deltaLabel: 'oldest due 09:45', tone: 'inverse', icon: 'timer' })}
+      ${metric({ label: 'Tasks due', value: carePlan.filter((t) => !t.done).length, unit: `of ${carePlan.length}`, deltaLabel: '2 high priority', icon: 'list-checks' })}
+      ${metric({ label: 'Shift elapsed', value: 2, unit: 'h 41m', deltaLabel: '5h 19m remaining', icon: 'clock' })}
+    </div>
+
+    <div class="flex items-center gap-2 mb-2.5">
+      <h2 class="text-lg font-semibold font-display">My widgets</h2>
+      <span class="text-xs text-muted">Drag to reorder · your layout persists across devices</span>
+    </div>
+    <div id="grid" class="grid gap-3 md:grid-cols-2 xl:grid-cols-4 items-start"></div>
+
+    ${card(`
+      ${cardHead({ title: 'What my role can and cannot do', icon: 'shield-check', meta: 'Read straight from the permission matrix' })}
+      <div class="grid sm:grid-cols-2 gap-x-6 gap-y-2">
+        ${DB.modules.map((m) => {
+          const p = DB.permissions.Nurse[m] || '';
+          const acts = [['v', 'view'], ['c', 'create'], ['e', 'edit'], ['d', 'delete']].filter(([f]) => p.includes(f)).map(([, l]) => l);
+          return `<div class="flex items-center gap-2 text-base">
+            <span class="${acts.length ? 'text-success' : 'text-subtle'} shrink-0">${icon(acts.length ? 'check-circle-2' : 'x-circle', 'w-4 h-4')}</span>
+            <span class="flex-1 truncate ${acts.length ? '' : 'text-subtle'}">${m}</span>
+            <span class="text-xs text-muted">${acts.join(', ') || 'no access'}</span></div>`;
+        }).join('')}
+      </div>
+      <p class="text-xs text-muted mt-3 pt-3 border-t border-outline">Billing and Admin are absent from your navigation entirely, and the API rejects those calls independently — hiding the button is a convenience, not the control.</p>
+    `, 'mt-3')}
+  `);
+
+  document.getElementById('alerts').innerHTML = [
+    banner({
+      tone: 'danger',
+      title: 'Vitals overdue for Hendra Gunawan (EMG-02)',
+      body: 'Due at <span class="num">09:45</span>, now <span class="num">09:41</span>. Critical acuity, triage hold with no Emergency bed. Aspirin allergy on file.',
+      actions: `${button({ label: 'Record vitals now', variant: 'danger', size: 'sm', icon: 'stethoscope', attrs: 'data-v-hendra' })}
+                ${button({ label: 'Open record', variant: 'outline', size: 'sm', icon: 'file-text', attrs: 'data-r-hendra' })}`,
+    }),
+    banner({
+      tone: 'warning',
+      title: 'Allergy check before the 10:00 dressing change',
+      body: 'Agus Salim (GEN-11) is allergic to <strong>sulfa</strong> and <strong>latex</strong>. Use nitrile gloves and a non-sulfa dressing.',
+      actions: button({ label: 'Acknowledge', variant: 'outline', size: 'sm', icon: 'check', attrs: 'data-ack' }),
+    }),
+  ].join('');
+
+  /* ─────────── Assigned patients ─────────── */
+  function renderAssigned() {
+    const host = document.getElementById('assigned');
+    if (!host) return;
+    host.innerHTML = assigned.map((a) => {
+      const p = DB.byMrn(a.mrn);
+      const overdue = !a.vitalsAt;
+      return `<li class="px-1 py-2.5">
+        <div class="flex items-start gap-2.5">
+          ${avatar(p.name, 'w-9 h-9 text-xs')}
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span class="text-base font-semibold truncate">${p.name}</span>
+              ${acuityBadge(p.acuity)}
+              <span class="num text-2xs font-semibold px-1.5 py-0.5 rounded-md bg-surface-2 border border-outline">${a.bed}</span>
+              ${p.allergies.length ? `<span class="inline-flex items-center gap-1 text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-danger-container text-danger-container-foreground">
+                ${icon('alert-triangle', 'w-3 h-3')}${p.allergies.join(', ')}</span>` : ''}
+            </div>
+            <p class="text-base text-muted mt-0.5">${a.note}</p>
+            <p class="text-2xs mt-0.5 flex items-center gap-1.5 ${overdue ? 'text-danger font-semibold' : 'text-subtle'}">
+              ${icon(overdue ? 'timer' : 'check', 'w-3 h-3')}
+              <span class="num">${overdue ? `Vitals overdue — due ${a.vitalsDue}` : `Vitals recorded ${a.vitalsAt}`}</span>
+              <span class="text-subtle">· ${a.tasks} task${a.tasks === 1 ? '' : 's'} due</span></p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-2 pl-11">
+          ${button({ label: 'Record vitals', variant: overdue ? 'primary' : 'outline', size: 'sm', icon: 'stethoscope', attrs: `data-av="${a.mrn}"` })}
+          <a href="04-patient-detail.html?mrn=${a.mrn}&role=${role}" class="${btnClass('ghost', 'sm')}">${icon('file-text', 'w-3.5 h-3.5')}<span>Record</span></a>
+        </div></li>`;
+    }).join('');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    host.querySelectorAll('[data-av]').forEach((b) => b.addEventListener('click', () => openVitals(b.dataset.av)));
+  }
+
+  /* ─────────── Inline vitals form ───────────
+     Numeric inputs with the right mobile keyboard, range validation that says what
+     normal is, and a single Save that reports what it wrote. */
+  function renderVitalsForm() {
+    const host = document.getElementById('vitalsForm');
+    if (!host) return;
+    host.innerHTML = `
+      <form id="vForm" novalidate class="space-y-3">
+        <div data-error-summary hidden></div>
+        <div id="v0"></div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <div id="v1"></div><div id="v2"></div><div id="v3"></div>
+          <div id="v4"></div><div id="v5"></div><div id="v6"></div>
+        </div>
+        <div id="v7"></div>
+        <div class="flex flex-wrap gap-2 pt-1">
+          ${button({ label: 'Save vitals', variant: 'primary', icon: 'check', attrs: 'data-vsave' })}
+          ${button({ label: 'Clear', variant: 'ghost', attrs: 'data-vclear' })}
+        </div>
+      </form>`;
+    host.querySelector('#v0').innerHTML = field({
+      id: 'vPat', label: 'Patient', type: 'select', required: true,
+      options: assigned.map((a) => ({ label: `${DB.byMrn(a.mrn).name} · ${a.bed}${a.vitalsAt ? '' : ' · overdue'}`, value: a.mrn })),
+    });
+    host.querySelector('#v1').innerHTML = field({ id: 'vSys', label: 'Systolic', type: 'number', required: true, mono: true, inputmode: 'numeric', placeholder: '120', help: '90–120 normal' });
+    host.querySelector('#v2').innerHTML = field({ id: 'vDia', label: 'Diastolic', type: 'number', required: true, mono: true, inputmode: 'numeric', placeholder: '80', help: '60–80 normal' });
+    host.querySelector('#v3').innerHTML = field({ id: 'vHr', label: 'Heart rate', type: 'number', required: true, mono: true, inputmode: 'numeric', placeholder: '72', help: '60–100 bpm' });
+    host.querySelector('#v4').innerHTML = field({ id: 'vSpo', label: 'SpO₂ %', type: 'number', required: true, mono: true, inputmode: 'numeric', placeholder: '98', help: '≥95% normal' });
+    host.querySelector('#v5').innerHTML = field({ id: 'vTemp', label: 'Temp °C', type: 'number', required: true, mono: true, inputmode: 'decimal', placeholder: '36.6', help: '36.1–37.2 normal' });
+    host.querySelector('#v6').innerHTML = field({ id: 'vRr', label: 'Resp. rate', type: 'number', required: true, mono: true, inputmode: 'numeric', placeholder: '16', help: '12–20 /min' });
+    host.querySelector('#v7').innerHTML = field({ id: 'vNote', label: 'Observation note', type: 'textarea', rows: 2, optional: true, placeholder: 'Position, cooperation, anything the clinician should know' });
+    wireFields(host);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+
+    host.querySelector('[data-vclear]').addEventListener('click', () => {
+      host.querySelector('#vForm').reset();
+      host.querySelectorAll('[data-field] input').forEach((i) => UI.setFieldError(i, ''));
+      host.querySelector('[data-error-summary]').hidden = true;
+    });
+
+    host.querySelector('[data-vsave]').addEventListener('click', (e) => {
+      const form = host.querySelector('#vForm');
+      if (!UI.validateForm(form)) return;
+
+      // Plausibility bounds — a typo here reaches a prescribing decision.
+      const checks = [
+        ['vSys', 60, 260, 'Systolic'], ['vDia', 30, 160, 'Diastolic'],
+        ['vHr', 25, 220, 'Heart rate'], ['vSpo', 50, 100, 'SpO₂'],
+        ['vTemp', 30, 43, 'Temperature'], ['vRr', 5, 60, 'Respiratory rate'],
+      ];
+      let bad = null;
+      checks.forEach(([id, lo, hi, label]) => {
+        const input = host.querySelector('#' + id);
+        const v = parseFloat(input.value);
+        if (v < lo || v > hi) {
+          UI.setFieldError(input, `${label} of ${v} is outside the plausible range ${lo}–${hi}. Re-check the reading before saving.`);
+          bad = bad || input;
+        }
+      });
+      if (bad) { bad.focus(); return; }
+
+      const mrn = host.querySelector('#vPat').value;
+      const sys = +host.querySelector('#vSys').value, dia = +host.querySelector('#vDia').value;
+      const abnormal = sys >= 140 || dia >= 90;
+      const done = UI.submitting(e.currentTarget, 'Saving…');
+      setTimeout(() => {
+        done();
+        const a = assigned.find((x) => x.mrn === mrn);
+        if (a) a.vitalsAt = '09:41';
+        renderAssigned();
+        toast(`Vitals saved for ${DB.byMrn(mrn).name}.`, {
+          tone: abnormal ? 'warning' : 'success',
+          detail: abnormal
+            ? `BP ${sys}/${dia} is above target — flagged to ${DB.byDoctor(DB.byMrn(mrn).doctor).name}.`
+            : 'Now visible on the patient timeline.',
+        });
+        host.querySelector('#vForm').reset();
+      }, 850);
+    });
+  }
+
+  /* ─────────── Care plan ─────────── */
+  function renderPlan() {
+    const host = document.getElementById('plan');
+    if (!host) return;
+    const open = carePlan.filter((t) => !t.done);
+    const done = carePlan.filter((t) => t.done);
+    const PRIO = { high: ['danger', 'Urgent'], normal: ['info', 'Normal'], low: ['neutral', 'Low'] };
+    const row = (t) => {
+      const p = DB.byMrn(t.mrn);
+      const [tone, label] = PRIO[t.priority];
+      return `<li class="flex items-start gap-2.5 px-1 py-2.5">
+        <input type="checkbox" ${t.done ? 'checked' : ''} data-task="${t.id}"
+          class="w-4.5 h-4.5 mt-1 shrink-0 accent-[rgb(var(--primary))] cursor-pointer"
+          aria-label="${t.done ? 'Mark incomplete' : 'Mark complete'}: ${t.text} for ${p.name}">
+        <span class="flex-1 min-w-0">
+          <span class="block text-base ${t.done ? 'line-through text-subtle' : 'font-medium'}">${t.text}</span>
+          <span class="block text-2xs text-muted num truncate">${p.name} · due ${t.due}</span>
+        </span>
+        <span class="shrink-0 inline-flex items-center gap-1 text-2xs font-semibold px-1.5 py-0.5 rounded-full ${UI.TONE_CHIP[tone]}">
+          ${icon(t.priority === 'high' ? 'alert-triangle' : t.priority === 'low' ? 'circle-dot' : 'circle', 'w-3 h-3')}${label}</span>
+      </li>`;
+    };
+    host.innerHTML = `
+      <div class="flex items-center gap-2 mb-2">
+        <p class="text-base font-medium flex-1"><span class="num">${open.length}</span> open · <span class="num">${done.length}</span> done</p>
+        <span class="num text-xs text-muted">${Math.round((done.length / carePlan.length) * 100)}% of shift plan</span>
+      </div>
+      <div class="h-2 rounded-full bg-surface-3 overflow-hidden mb-3" role="meter" aria-valuenow="${done.length}" aria-valuemin="0" aria-valuemax="${carePlan.length}" aria-label="Care plan completion">
+        <div class="h-full rounded-full bg-success" style="width:${(done.length / carePlan.length) * 100}%"></div></div>
+      ${open.length ? `<ul class="divide-y divide-outline -mx-1">${open.map(row).join('')}</ul>`
+        : emptyState({ icon: 'party-popper', title: 'Shift plan complete', body: 'Every care-plan item for this shift is done. Write your handover note before you leave.', action: button({ label: 'Write handover', variant: 'primary', icon: 'notebook-pen', attrs: 'data-handover2' }) })}
+      ${done.length ? `<details class="mt-3 pt-3 border-t border-outline">
+        <summary class="text-xs font-medium text-muted cursor-pointer min-h-8 inline-flex items-center gap-1.5">
+          ${icon('check-check', 'w-3.5 h-3.5')}<span>${done.length} completed</span></summary>
+        <ul class="divide-y divide-outline -mx-1 mt-1">${done.map(row).join('')}</ul></details>` : ''}`;
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+
+    host.querySelectorAll('[data-task]').forEach((cb) => cb.addEventListener('change', () => {
+      const t = carePlan.find((x) => x.id === cb.dataset.task);
+      t.done = cb.checked;
+      renderPlan();
+      toast(t.done ? `Marked done: ${t.text}` : `Reopened: ${t.text}`, {
+        tone: t.done ? 'success' : 'neutral',
+        undo: () => { t.done = !t.done; renderPlan(); },
+      });
+    }));
+    host.querySelectorAll('[data-handover2]').forEach((b) => b.addEventListener('click', openHandover));
+  }
+
+  function openVitals(mrn) {
+    const sel = document.querySelector('#vPat');
+    if (sel) {
+      sel.value = mrn;
+      sel.focus();
+      sel.closest('[data-widget]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      UI.announce(`Vitals form set to ${DB.byMrn(mrn).name}`);
+    }
+  }
+
+  function openHandover() {
+    const d = dialog({
+      title: 'Shift handover note',
+      size: 'lg',
+      dirty: () => !!d.body.querySelector('#hNote')?.value,
+      body: `<p class="text-base text-muted mb-4">This is read by the incoming nurse at 15:00 and attaches to each patient's timeline.</p>
+        <form id="hForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div class="well p-3">
+            <p class="text-2xs uppercase tracking-wide text-subtle font-semibold mb-2">Auto-summary from this shift</p>
+            <ul class="space-y-1.5 text-base">
+              ${assigned.map((a) => `<li class="flex items-start gap-2">
+                <span class="${a.vitalsAt ? 'text-success' : 'text-danger'} shrink-0 mt-0.5">${icon(a.vitalsAt ? 'check' : 'timer', 'w-3.5 h-3.5')}</span>
+                <span><strong>${DB.byMrn(a.mrn).name}</strong> (${a.bed}) — ${a.vitalsAt ? `vitals ${a.vitalsAt}` : 'vitals overdue'}, ${a.tasks} task${a.tasks === 1 ? '' : 's'}</span></li>`).join('')}
+            </ul>
+          </div>
+          <div id="h1"></div>
+          <div id="h2"></div>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Submit handover', variant: 'primary', icon: 'send',
+          onClick: () => {
+            if (!UI.validateForm(d.body.querySelector('#hForm'))) return false;
+            toast('Handover submitted to the 15:00 shift.', { tone: 'success', detail: 'Attached to 4 patient timelines.' });
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#h1').innerHTML = field({ id: 'hNote', label: 'Handover notes', type: 'textarea', rows: 5, required: true, placeholder: 'Anything the incoming nurse must know that is not already in the chart…' });
+    d.body.querySelector('#h2').innerHTML = field({ id: 'hEsc', label: 'Escalations raised this shift', type: 'textarea', rows: 2, optional: true, value: 'Hendra Gunawan — triage hold, no Emergency bed. Escalated to duty manager 09:20.' });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────── Widgets & wiring ─────────── */
+  const dash = dashboard('#grid', { widgets: WIDGETS, onChange: () => mountInner() });
+
+  function mountInner() {
+    renderAssigned();
+    renderVitalsForm();
+    renderPlan();
+  }
+
+  document.querySelector('[data-v-hendra]').addEventListener('click', () => openVitals('P-001213'));
+  document.querySelector('[data-r-hendra]').addEventListener('click', () => { location.href = `04-patient-detail.html?mrn=P-001213&role=${role}`; });
+  document.querySelector('[data-ack]').addEventListener('click', (e) => {
+    e.currentTarget.closest('[role]').remove();
+    toast('Allergy alert acknowledged — logged against your account.', { tone: 'success' });
+  });
+  document.querySelector('[data-vitals]').addEventListener('click', () => openVitals(assigned.find((a) => !a.vitalsAt)?.mrn || assigned[0].mrn));
+  document.querySelector('[data-handover]').addEventListener('click', openHandover);
+
+  UI.shell({ title: 'Dashboard', subtitle: `Nurse · ${me.dept} ward`, active: 'dashboard', role });
+  mountInner();
+  C.wire(document);
+})();
+</script>
+</body>
+</html>

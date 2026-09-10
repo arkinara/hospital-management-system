@@ -13,6 +13,8 @@ The Hospital Management System is a modular web platform built to run the full c
 - Patient list view with filters (department, registration date range, doctor)
 - Patient detail view showing a single cross-department profile: demographics, active department tags, and a unified activity timeline
 - Patient timeline aggregates visits, prescriptions, and billing events across every department the patient has touched — no per-department silos
+- Recorded allergies surfaced as a persistent safety banner on every screen showing the patient, and checked against any prescription before it can be signed
+- Triage acuity (critical / urgent / standard / routine) and admission status (admitted / outpatient / discharged) as first-class patient attributes, used to sort queues and worklists
 
 ### Appointment Module
 - Appointment booking form (patient, doctor, department, date/time, reason for visit)
@@ -20,6 +22,7 @@ The Hospital Management System is a modular web platform built to run the full c
 - Conflict detection that blocks a booking when the same doctor is already booked in an overlapping slot
 - Availability rules per doctor (working hours, department assignment, blocked-out days)
 - Receptionist queue view of today's upcoming appointments
+- Appointment lifecycle transitions (check-in, start, complete, cancel, mark no-show) with check-in timestamp so patient wait time is measurable rather than estimated
 
 ### Medical Records Module
 - Visit note entry (chief complaint, diagnosis, clinical notes) tied to an appointment and a doctor
@@ -27,12 +30,15 @@ The Hospital Management System is a modular web platform built to run the full c
 - Attachment upload (lab results, imaging references) attached to a visit note
 - Cross-department patient history endpoint aggregating all visit notes, prescriptions, and attachments for a patient regardless of which department created them
 - Patient timeline UI rendering the aggregated history in chronological order with department source labels
+- Vitals capture (blood pressure, heart rate, SpO₂, temperature, respiratory rate) recorded by nursing intake against a patient and optionally an appointment, with plausibility-range validation and a trend view over time
+- Care plan items (task, due time, priority, completion) attached to a patient so a nurse's shift work is tracked rather than remembered
 
 ### Billing Module
 - Invoice creation from a completed visit, with line items (consultation, procedures, medication)
 - Payment recording against an invoice (partial or full, method, date)
 - Insurance claim stub — claim submission record linked to an invoice with payer, claim number, and status
-- Payment/claim status workflow (draft, submitted, partially paid, paid, denied) to eliminate silent billing errors
+- Invoice payment workflow (draft, unpaid, partially paid, paid, void) to eliminate silent billing errors
+- Insurance claim workflow tracked separately from the invoice (none, draft, submitted, in review, approved, denied, settled), with denial reason and appeal deadline captured so denials can be worked rather than absorbed
 - Billing invoice list and detail views with status filters
 
 ### Admin Module
@@ -40,6 +46,9 @@ The Hospital Management System is a modular web platform built to run the full c
 - Department management: CRUD on departments (name, type, active doctors)
 - Role × module permission matrix: every role (Admin, Doctor, Nurse, Receptionist) has an explicit allow/deny per module, enforced server-side
 - Widget library governance: admin can globally enable/disable widget types and lock specific widgets so end users cannot remove them from their dashboard
+- Department bed capacity and live occupancy, so ward pressure is visible before it becomes a crisis
+- Nurse-to-patient shift assignment, backing each nurse's "my patients this shift" worklist
+- Immutable audit log of privileged and clinically consequential actions (role change, permission-matrix edit, duplicate-detection override, invoice void, widget-governance publish), queryable by Admin
 
 ### Cross-cutting (Auth, RBAC, Dashboard Widgets)
 - Authentication via Better Auth (email/password login, session management, logout) backed by SQLite/Drizzle
@@ -47,10 +56,42 @@ The Hospital Management System is a modular web platform built to run the full c
 - Modular dashboard widget grid: every user (any role) gets a default widget set on first login, based on their role, and can drag/drop, resize, enable, or disable widgets on their own dashboard
 - Per-user widget layout is persisted server-side so it survives across sessions and devices
 - Admin-level global widget lock overrides per-user configuration for locked widgets (they cannot be removed or disabled by the end user)
+- Staff accounts are provisioned by an Admin only. There is no public self-service sign-up; account recovery (forgot password) remains available to existing accounts
+
+## Design Reference
+
+`promax-prototype/` is the **visual and behavioural source of truth** for Phase 1. Where this PRD describes *what* a screen must do, the prototype defines *how it looks and behaves*, down to states, copy, and interaction detail. Build against it, not against a fresh interpretation of the prose above.
+
+- **`promax-prototype/DESIGN_SYSTEM.md`** — tokens, type scale, density modes, motion tier, component contract, and the twelve-item accessibility floor every screen must clear.
+- **`promax-prototype/prototype/index.html`** — the viewer. Press `c` to compare any page against the earlier `ux-prototype/` build.
+- **`promax-prototype/components/`** — the TypeScript expression of the component contract (`Button`, `Field`, `DataTable`, `Dialog`, `Toast`, `StateRegion`, `PermissionMatrix`, `WidgetGrid`, …).
+
+| Screen | Prototype file |
+|---|---|
+| Sign in | `prototype/01-signin.html` |
+| Admin dashboard | `prototype/02-admin-dashboard.html` |
+| Patient directory | `prototype/03-patient-list.html` |
+| Patient record | `prototype/04-patient-detail.html` |
+| Appointment booking | `prototype/05-appointment-booking.html` |
+| Doctor schedule | `prototype/06-doctor-schedule.html` |
+| Visit note | `prototype/07-record-entry.html` |
+| Billing & claims | `prototype/08-billing.html` |
+| Admin · Users | `prototype/09-admin-users.html` |
+| Admin · Departments | `prototype/10-admin-departments.html` |
+| Admin · Widget library | `prototype/11-admin-widget-library.html` |
+| Admin · Permissions | `prototype/12-admin-permissions.html` |
+| Receptionist dashboard | `prototype/13-receptionist-dashboard.html` |
+| Doctor dashboard | `prototype/14-doctor-dashboard.html` |
+| Nurse dashboard | `prototype/15-nurse-dashboard.html` |
+
+Two deliberate deltas where the build must exceed the prototype:
+
+1. **Widget resize.** The prototype implements reorder and remove only. `user_widget_layout.size` exists and resize is required — it must be added during implementation.
+2. **Saved list views.** The patient directory shows a "Save this view" affordance. Persisting saved views is **Phase 2**; the control ships disabled or is omitted in Phase 1.
 
 ## Architecture
 
-The system is a modular monolith at the API layer and a modular app-router structure on the frontend, split cleanly along the same module boundaries as the backend domains so a team can own Patient, Appointment, Medical Records, Billing, or Admin end-to-end without touching another module's tables. Next.js serves all authenticated pages behind a role-aware shell that reads the current user's permission matrix on login and renders navigation accordingly; FastAPI exposes one router per domain (auth, patient, appointment, medical-records, billing, admin, widget-config), each with its own Pydantic schemas and its own tables in the shared SQLite database via Drizzle migrations. RBAC is enforced twice: the frontend hides UI the role can't use (UX convenience), and every FastAPI route independently re-checks the caller's role against the permission matrix before touching data (the actual security boundary — the frontend check is not trusted). The widget configuration layer sits orthogonal to the clinical modules: it stores a per-user ordered list of enabled widget IDs plus a global lock list maintained by Admin, and the dashboard shell merges "role default widgets" with "user overrides" with "admin locks" (locks always win) at render time.
+The system is a modular monolith at the API layer and a modular app-router structure on the frontend, split cleanly along the same module boundaries as the backend domains so a team can own Patient, Appointment, Medical Records, Billing, or Admin end-to-end without touching another module's tables. Next.js serves all authenticated pages behind a role-aware shell that reads the current user's permission matrix on login and renders navigation accordingly; FastAPI exposes one router per domain (auth, patient, appointment, medical-records, billing, admin, widget-config, audit), each with its own Pydantic schemas and its own tables in the shared SQLite database via Drizzle migrations. The audit router is write-mostly: every other router calls into it on a privileged or clinically consequential mutation, and only Admin can read it back. RBAC is enforced twice: the frontend hides UI the role can't use (UX convenience), and every FastAPI route independently re-checks the caller's role against the permission matrix before touching data (the actual security boundary — the frontend check is not trusted). The widget configuration layer sits orthogonal to the clinical modules: it stores a per-user ordered list of enabled widget IDs plus a global lock list maintained by Admin, and the dashboard shell merges "role default widgets" with "user overrides" with "admin locks" (locks always win) at render time.
 
 ```mermaid
 graph TB
@@ -72,6 +113,7 @@ graph TB
         BillingAPI[BE-billing]
         AdminAPI[BE-admin]
         WidgetAPI[BE-widget-config]
+        AuditAPI[BE-audit: append-only log]
     end
 
     subgraph "SQLite / Drizzle"
@@ -86,6 +128,10 @@ graph TB
     BillingFE --> BillingAPI
     AdminFE --> AdminAPI
     AdminFE -.->|global widget lock| WidgetAPI
+    AdminFE -->|read audit trail| AuditAPI
+    AdminAPI -.->|write audit row| AuditAPI
+    BillingAPI -.->|write audit row| AuditAPI
+    PatientAPI -.->|write audit row| AuditAPI
 
     AuthAPI -->|RBAC check on every call| PatientAPI
     AuthAPI -->|RBAC check on every call| ApptAPI
@@ -93,6 +139,7 @@ graph TB
     AuthAPI -->|RBAC check on every call| BillingAPI
     AuthAPI -->|RBAC check on every call| AdminAPI
     AuthAPI -->|RBAC check on every call| WidgetAPI
+    AuthAPI -->|RBAC check on every call| AuditAPI
 
     PatientAPI --> DB
     ApptAPI --> DB
@@ -100,39 +147,47 @@ graph TB
     BillingAPI --> DB
     AdminAPI --> DB
     WidgetAPI --> DB
+    AuditAPI --> DB
     AuthAPI --> DB
 ```
 
 ## DB Schema
 
 ### Auth / RBAC tables
-- `users` — id, email, password_hash (Better Auth managed), full_name, role (admin/doctor/nurse/receptionist), department_id (nullable, FK departments), active, created_at
+- `users` — id, email, password_hash (Better Auth managed), full_name, role (admin/doctor/nurse/receptionist), department_id (nullable, FK departments), specialisation (nullable, doctors only), status (active/invited/inactive), mfa_enabled (bool), last_login_at (nullable), created_at
 - `sessions` — id, user_id (FK users), token, expires_at, created_at (Better Auth managed)
 - `permission_matrix` — id, role, module, can_view, can_create, can_edit, can_delete (seeded row per role × module combination)
 
 ### Patient tables
-- `patients` — id, mrn (unique), full_name, dob, national_id (unique, nullable), phone, address, emergency_contact_name, emergency_contact_phone, created_by (FK users), created_at
-- `patient_dedup_flags` — id, patient_id (FK patients), matched_patient_id (FK patients), match_type (national_id/fuzzy_name_dob), resolved (bool), created_at
+- `patients` — id, mrn (unique), full_name, dob, sex, national_id (unique, nullable), phone, address, emergency_contact_name, emergency_contact_phone, acuity (critical/urgent/standard/routine, default routine), status (admitted/outpatient/discharged, default outpatient), primary_department_id (nullable, FK departments), payer_name (nullable), created_by (FK users), created_at
+- `patient_allergies` — id, patient_id (FK patients), substance, severity (mild/moderate/severe), noted_by (FK users), noted_at
+- `patient_dedup_flags` — id, patient_id (FK patients), matched_patient_id (FK patients), match_type (national_id/fuzzy_name_dob), resolved (bool), overridden_by (nullable, FK users), created_at
+- `patient_assignments` — id, patient_id (FK patients), nurse_id (FK users), bed_label (nullable), shift_date, shift_window, assigned_at
 
 ### Appointment tables
-- `appointments` — id, patient_id (FK patients), doctor_id (FK users), department_id (FK departments), scheduled_at, duration_minutes, reason, status (booked/checked_in/completed/cancelled), created_at
+- `appointments` — id, patient_id (FK patients), doctor_id (FK users), department_id (FK departments), scheduled_at, duration_minutes, reason, status (booked/checked_in/in_progress/completed/cancelled/no_show), checked_in_at (nullable), completed_at (nullable), created_at
 - `doctor_availability` — id, doctor_id (FK users), day_of_week, start_time, end_time, department_id (FK departments)
-- `doctor_blocked_days` — id, doctor_id (FK users), blocked_date, reason
+- `doctor_blocked_days` — id, doctor_id (FK users), blocked_date, start_time (nullable), end_time (nullable), reason
 
 ### Medical Records tables
-- `visit_notes` — id, appointment_id (FK appointments), patient_id (FK patients), doctor_id (FK users), chief_complaint, diagnosis, clinical_notes, department_id (FK departments), created_at
+- `visit_notes` — id, appointment_id (FK appointments), patient_id (FK patients), doctor_id (FK users), chief_complaint, diagnosis, clinical_notes, department_id (FK departments), status (draft/submitted/signed), signed_at (nullable), created_at
 - `prescriptions` — id, visit_note_id (FK visit_notes), medication, dosage, frequency, duration_days, created_at
 - `attachments` — id, visit_note_id (FK visit_notes), file_name, file_url, uploaded_by (FK users), created_at
+- `vitals` — id, patient_id (FK patients), appointment_id (nullable, FK appointments), systolic, diastolic, heart_rate, spo2, temperature_c, respiratory_rate, note (nullable), recorded_by (FK users), recorded_at
+- `care_plan_items` — id, patient_id (FK patients), source_visit_note_id (nullable, FK visit_notes), description, due_at, priority (high/normal/low), completed (bool), completed_by (nullable, FK users), completed_at (nullable), created_at
 
 ### Billing tables
-- `invoices` — id, patient_id (FK patients), visit_note_id (FK visit_notes, nullable), total_amount, status (draft/submitted/partially_paid/paid/denied), created_at
-- `invoice_line_items` — id, invoice_id (FK invoices), description, amount, item_type (consultation/procedure/medication)
-- `payments` — id, invoice_id (FK invoices), amount, method, paid_at
-- `insurance_claims` — id, invoice_id (FK invoices), payer_name, claim_number, status (draft/submitted/approved/denied), submitted_at
+- `invoices` — id, patient_id (FK patients), visit_note_id (FK visit_notes, nullable), payer_name (nullable), total_amount, amount_paid, status (draft/unpaid/partially_paid/paid/void), created_at
+- `invoice_line_items` — id, invoice_id (FK invoices), code, description, quantity, unit_amount, item_type (consultation/procedure/medication/room), department_id (FK departments)
+- `payments` — id, invoice_id (FK invoices), amount, method, reference (nullable), paid_at
+- `insurance_claims` — id, invoice_id (FK invoices), payer_name, claim_number, status (none/draft/submitted/in_review/approved/denied/settled), denial_reason (nullable), appeal_deadline (nullable), submitted_at
+
+> Status-enum note: `invoices.status` tracks *money owed* and `insurance_claims.status` tracks *the payer conversation*. They are deliberately separate — an invoice is never "denied"; a claim is.
 
 ### Admin tables
-- `departments` — id, name, type (general/pediatric/cardiology/emergency), active, created_at
+- `departments` — id, name, code (short code used on invoices and requisitions), type (general/pediatric/cardiology/emergency), bed_capacity, min_clinicians_per_shift, active, created_at
 - `department_staff` — id, department_id (FK departments), user_id (FK users), assigned_at
+- `audit_log` — id, actor_user_id (FK users), action (role_change/permission_matrix_edit/dedup_override/invoice_void/widget_publish/user_deactivate/…), entity_type, entity_id, before_json (nullable), after_json (nullable), reason (nullable), created_at — append-only, no update or delete path
 
 ### Widget Config tables
 - `widget_definitions` — id, key, name, default_role (which role gets it by default), globally_enabled (bool), globally_locked (bool)
@@ -489,6 +544,162 @@ Let each user's dashboard customization survive across sessions and devices.
 - [ ] Reloading the dashboard on any device reflects the saved layout
 - [ ] Admin-locked widgets remain fixed even after a user's layout is saved
 
+## Feature: Vitals Capture & Trends
+Nursing intake observations recorded against a patient and reviewable by the treating doctor.
+## Specification
+### Goal
+Make the nurse's intake observations a first-class, persisted clinical record rather than a number read aloud to the doctor.
+### Definition of Done
+- [ ] Vitals can be recorded against a patient, optionally linked to the appointment they were taken for
+- [ ] Recorded vitals appear on the patient timeline and in the doctor's review queue
+
+## Sub-feature: Vitals Entry
+### Goal
+Let a nurse capture a full observation set in one screen without leaving their worklist.
+### Definition of Done
+- [ ] Form captures systolic, diastolic, heart rate, SpO₂, temperature, and respiratory rate
+- [ ] Each value is validated against a plausible physiological range and rejected with the range stated when outside it
+- [ ] Saving records the observing user and timestamp
+
+## Sub-feature: Vitals Review Queue & Trend
+### Goal
+Surface freshly recorded vitals to the doctor, and show change over time rather than a single reading.
+### Definition of Done
+- [ ] Doctor's queue lists patients with vitals recorded and not yet reviewed, most recent first
+- [ ] Out-of-range readings are flagged with an icon and a label, not colour alone
+- [ ] Patient record renders a trend of prior readings with a normal-range reference band
+
+## Feature: Care Plan Tracking
+Discrete, due-dated care tasks attached to a patient for the current shift.
+## Specification
+### Goal
+Turn "what the nurse remembers to do this shift" into tracked, handover-able state.
+### Definition of Done
+- [ ] Care plan items can be created against a patient with a description, due time, and priority
+- [ ] Completing an item records who completed it and when
+
+## Sub-feature: Care Plan Item Lifecycle
+### Goal
+Track each task from creation to completion within a shift.
+### Definition of Done
+- [ ] An item can be marked complete and reopened
+- [ ] Completed items are retained, not deleted, so a shift's work is auditable
+
+## Sub-feature: Shift Handover Summary
+### Goal
+Give the incoming nurse an accurate picture of what was and was not done.
+### Definition of Done
+- [ ] Handover view lists each assigned patient with vitals status and outstanding care plan items
+- [ ] Handover note is attached to the patient timeline for every patient in the assignment
+
+## Feature: Appointment Lifecycle & Queue Management
+Status transitions from booking through to completion, with measurable wait time.
+## Specification
+### Goal
+Replace "the appointment exists" with "we know exactly where this patient is in their visit."
+### Definition of Done
+- [ ] An appointment can transition booked → checked_in → in_progress → completed
+- [ ] An appointment can be cancelled, or marked no-show, from any pre-completion state
+
+## Sub-feature: Check-in & Wait Time
+### Goal
+Timestamp arrival so wait time is measured rather than estimated.
+### Definition of Done
+- [ ] Check-in records `checked_in_at` and moves the appointment into the clinician's waiting list
+- [ ] Wait time is derived from `checked_in_at` and surfaced on the receptionist and clinician queues
+
+## Sub-feature: No-show Handling
+### Goal
+Distinguish a patient who did not attend from one who cancelled, and free the slot.
+### Definition of Done
+- [ ] Marking no-show frees the slot for rebooking and is distinguishable from a cancellation in reporting
+- [ ] A patient's repeat no-show count is visible at the point of booking
+
+## Feature: Patient Safety Attributes
+Allergies, triage acuity, and admission status as structured patient data.
+## Specification
+### Goal
+Prevent the two failure modes a paper chart allows: prescribing against a known allergy, and losing a deteriorating patient in a queue sorted by arrival time.
+### Definition of Done
+- [ ] Recorded allergies are visible on every screen that shows the patient
+- [ ] Acuity and admission status are structured, sortable fields
+
+## Sub-feature: Allergy Register & Contraindication Check
+### Goal
+Make a recorded allergy impossible to miss and impossible to prescribe against by accident.
+### Definition of Done
+- [ ] Allergies render as a persistent banner on the patient header, not behind a tab
+- [ ] Signing a visit note whose prescriptions contraindicate a recorded allergy is blocked, with the clash named
+
+## Sub-feature: Acuity & Admission Status
+### Goal
+Let every queue and worklist sort by clinical urgency instead of arrival order.
+### Definition of Done
+- [ ] Acuity is an ordered four-step scale, rendered with a distinct icon per step as well as a colour
+- [ ] Patient lists and queues can be sorted and filtered by acuity and by admission status
+
+## Feature: Department Capacity & Bed Occupancy
+Bed capacity per department with live occupancy.
+## Specification
+### Goal
+Make ward pressure visible before it becomes a diversion decision.
+### Definition of Done
+- [ ] Each department carries a bed capacity and a derived live occupancy count
+- [ ] Occupancy at or above capacity is surfaced as an alert on the admin dashboard
+
+## Sub-feature: Capacity Configuration
+### Goal
+Let the admin model each department's real bed count and staffing floor.
+### Definition of Done
+- [ ] Admin can set bed capacity and a minimum-clinicians-per-shift value per department
+- [ ] Bed capacity cannot be set below the department's current occupied count
+
+## Sub-feature: Occupancy Reporting
+### Goal
+Show utilisation per department at a glance.
+### Definition of Done
+- [ ] Department list shows occupied/total beds and percentage utilisation
+- [ ] A department at 100% occupancy is flagged distinctly from one merely near capacity
+
+## Feature: Nurse Shift Assignment
+Mapping nurses to the patients they are responsible for during a shift.
+## Specification
+### Goal
+Give each nurse an accurate "my patients this shift" worklist, and make responsibility explicit.
+### Definition of Done
+- [ ] A patient can be assigned to a nurse for a given shift, with an optional bed label
+- [ ] A nurse's dashboard lists exactly their assigned patients for the current shift
+
+## Sub-feature: Assignment Management
+### Goal
+Let ward coordination assign and reassign patients across a shift.
+### Definition of Done
+- [ ] Assignments can be created, reassigned, and ended
+- [ ] A patient with no assignment appears in an explicit unassigned list rather than silently disappearing
+
+## Feature: Audit Log
+Append-only record of privileged and clinically consequential actions.
+## Specification
+### Goal
+Make it possible to answer "who changed this, when, and what did it look like before" without reconstructing it from memory.
+### Definition of Done
+- [ ] Role changes, permission-matrix edits, duplicate-detection overrides, invoice voids, user deactivations, and widget-governance publishes each write an audit row
+- [ ] Audit rows are append-only — no API path updates or deletes them
+
+## Sub-feature: Audit Write Path
+### Goal
+Capture the actor, the entity, and the before/after state of every audited action.
+### Definition of Done
+- [ ] Each audited action records actor, action type, entity type and id, and before/after snapshots
+- [ ] An audited action that fails does not write an audit row
+
+## Sub-feature: Audit Query & Retention
+### Goal
+Let an Admin review recent privileged activity.
+### Definition of Done
+- [ ] Admin can list and filter audit entries by actor, action type, and date range
+- [ ] Audit entries are retained for the configured statutory period and are never exposed to non-Admin roles
+
 
 ---
 
@@ -496,5 +707,7 @@ Let each user's dashboard customization survive across sessions and devices.
 
 - **Notion page**: https://app.notion.com/p/Hospital-Management-System-Phase-1-PRD-3d58f6b0a7a581929041eb7f4597fe0e
 - **GitHub repository**: https://github.com/arkinara/hospital-management-system
+- **Design source of truth**: `promax-prototype/` (viewer: `promax-prototype/prototype/index.html`, contract: `promax-prototype/DESIGN_SYSTEM.md`)
+- **Superseded prototype**: `ux-prototype/` — retained for comparison only, not a build reference
 - **GitHub Project board**: https://github.com/users/arkinara/projects/16
 - **Tickets**: https://github.com/arkinara/hospital-management-system/issues

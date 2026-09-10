@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Patient record — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, card, cardHead, chip, acuityBadge, avatar, icon, button, toast, dialog,
+          btnClass, field, wireFields, banner, breadcrumb, emptyState, meter } = UI;
+  const C = Charts;
+  const params = new URLSearchParams(location.search);
+  const role = params.get('role') || 'Doctor';
+  const p = DB.byMrn(params.get('mrn') || 'P-001042');
+  const canWriteRecords = (DB.permissions[role].Records || '').includes('c');
+  const canBill = (DB.permissions[role].Billing || '').includes('v');
+
+  const KIND = {
+    note: { label: 'Visit note', icon: 'file-text', tone: 'info' },
+    vitals: { label: 'Vitals', icon: 'activity', tone: 'success' },
+    prescription: { label: 'Prescription', icon: 'pill', tone: 'primary' },
+    lab: { label: 'Lab result', icon: 'flask-conical', tone: 'accent' },
+    admission: { label: 'Admission', icon: 'bed-double', tone: 'warning' },
+    procedure: { label: 'Procedure', icon: 'scissors', tone: 'danger' },
+  };
+
+  const DEPT_TONE = { CAR: 'accent', GEN: 'info', PED: 'primary', EMG: 'danger' };
+  const deptTag = (id) => `<span class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs font-semibold ${UI.TONE_CHIP[DEPT_TONE[id] === 'accent' ? 'warning' : DEPT_TONE[id] === 'primary' ? 'info' : DEPT_TONE[id] === 'danger' ? 'danger' : 'info']}">
+    ${icon('building-2', 'w-3 h-3')}${DB.deptName(id)}</span>`;
+
+  let tlFilter = new Set();
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([{ label: 'Patients', href: `03-patient-list.html?role=${role}` }, { label: p.name }])}
+
+    <!-- ─────────── Patient header ───────────
+         Identity, acuity and safety flags stay visible above everything else; an
+         allergy must never be one tab click away. -->
+    <section class="card !p-0 overflow-hidden mb-3">
+      ${p.allergies.length ? `<div class="flex items-center gap-2 px-4 py-2 bg-danger text-surface-0 dark:text-surface-0" role="alert">
+        ${icon('alert-triangle', 'w-4 h-4 shrink-0')}
+        <span class="text-base font-semibold">Allergies: ${p.allergies.join(' · ')}</span>
+        <span class="text-base opacity-90 hidden sm:inline">— verify before prescribing</span>
+      </div>` : ''}
+      <div class="p-4 flex flex-wrap items-start gap-4">
+        ${avatar(p.name, 'w-14 h-14 text-lg')}
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-2xl font-semibold font-display leading-tight">${p.name}</h2>
+            ${acuityBadge(p.acuity)}${chip(p.status)}
+          </div>
+          <dl class="mt-2 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-x-5 gap-y-2">
+            ${[
+              ['MRN', `<span class="num">${p.mrn}</span>`],
+              ['Age / sex', `<span class="num">${DB.age(p.dob)}y</span> · ${p.sex === 'F' ? 'Female' : 'Male'}`],
+              ['Date of birth', `<span class="num">${p.dob}</span>`],
+              ['National ID', `<span class="num">${p.nid.slice(0, 6)}••••${p.nid.slice(-4)}</span>`],
+              ['Attending', DB.byDoctor(p.doctor).name],
+              ['Payer', p.insurer],
+            ].map(([k, v]) => `<div class="min-w-0"><dt class="text-2xs uppercase tracking-wide text-subtle font-semibold">${k}</dt>
+              <dd class="text-base truncate">${v}</dd></div>`).join('')}
+          </dl>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+          ${canWriteRecords ? button({ label: 'New visit note', variant: 'primary', icon: 'file-plus-2', attrs: `data-goto="07-record-entry.html?mrn=${p.mrn}&role=${role}"` }) : ''}
+          ${button({ label: 'Book', variant: 'outline', icon: 'calendar-plus', attrs: `data-goto="05-appointment-booking.html?mrn=${p.mrn}&role=${role}"` })}
+          <button type="button" data-more class="w-11 h-11 rounded-lg grid place-items-center text-muted border border-outline hover:bg-surface-2 press" aria-label="More actions for ${p.name}" aria-haspopup="menu">${icon('more-vertical', 'w-4.5 h-4.5')}</button>
+        </div>
+      </div>
+      ${p.balance ? `<div class="flex flex-wrap items-center gap-3 px-4 py-2.5 border-t border-outline bg-warning-container text-warning-container-foreground">
+        ${icon('wallet', 'w-4 h-4 shrink-0')}
+        <span class="text-base font-medium">Outstanding balance <span class="num font-bold">${DB.rp(p.balance)}</span> across 2 invoices</span>
+        ${canBill ? `<a href="08-billing.html?role=${role}&mrn=${p.mrn}" class="${btnClass('outline', 'sm')} !bg-transparent">Open billing ${icon('arrow-right', 'w-3.5 h-3.5')}</a>` : ''}
+      </div>` : ''}
+    </section>
+
+    <!-- Tabs -->
+    <div class="flex items-center gap-1 border-b border-outline mb-3 overflow-x-auto" role="tablist" aria-label="Patient record sections">
+      ${[['timeline', 'Timeline', 'git-commit-horizontal'], ['vitals', 'Vitals & trends', 'activity'], ['meds', 'Medication', 'pill'], ['files', 'Files & labs', 'paperclip'], ['admin', 'Demographics', 'id-card']]
+        .map(([k, label, ic], i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="panel-${k}" aria-selected="${i === 0}" data-tab="${k}"
+          class="shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 -mb-px border-b-2 text-base font-medium press whitespace-nowrap
+          ${i === 0 ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-foreground hover:bg-surface-2'}">
+          ${icon(ic, 'w-4 h-4')}<span>${label}</span></button>`).join('')}
+    </div>
+
+    <div class="grid gap-3 lg:grid-cols-[1fr_320px] items-start">
+      <div class="min-w-0">
+        <!-- ─────────── Timeline ───────────
+             The cross-department chronology the PRD hangs its value on. Entries carry
+             a department tag so a cardiologist can see what General did, and the
+             filter is additive rather than a single-select dropdown. -->
+        <div role="tabpanel" id="panel-timeline" aria-labelledby="tab-timeline" tabindex="0">
+          ${card(`
+            ${cardHead({
+              title: 'Unified clinical timeline',
+              icon: 'git-commit-horizontal',
+              meta: `Every department, newest first · <span class="num">${DB.timeline.length}</span> entries in the last 60 days`,
+              action: button({ label: 'Print', variant: 'ghost', size: 'sm', icon: 'printer', attrs: 'data-print' }),
+            })}
+            <div class="flex flex-wrap items-center gap-1.5 mb-3 pb-3 border-b border-outline" data-tl-filters>
+              <span class="text-2xs font-semibold uppercase tracking-wide text-subtle mr-1">Filter</span>
+            </div>
+            <div data-states>
+              <div data-state="ready"><ol id="tl" class="relative"></ol></div>
+              <div data-state="loading" hidden>${'<div class="flex gap-3 py-3"><div class="skel w-8 h-8 rounded-lg shrink-0"></div><div class="flex-1 space-y-2"><div class="skel h-3.5 w-1/3"></div><div class="skel h-3.5 w-full"></div><div class="skel h-3.5 w-2/3"></div></div></div>'.repeat(4)}</div>
+              <div data-state="empty" hidden>${emptyState({ icon: 'file-clock', title: 'No clinical history yet', body: 'This patient has been registered but not yet seen. The first visit note will appear here.', action: canWriteRecords ? button({ label: 'Start first visit note', variant: 'primary', icon: 'file-plus-2' }) : '' })}</div>
+              <div data-state="error" hidden>${UI.errorState({ title: 'Records service unreachable', body: 'The timeline could not be loaded. Demographics and medication above are served from cache and remain accurate as of 09:12.' })}</div>
+            </div>
+          `)}
+        </div>
+
+        <!-- Vitals -->
+        <div role="tabpanel" id="panel-vitals" aria-labelledby="tab-vitals" tabindex="0" hidden>
+          ${card(`
+            ${cardHead({ title: 'Blood pressure & heart rate', icon: 'activity', meta: 'Last 7 recordings · reference band shaded' })}
+            <div data-states>
+              <div data-state="ready">${C.line({
+                labels: DB.vitals.map((v) => v.at),
+                yUnit: '',
+                height: 230,
+                refBands: [{ from: 90, to: 120, tone: 'success', label: 'normal systolic' }],
+                series: [
+                  { label: 'Systolic (mmHg)', tone: 'danger', values: DB.vitals.map((v) => v.sys) },
+                  { label: 'Diastolic (mmHg)', tone: 'primary', values: DB.vitals.map((v) => v.dia) },
+                  { label: 'Heart rate (bpm)', tone: 'info', dash: true, values: DB.vitals.map((v) => v.hr) },
+                ],
+                summary: 'Blood pressure and heart rate over seven days. Systolic fell from 156 to 145 mmHg by 7 September then rose slightly to 148. All readings remain above the normal systolic band.',
+                caption: 'Vitals for Budi Santoso, 3 to 9 September 2026',
+              })}
+              <p class="mt-3 pt-3 border-t border-outline text-base flex items-start gap-2">
+                ${icon('trending-down', 'w-4 h-4 text-success shrink-0 mt-0.5')}
+                <span><strong>Responding to therapy.</strong> Systolic is down 8 mmHg since bisoprolol was started on 8 September, but remains above the 140 mmHg target. Next review in 4 weeks.</span></p></div>
+              <div data-state="loading" hidden><div class="skel h-[230px] rounded-lg"></div></div>
+              <div data-state="empty" hidden>${emptyState({ icon: 'activity', title: 'No vitals recorded', body: 'Nursing intake has not logged vitals for this admission yet.', action: button({ label: 'Record vitals', variant: 'primary', icon: 'stethoscope' }) })}</div>
+              <div data-state="error" hidden>${UI.errorState({ title: 'Vitals feed unavailable' })}</div>
+            </div>
+          `, 'mb-3')}
+          ${card(`${cardHead({ title: 'Latest observations', icon: 'clipboard-list', meta: 'Recorded 09:42 by Nurse Wati Lestari' })}
+            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+              ${[['Blood pressure', '148/94', 'mmHg', 'warning'], ['Heart rate', '88', 'bpm', 'neutral'], ['SpO₂', '96', '%', 'neutral'], ['Temperature', '36.8', '°C', 'neutral'], ['Resp. rate', '18', '/min', 'neutral']]
+                .map(([l, v, u, tone]) => `<div class="well p-3">
+                  <p class="text-2xs uppercase tracking-wide text-subtle font-semibold">${l}</p>
+                  <p class="num text-xl font-bold mt-1 ${tone === 'warning' ? 'text-warning' : ''}">${v}<span class="text-xs font-normal text-muted ml-1">${u}</span></p>
+                  ${tone === 'warning' ? `<p class="text-2xs text-warning font-medium mt-0.5 flex items-center gap-1">${icon('arrow-up', 'w-3 h-3')}Above target</p>` : '<p class="text-2xs text-muted mt-0.5">Within range</p>'}
+                </div>`).join('')}
+            </div>`)}
+        </div>
+
+        <!-- Medication -->
+        <div role="tabpanel" id="panel-meds" aria-labelledby="tab-meds" tabindex="0" hidden>
+          ${card(`${cardHead({ title: 'Active medication', icon: 'pill', meta: '2 active · 1 completed', action: canWriteRecords ? button({ label: 'Prescribe', variant: 'primary', size: 'sm', icon: 'plus' }) : '' })}
+            <ul class="divide-y divide-outline">
+              ${[
+                { drug: 'Bisoprolol 5 mg', sig: '1 tablet once daily, morning', by: 'Dr. Sari Wibowo', dept: 'CAR', from: '2026-09-08', days: 30, state: 'active' },
+                { drug: 'Atorvastatin 20 mg', sig: '1 tablet once nightly', by: 'Dr. Sari Wibowo', dept: 'CAR', from: '2026-09-08', days: 30, state: 'active' },
+                { drug: 'Amoxicillin 500 mg', sig: '1 capsule three times daily', by: 'Dr. Adi Nugroho', dept: 'GEN', from: '2026-08-21', days: 7, state: 'completed' },
+              ].map((m) => `<li class="py-3 flex flex-wrap items-start gap-3">
+                <span class="w-8 h-8 shrink-0 rounded-lg grid place-items-center ${m.state === 'active' ? 'bg-primary-container text-primary-container-foreground' : 'bg-surface-2 text-subtle'}">${icon('pill', 'w-4 h-4')}</span>
+                <span class="flex-1 min-w-0">
+                  <span class="flex items-center gap-2 flex-wrap"><span class="text-base font-semibold">${m.drug}</span>${chip(m.state, { size: 'sm' })}${deptTag(m.dept)}</span>
+                  <span class="block text-base text-muted mt-0.5">${m.sig}</span>
+                  <span class="block text-2xs text-subtle num mt-0.5">${m.by} · from ${m.from} · ${m.days} days</span>
+                </span>
+                ${m.state === 'active' && canWriteRecords ? `<button type="button" class="${btnClass('ghost', 'sm')}">${icon('square-pen', 'w-3.5 h-3.5')}<span class="hidden sm:inline">Amend</span></button>` : ''}
+              </li>`).join('')}
+            </ul>
+            ${banner({ tone: 'danger', title: 'Interaction check', body: 'Patient is allergic to <strong>Penicillin</strong>. Amoxicillin (completed 28 Aug) was prescribed by General — flag raised retrospectively on 2 Sep and reviewed.', dismissible: false })}`)}
+        </div>
+
+        <!-- Files -->
+        <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" tabindex="0" hidden>
+          ${card(`${cardHead({ title: 'Attachments & lab reports', icon: 'paperclip', meta: '4 files · 6.2 MB', action: canWriteRecords ? button({ label: 'Upload', variant: 'outline', size: 'sm', icon: 'upload' }) : '' })}
+            <ul class="grid sm:grid-cols-2 gap-2.5">
+              ${[
+                ['Lipid panel — 4 Sep 2026.pdf', '212 KB', 'GEN', 'file-text', 'abnormal'],
+                ['Angiography report — 19 Jul 2026.pdf', '1.4 MB', 'CAR', 'file-text', ''],
+                ['ECG strip — 21 Aug 2026.png', '840 KB', 'EMG', 'image', ''],
+                ['Discharge summary — 21 Aug 2026.pdf', '186 KB', 'EMG', 'file-text', ''],
+              ].map(([n, size, dept, ic, flag]) => `<li>
+                <a href="#" class="flex items-center gap-2.5 p-2.5 rounded-lg border border-outline hover:bg-surface-2 hover:border-outline-strong press min-h-12">
+                  <span class="w-8 h-8 shrink-0 rounded-md bg-surface-2 grid place-items-center text-muted">${icon(ic, 'w-4 h-4')}</span>
+                  <span class="min-w-0 flex-1"><span class="block text-base font-medium truncate">${n}</span>
+                  <span class="block text-2xs text-muted num">${size}</span></span>
+                  ${flag ? `<span class="shrink-0">${chip('unpaid', { label: 'Abnormal', size: 'sm' })}</span>` : ''}
+                  ${deptTag(dept)}
+                </a></li>`).join('')}
+            </ul>`)}
+        </div>
+
+        <!-- Demographics -->
+        <div role="tabpanel" id="panel-admin" aria-labelledby="tab-admin" tabindex="0" hidden>
+          ${card(`${cardHead({ title: 'Demographics & contact', icon: 'id-card', meta: 'Last verified 9 Sep 2026 by Ika Permata', action: button({ label: 'Edit', variant: 'outline', size: 'sm', icon: 'square-pen', attrs: 'data-edit-demo' }) })}
+            <dl class="grid sm:grid-cols-2 gap-x-6 gap-y-3.5">
+              ${[
+                ['Full legal name', p.name], ['MRN', `<span class="num">${p.mrn}</span>`],
+                ['Date of birth', `<span class="num">${p.dob}</span> (${DB.age(p.dob)} years)`],
+                ['National ID', `<span class="num">${p.nid}</span>`],
+                ['Mobile', `<span class="num">${p.phone}</span>`],
+                ['Address', 'Jl. Cempaka Putih Timur 14, Jakarta Pusat 10510'],
+                ['Emergency contact', 'Ratna Santoso (spouse) · <span class="num">+62 812 4471 902</span>'],
+                ['Payer', `${p.insurer} · member <span class="num">0002 4471 9021</span>`],
+                ['Primary department', DB.deptName(p.dept)],
+                ['Registered', '<span class="num">2019-04-02</span> by Ika Permata'],
+              ].map(([k, v]) => `<div class="min-w-0"><dt class="text-2xs uppercase tracking-wide text-subtle font-semibold">${k}</dt>
+                <dd class="text-base mt-0.5 break-words">${v}</dd></div>`).join('')}
+            </dl>`)}
+        </div>
+      </div>
+
+      <!-- ─────────── Side rail ─────────── -->
+      <aside class="space-y-3 min-w-0">
+        ${card(`${cardHead({ title: 'Care summary', icon: 'clipboard-check' })}
+          <ul class="space-y-2.5 text-base">
+            <li class="flex gap-2"><span class="text-muted shrink-0 mt-0.5">${icon('activity', 'w-4 h-4')}</span>
+              <span><strong>Primary diagnosis</strong><br><span class="text-muted">I25.10 — Atherosclerotic heart disease of native coronary artery</span></span></li>
+            <li class="flex gap-2"><span class="text-muted shrink-0 mt-0.5">${icon('scissors', 'w-4 h-4')}</span>
+              <span><strong>Last procedure</strong><br><span class="text-muted">PCI with drug-eluting stent, LAD · <span class="num">19 Jul 2026</span></span></span></li>
+            <li class="flex gap-2"><span class="text-muted shrink-0 mt-0.5">${icon('calendar-check', 'w-4 h-4')}</span>
+              <span><strong>Next review</strong><br><span class="text-muted"><span class="num">6 Oct 2026</span>, Dr. Sari Wibowo (Cardiology)</span></span></li>
+          </ul>`)}
+
+        ${card(`${cardHead({ title: 'Departments involved', icon: 'building-2', meta: 'Contacts across the record' })}
+          <div class="space-y-3">
+            ${[['CAR', 3, 'Dr. Sari Wibowo'], ['GEN', 2, 'Dr. Adi Nugroho'], ['EMG', 1, 'Dr. Rendra Pratama']]
+              .map(([d, n, doc]) => `<div class="flex items-center gap-2.5">
+                ${deptTag(d)}
+                <span class="flex-1 min-w-0 text-base text-muted truncate">${doc}</span>
+                <span class="num text-xs text-subtle shrink-0">${n} entr${n === 1 ? 'y' : 'ies'}</span>
+              </div>`).join('')}
+          </div>
+          <p class="mt-3 pt-3 border-t border-outline text-xs text-muted">Any clinician with Records access sees this whole chronology, regardless of which department they belong to — that is the point of the unified record.</p>`)}
+
+        ${card(`${cardHead({ title: 'Consent & flags', icon: 'shield-check' })}
+          <ul class="space-y-2">
+            ${[['Data sharing consent', true, '2019-04-02'], ['Research participation', false, '—'], ['Interpreter required', false, '—'], ['High-risk fall', true, '2026-09-09']]
+              .map(([l, on, at]) => `<li class="flex items-center gap-2 text-base">
+                <span class="${on ? 'text-success' : 'text-subtle'} shrink-0">${icon(on ? 'check-circle-2' : 'circle', 'w-4 h-4')}</span>
+                <span class="flex-1 ${on ? '' : 'text-muted'}">${l}</span>
+                <span class="num text-2xs text-subtle">${at}</span></li>`).join('')}
+          </ul>`)}
+      </aside>
+    </div>
+  `);
+
+  /* ── Timeline render + additive filter ── */
+  function renderTimeline() {
+    const rows = DB.timeline.filter((t) => !tlFilter.size || tlFilter.has(t.kind) || tlFilter.has(t.dept));
+    const host = document.getElementById('tl');
+    if (!rows.length) {
+      host.innerHTML = `<li>${emptyState({ icon: 'filter-x', title: 'Nothing matches this filter', body: 'This patient has no entries of the selected type. Clear the filter to see the full chronology.', action: button({ label: 'Clear filter', variant: 'primary', icon: 'filter-x', attrs: 'data-tl-clear' }) })}</li>`;
+    } else {
+      host.innerHTML = rows.map((t, i) => {
+        const k = KIND[t.kind];
+        return `<li class="relative flex gap-3 pb-4 last:pb-0">
+          ${i < rows.length - 1 ? '<span class="absolute left-4 top-9 bottom-0 w-px bg-outline" aria-hidden="true"></span>' : ''}
+          <span class="relative z-[1] w-8 h-8 shrink-0 rounded-lg grid place-items-center ${UI.TONE_CHIP[k.tone === 'accent' ? 'warning' : k.tone]} ring-4 ring-[rgb(var(--s0))]">${icon(k.icon, 'w-4 h-4')}</span>
+          <div class="min-w-0 flex-1 pt-0.5">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span class="text-base font-semibold">${t.title}</span>
+              ${deptTag(t.dept)}
+              ${t.flag === 'abnormal' ? chip('unpaid', { label: 'Abnormal', size: 'sm' }) : ''}
+              <span class="num text-2xs text-subtle">${t.at}</span>
+            </div>
+            <p class="text-base text-muted mt-1 leading-relaxed">${t.body}</p>
+            ${t.dx ? `<p class="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md bg-surface-2 border border-outline num">${icon('tag', 'w-3 h-3')}${t.dx}</p>` : ''}
+            <p class="text-2xs text-subtle mt-1.5">${t.by} · ${k.label}</p>
+          </div>
+        </li>`;
+      }).join('');
+    }
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    host.querySelector('[data-tl-clear]')?.addEventListener('click', () => { tlFilter.clear(); renderFilters(); renderTimeline(); });
+  }
+
+  function renderFilters() {
+    const host = document.querySelector('[data-tl-filters]');
+    const kinds = Object.keys(KIND).filter((k) => DB.timeline.some((t) => t.kind === k));
+    const depts = [...new Set(DB.timeline.map((t) => t.dept))];
+    host.innerHTML = `<span class="text-2xs font-semibold uppercase tracking-wide text-subtle mr-1">Filter</span>` +
+      kinds.map((k) => UI.filterChip({ label: KIND[k].label, count: DB.timeline.filter((t) => t.kind === k).length, active: tlFilter.has(k), key: k })).join('') +
+      `<span class="w-px h-6 bg-outline mx-1"></span>` +
+      depts.map((d) => UI.filterChip({ label: DB.deptName(d), count: DB.timeline.filter((t) => t.dept === d).length, active: tlFilter.has(d), key: d })).join('');
+    host.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => {
+      const k = b.dataset.filter;
+      tlFilter.has(k) ? tlFilter.delete(k) : tlFilter.add(k);
+      renderFilters(); renderTimeline();
+    }));
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ── Tabs: roving selection, panels swapped without losing scroll ── */
+  const tabs = Array.from(document.querySelectorAll('[data-tab]'));
+  function selectTab(key) {
+    tabs.forEach((t) => {
+      const on = t.dataset.tab === key;
+      t.setAttribute('aria-selected', String(on));
+      t.className = `shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 -mb-px border-b-2 text-base font-medium press whitespace-nowrap ${on ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-foreground hover:bg-surface-2'}`;
+      document.getElementById(`panel-${t.dataset.tab}`).hidden = !on;
+    });
+    UI.applyState('ready');
+    Charts.wire(document);
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => selectTab(t.dataset.tab));
+    t.addEventListener('keydown', (e) => {
+      const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      const next = tabs[(i + d + tabs.length) % tabs.length];
+      next.focus(); selectTab(next.dataset.tab);
+    });
+  });
+
+  /* ── Overflow menu, with the destructive item separated ── */
+  document.querySelector('[data-more]').addEventListener('click', () => {
+    dialog({
+      title: 'Record actions',
+      size: 'sm',
+      body: `<ul class="-mx-2">
+        ${[['Print full record', 'printer'], ['Share with another clinician', 'share-2'], ['Request record merge', 'git-merge'], ['Download as PDF', 'download'], ['View audit log', 'scroll-text']]
+          .map(([l, ic]) => `<li><button type="button" class="w-full flex items-center gap-2.5 px-2.5 min-h-12 rounded-lg text-base hover:bg-surface-2 press">${icon(ic, 'w-4 h-4 text-muted')}<span>${l}</span></button></li>`).join('')}
+        <li class="mt-2 pt-2 border-t border-outline"><button type="button" data-archive class="w-full flex items-center gap-2.5 px-2.5 min-h-12 rounded-lg text-base text-danger hover:bg-danger-container press">${icon('archive', 'w-4 h-4')}<span>Archive patient record</span></button></li>
+      </ul>`,
+    });
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    document.querySelector('[data-archive]')?.addEventListener('click', () => {
+      UI.confirmDialog({
+        title: `Archive ${p.name}?`,
+        message: 'Archiving hides this patient from the directory and from search. Clinical history is retained for the statutory 25-year period.',
+        consequence: ['Future appointments will be cancelled and the patient notified.', 'An outstanding balance of ' + DB.rp(p.balance) + ' remains payable.', 'Only an Admin can restore an archived record.'],
+        confirmLabel: 'Archive record',
+        onConfirm: () => toast(`${p.name} archived.`, { tone: 'neutral', undo: () => toast('Archive reversed — record is live again.', { tone: 'success' }) }),
+      });
+    });
+  });
+
+  document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => { location.href = b.dataset.goto; }));
+  document.querySelector('[data-print]')?.addEventListener('click', () => toast('Full record sent to the ward printer.', { tone: 'info', detail: '7 pages · duplex' }));
+  document.querySelector('[data-edit-demo]')?.addEventListener('click', () => {
+    const d = dialog({
+      title: 'Edit demographics',
+      size: 'md',
+      dirty: () => true,
+      body: `<div class="space-y-3"><div id="e1"></div><div class="grid sm:grid-cols-2 gap-3"><div id="e2"></div><div id="e3"></div></div><div id="e4"></div></div>`,
+      actions: [{ label: 'Cancel', variant: 'ghost' }, { label: 'Save changes', variant: 'primary', icon: 'check', onClick: () => toast('Demographics updated. Change is in the audit log.', { tone: 'success' }) }],
+    });
+    d.body.querySelector('#e1').innerHTML = field({ id: 'dName', label: 'Full legal name', value: p.name, required: true });
+    d.body.querySelector('#e2').innerHTML = field({ id: 'dPhone', label: 'Mobile number', value: p.phone, type: 'tel', required: true, mono: true, attrs: 'data-rule="phone"' });
+    d.body.querySelector('#e3').innerHTML = field({ id: 'dPayer', label: 'Payer', type: 'select', options: ['BPJS Kesehatan', 'Mandiri Inhealth', 'Prudential', 'Self-pay'].map((x) => ({ label: x, selected: x === p.insurer })) });
+    d.body.querySelector('#e4').innerHTML = field({ id: 'dAddr', label: 'Address', type: 'textarea', rows: 2, value: 'Jl. Cempaka Putih Timur 14, Jakarta Pusat 10510' });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  });
+
+  UI.shell({ title: p.name, subtitle: `${p.mrn} · ${DB.deptName(p.dept)} · ${DB.byDoctor(p.doctor).name}`, active: 'patients', role, roleAware: false });
+  renderFilters();
+  renderTimeline();
+  selectTab('timeline');
+  Charts.wire(document);
+})();
+</script>
+</body>
+</html>

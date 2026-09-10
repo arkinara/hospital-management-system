@@ -1,0 +1,259 @@
+import React from 'react';
+import { cn } from './cn';
+import type { IconRenderer } from './StatusChip';
+
+export interface Column<T> {
+  key: string;
+  label: string;
+  align?: 'left' | 'right';
+  width?: string;
+  /** Sortable unless explicitly turned off. */
+  sortable?: boolean;
+  /** Tabular figures for this column. */
+  mono?: boolean;
+  cell?: (row: T) => React.ReactNode;
+  /** Sort key when the rendered cell is not what should be compared. */
+  sortValue?: (row: T) => string | number;
+}
+
+export interface BulkAction<T> {
+  label: string;
+  icon?: string;
+  variant?: 'primary' | 'danger' | 'subtle';
+  onAction: (rows: T[]) => void;
+}
+
+export interface DataTableProps<T> {
+  rows: T[];
+  columns: Column<T>[];
+  rowKey: (row: T) => string;
+  /** Accessible name for the table. */
+  label: string;
+  /** Longer description, rendered as a visually hidden `<caption>`. */
+  caption?: string;
+  /** Human label for a single row, used by the selection checkbox's aria-label. */
+  rowLabel?: (row: T) => string;
+  selectable?: boolean;
+  bulkActions?: BulkAction<T>[];
+  initialSort?: { key: string; dir: 'asc' | 'desc' };
+  onRowActivate?: (row: T) => void;
+  /** Card layout for < 768px, so nothing scrolls sideways on a phone. */
+  mobileCard?: (row: T) => React.ReactNode;
+  footer?: React.ReactNode;
+  maxHeight?: string;
+  renderIcon: IconRenderer;
+  className?: string;
+}
+
+/**
+ * Dense data table.
+ *
+ * Guarantees:
+ *  - sticky header carrying real `aria-sort`, sortable by click AND by Enter/Space
+ *  - selection with a bulk bar; destructive bulk actions are expected to offer Undo
+ *    from the toast rather than a confirm-only flow
+ *  - a card list under 768px instead of a horizontally scrolling table
+ *  - `<caption>` for screen readers, `scope` on every header cell
+ *  - row activation available from the keyboard, because a clickable `<tr>` alone
+ *    is not reachable
+ */
+export function DataTable<T>({
+  rows,
+  columns,
+  rowKey,
+  label,
+  caption,
+  rowLabel,
+  selectable = false,
+  bulkActions = [],
+  initialSort,
+  onRowActivate,
+  mobileCard,
+  footer,
+  maxHeight,
+  renderIcon,
+  className,
+}: DataTableProps<T>) {
+  const [sort, setSort] = React.useState(initialSort ?? null);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+
+  const sorted = React.useMemo(() => {
+    if (!sort) return rows;
+    const col = columns.find((c) => c.key === sort.key);
+    const get = col?.sortValue ?? ((r: T) => (r as Record<string, unknown>)[sort.key] as string | number);
+    return [...rows].sort((a, b) => {
+      const va = get(a);
+      const vb = get(b);
+      const n =
+        typeof va === 'number' && typeof vb === 'number'
+          ? va - vb
+          : String(va).localeCompare(String(vb), 'en', { numeric: true });
+      return sort.dir === 'desc' ? -n : n;
+    });
+  }, [rows, columns, sort]);
+
+  const toggleSort = (key: string) =>
+    setSort((s) => (s && s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+
+  const allSelected = sorted.length > 0 && sorted.every((r) => selected.has(rowKey(r)));
+  const selectedRows = sorted.filter((r) => selected.has(rowKey(r)));
+
+  const ariaSort = (key: string): React.AriaAttributes['aria-sort'] =>
+    sort?.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+
+  return (
+    <div className={cn('min-w-0', className)}>
+      {selectable && selected.size > 0 ? (
+        <div className="anim-in sticky top-0 z-sticky flex flex-wrap items-center gap-2 px-3 py-2 bg-primary-container text-primary-container-foreground border-b border-outline">
+          <span className="text-base font-semibold num">{selected.size} selected</span>
+          <span className="flex-1" />
+          {bulkActions.map((a) => (
+            <button
+              key={a.label}
+              type="button"
+              onClick={() => {
+                a.onAction(selectedRows);
+                setSelected(new Set());
+              }}
+              className={cn(
+                'inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-base font-medium press',
+                a.variant === 'primary' && 'bg-primary text-primary-foreground',
+                a.variant === 'danger' && 'bg-danger text-surface-0',
+                (!a.variant || a.variant === 'subtle') && 'bg-surface-2 text-foreground border border-outline',
+              )}
+            >
+              {a.icon ? renderIcon(a.icon, 'w-3.5 h-3.5') : null}
+              <span>{a.label}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="h-9 px-2.5 rounded-lg text-base font-medium hover:bg-black/5 dark:hover:bg-white/10 press"
+          >
+            Clear
+          </button>
+        </div>
+      ) : null}
+
+      {/* Pointer widths: the dense table */}
+      <div className="hidden md:block overflow-x-auto overscroll-x-contain" style={maxHeight ? { maxHeight } : undefined}>
+        <table className="dt">
+          {caption ? <caption className="sr-only">{caption}</caption> : null}
+          <thead>
+            <tr>
+              {selectable ? (
+                <th scope="col" className="w-10">
+                  <span className="sr-only">Select</span>
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={(e) =>
+                      setSelected(e.currentTarget.checked ? new Set(sorted.map(rowKey)) : new Set())
+                    }
+                    aria-label={`Select all ${sorted.length} rows`}
+                    className="w-4 h-4 accent-[rgb(var(--primary))] cursor-pointer align-middle"
+                  />
+                </th>
+              ) : null}
+              {columns.map((c) => {
+                const sortable = c.sortable !== false;
+                return (
+                  <th
+                    key={c.key}
+                    scope="col"
+                    aria-sort={sortable ? ariaSort(c.key) : undefined}
+                    tabIndex={sortable ? 0 : undefined}
+                    onClick={sortable ? () => toggleSort(c.key) : undefined}
+                    onKeyDown={
+                      sortable
+                        ? (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleSort(c.key);
+                            }
+                          }
+                        : undefined
+                    }
+                    style={c.width ? { width: c.width } : undefined}
+                    className={cn('group', c.align === 'right' && 'text-right')}
+                  >
+                    <span className={cn('inline-flex items-center gap-1', c.align === 'right' && 'flex-row-reverse')}>
+                      {c.label}
+                      {sortable
+                        ? sort?.key === c.key
+                          ? renderIcon(sort.dir === 'asc' ? 'arrow-up' : 'arrow-down', 'w-3 h-3')
+                          : renderIcon('arrow-up-down', 'w-3 h-3 opacity-0 group-hover:opacity-50')
+                        : null}
+                    </span>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row) => {
+              const k = rowKey(row);
+              const isSel = selected.has(k);
+              return (
+                <tr
+                  key={k}
+                  aria-selected={isSel || undefined}
+                  onClick={onRowActivate ? () => onRowActivate(row) : undefined}
+                  className={onRowActivate ? 'cursor-pointer' : undefined}
+                >
+                  {selectable ? (
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={isSel}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) =>
+                          setSelected((s) => {
+                            const next = new Set(s);
+                            e.currentTarget.checked ? next.add(k) : next.delete(k);
+                            return next;
+                          })
+                        }
+                        aria-label={`Select ${rowLabel ? rowLabel(row) : k}`}
+                        className="w-4 h-4 accent-[rgb(var(--primary))] cursor-pointer align-middle"
+                      />
+                    </td>
+                  ) : null}
+                  {columns.map((c) => (
+                    <td key={c.key} className={cn(c.align === 'right' && 'text-right', c.mono && 'num')}>
+                      {c.cell ? c.cell(row) : String((row as Record<string, unknown>)[c.key] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* < 768px: the same records as cards */}
+      {mobileCard ? (
+        <ul className="md:hidden divide-y divide-outline" aria-label={label}>
+          {sorted.map((row) => (
+            <li key={rowKey(row)}>
+              <button
+                type="button"
+                onClick={() => onRowActivate?.(row)}
+                className="w-full text-left px-4 py-3 min-h-12 hover:bg-surface-2 press"
+              >
+                {mobileCard(row)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {footer ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-outline bg-surface-1 text-xs text-muted">
+          {footer}
+        </div>
+      ) : null}
+    </div>
+  );
+}

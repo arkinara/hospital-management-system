@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Book appointment — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, avatar, icon, button, toast, dialog,
+          confirmDialog, btnClass, field, wireFields, banner, breadcrumb, emptyState } = UI;
+  const params = new URLSearchParams(location.search);
+  const role = params.get('role') || 'Receptionist';
+
+  /* Booking state. `slot` stays null until a conflict-free slot is actually chosen,
+     so the Confirm button cannot be reached with an invalid selection. */
+  const S = {
+    step: 1,
+    patient: params.get('mrn') ? DB.byMrn(params.get('mrn')) : null,
+    dept: 'CAR',
+    doctor: 'D01',
+    date: DB.TODAY,
+    slot: null,
+    duration: 30,
+    reason: '',
+    priority: 'standard',
+  };
+
+  const STEPS = [
+    { n: 1, label: 'Patient', icon: 'user-search' },
+    { n: 2, label: 'Slot', icon: 'calendar-clock' },
+    { n: 3, label: 'Confirm', icon: 'check-check' },
+  ];
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([{ label: 'Appointments', href: null }, { label: 'New booking' }])}
+    ${pageHead({
+      title: 'Book an appointment',
+      meta: 'Conflict detection runs before submission — a clashing slot cannot be selected, not merely warned about.',
+      actions: button({ label: 'Cancel booking', variant: 'ghost', icon: 'x', attrs: 'data-abort' }),
+    })}
+
+    <!-- ─────────── Progress ───────────
+         Steps are labelled, the current one is announced, and completed steps stay
+         clickable so going back never means starting again. -->
+    <nav aria-label="Booking progress" class="mb-4">
+      <ol class="flex items-center gap-1 sm:gap-2" id="steps"></ol>
+    </nav>
+
+    <div class="grid gap-3 lg:grid-cols-[1fr_320px] items-start">
+      <div class="min-w-0 space-y-3" id="panels"></div>
+
+      <!-- ─────────── Live summary rail ───────────
+           Always visible, so the receptionist can read the whole booking back to
+           the patient at any point in the flow. -->
+      <aside class="lg:sticky lg:top-[6.5rem] space-y-3">
+        ${card(`${cardHead({ title: 'Booking summary', icon: 'clipboard-list' })}<div id="summary"></div>`)}
+        ${card(`<h3 class="text-base font-semibold font-display flex items-center gap-1.5 mb-2.5">${icon('info', 'w-4 h-4 text-muted')}Scheduling rules</h3>
+          <ul class="space-y-2 text-xs text-muted">
+            <li class="flex gap-2">${icon('ban', 'w-3.5 h-3.5 shrink-0 mt-0.5 text-danger')}<span>A slot already held by another patient cannot be selected.</span></li>
+            <li class="flex gap-2">${icon('clock-alert', 'w-3.5 h-3.5 shrink-0 mt-0.5 text-warning')}<span>Bookings need 15 minutes' notice; earlier slots today are closed.</span></li>
+            <li class="flex gap-2">${icon('user-x', 'w-3.5 h-3.5 shrink-0 mt-0.5 text-warning')}<span>Patients with 2+ no-shows require a deposit at booking.</span></li>
+            <li class="flex gap-2">${icon('calendar-x', 'w-3.5 h-3.5 shrink-0 mt-0.5 text-muted')}<span>Doctors off-shift do not appear in the clinician list at all.</span></li>
+          </ul>`)}
+      </aside>
+    </div>
+  `);
+
+  /* ─────────────────────── Step chrome ─────────────────────── */
+  function renderSteps() {
+    document.getElementById('steps').innerHTML = STEPS.map((s, i) => {
+      const done = S.step > s.n, on = S.step === s.n;
+      return `<li class="flex items-center gap-1 sm:gap-2 min-w-0 ${on ? 'flex-1' : ''}">
+        <button type="button" data-step="${s.n}" ${done || on ? '' : 'disabled'} ${on ? 'aria-current="step"' : ''}
+          class="flex items-center gap-2 min-h-11 px-2 sm:px-3 rounded-lg press disabled:cursor-not-allowed ${on ? 'bg-primary-container text-primary-container-foreground' : done ? 'text-foreground hover:bg-surface-2' : 'text-subtle'}">
+          <span class="w-6 h-6 shrink-0 rounded-full grid place-items-center text-2xs font-bold num ${on ? 'bg-primary text-primary-foreground' : done ? 'bg-success text-surface-0' : 'bg-surface-3 text-subtle'}">
+            ${done ? icon('check', 'w-3.5 h-3.5') : s.n}</span>
+          <span class="text-base font-medium ${on ? '' : 'hidden sm:inline'}">${s.label}</span>
+        </button>
+        ${i < STEPS.length - 1 ? `<span class="h-px flex-1 min-w-4 ${done ? 'bg-success' : 'bg-outline'}" aria-hidden="true"></span>` : ''}
+      </li>`;
+    }).join('');
+    document.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => { if (!b.disabled) go(+b.dataset.step); }));
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  function go(n) {
+    S.step = n;
+    renderSteps(); renderPanel(); renderSummary();
+    document.getElementById('panels').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  /* ─────────────────────── Step 1 · patient ─────────────────────── */
+  function panelPatient() {
+    return card(`
+      ${cardHead({ title: 'Who is this appointment for?', icon: 'user-search', meta: 'Search an existing patient, or register a walk-in' })}
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        <div class="relative flex-1 min-w-[200px]">
+          <label for="pq" class="sr-only">Search patient by name, MRN or national ID</label>
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted">${icon('search', 'w-4 h-4')}</span>
+          <input id="pq" type="search" placeholder="Name, MRN or national ID…" autocomplete="off"
+            class="w-full min-h-11 rounded-lg bg-surface-2 border border-outline-strong pl-9 pr-3 text-base focus-inset">
+        </div>
+        ${button({ label: 'Register walk-in', variant: 'outline', icon: 'user-plus', attrs: 'data-walkin' })}
+      </div>
+      <div data-states>
+        <div data-state="ready"><ul id="pres" class="divide-y divide-outline -mx-1"></ul></div>
+        <div data-state="loading" hidden>${UI.skeletonRows(4, 3)}</div>
+        <div data-state="empty" hidden>${emptyState({ icon: 'user-search', title: 'No patient found', body: 'Nobody matches that search. If this is a first visit, register the patient — duplicate detection will still run.', action: button({ label: 'Register walk-in', variant: 'primary', icon: 'user-plus', attrs: 'data-walkin' }) })}</div>
+        <div data-state="error" hidden>${UI.errorState({ title: 'Patient search unavailable' })}</div>
+      </div>
+    `);
+  }
+
+  function renderPatientResults(q = '') {
+    const rows = DB.patients.filter((p) => !q || `${p.name} ${p.mrn} ${p.nid}`.toLowerCase().includes(q.toLowerCase())).slice(0, 6);
+    const host = document.getElementById('pres');
+    if (!host) return;
+    host.innerHTML = rows.length ? rows.map((p) => {
+      const on = S.patient && S.patient.mrn === p.mrn;
+      return `<li><button type="button" data-pick="${p.mrn}" aria-pressed="${on}"
+        class="w-full flex items-center gap-2.5 px-2 min-h-14 rounded-lg text-left press ${on ? 'bg-primary-container' : 'hover:bg-surface-2'}">
+        ${avatar(p.name, 'w-9 h-9 text-xs')}
+        <span class="flex-1 min-w-0">
+          <span class="flex items-center gap-1.5"><span class="text-base font-medium truncate">${p.name}</span>
+          ${p.allergies.length ? `<span class="text-danger shrink-0" aria-label="Has allergies">${icon('alert-triangle', 'w-3.5 h-3.5')}</span>` : ''}</span>
+          <span class="block text-2xs text-muted num truncate">${p.mrn} · ${p.dob} · ${DB.deptName(p.dept)} · ${p.insurer}</span>
+        </span>
+        ${on ? `<span class="shrink-0 text-primary">${icon('check-circle-2', 'w-5 h-5')}</span>` : `<span class="shrink-0 text-subtle">${icon('chevron-right', 'w-4 h-4')}</span>`}
+      </button></li>`;
+    }).join('') : '';
+    if (!rows.length) UI.setState('empty');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    host.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
+      S.patient = DB.byMrn(b.dataset.pick);
+      renderPatientResults(document.getElementById('pq').value);
+      renderSummary();
+      // Advance only once a real choice exists — no dead "Next" button to click.
+      setTimeout(() => go(2), 180);
+    }));
+  }
+
+  /* ─────────────────────── Step 2 · slot ───────────────────────
+     The doctor's real day, with each slot's state legible from its label as well
+     as its colour. Blocked and held slots are disabled buttons, so a conflict is
+     unreachable rather than rejected after submit. */
+  function panelSlot() {
+    const dutyDoctors = DB.doctors.filter((d) => d.dept === S.dept && d.onDuty);
+    const offDuty = DB.doctors.filter((d) => d.dept === S.dept && !d.onDuty);
+    return card(`
+      ${cardHead({ title: 'Choose department, clinician and slot', icon: 'calendar-clock', meta: 'Only on-shift clinicians are listed' })}
+      <div class="grid sm:grid-cols-3 gap-3 mb-4">
+        <div id="s1"></div><div id="s2"></div><div id="s3"></div>
+      </div>
+
+      ${offDuty.length ? `<p class="text-xs text-muted mb-3 flex items-start gap-1.5">${icon('calendar-x', 'w-3.5 h-3.5 shrink-0 mt-px')}
+        <span><span class="num">${offDuty.length}</span> ${DB.deptName(S.dept)} clinician${offDuty.length > 1 ? 's are' : ' is'} off-shift on this date and therefore not listed: ${offDuty.map((d) => d.name).join(', ')}.</span></p>` : ''}
+
+      <div data-states>
+        <div data-state="ready">
+          <div class="flex flex-wrap items-center gap-3 mb-2.5">
+            <h3 class="text-base font-semibold">Day view · <span class="num">${S.date}</span></h3>
+            <span class="flex-1"></span>
+            <ul class="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted">
+              ${[['Open', 'success', 'plus'], ['Booked', 'info', 'user'], ['Held', 'warning', 'hourglass'], ['Blocked', 'neutral', 'ban']]
+                .map(([l, tone, ic]) => `<li class="inline-flex items-center gap-1">${icon(ic, `w-3 h-3 ${tone === 'neutral' ? 'text-subtle' : 'text-' + tone}`)}${l}</li>`).join('')}
+            </ul>
+          </div>
+          <div id="slots" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2" role="group" aria-label="Available appointment slots"></div>
+          <div id="conflict" class="mt-3"></div>
+        </div>
+        <div data-state="loading" hidden><div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">${'<div class="skel h-[70px] rounded-lg"></div>'.repeat(12)}</div></div>
+        <div data-state="empty" hidden>${emptyState({ icon: 'calendar-x', title: 'No slots on this date', body: 'This clinician has no clinic session on the selected day. Try the next working day, or pick another clinician in the same department.', action: button({ label: 'Jump to next open day', variant: 'primary', icon: 'calendar-search' }) })}</div>
+        <div data-state="error" hidden>${UI.errorState({ title: 'Scheduling service unreachable', body: 'Slot availability cannot be confirmed right now, so booking is disabled to avoid creating a double-booking.' })}</div>
+      </div>
+    `);
+  }
+
+  function renderSlots() {
+    const host = document.getElementById('slots');
+    if (!host) return;
+    // "Now" is 09:41; anything earlier today is closed by the notice rule.
+    const closedBefore = S.date === DB.TODAY ? '09:56' : '00:00';
+    host.innerHTML = DB.slots.map((s) => {
+      const past = s.time < closedBefore;
+      const state = past ? 'past' : s.status;
+      const on = S.slot === s.time;
+      const meta = {
+        open: ['Open', 'success', 'plus', false],
+        booked: [DB.byMrn(s.patient).name.split(' ')[0] + ' · booked', 'info', 'user', true],
+        blocked: [s.reason, 'neutral', 'ban', true],
+        held: [s.reason, 'warning', 'hourglass', true],
+        past: ['Too late to book', 'neutral', 'clock-alert', true],
+      }[state];
+      const [label, tone, ic, disabled] = meta;
+      const cls = on
+        ? 'border-primary bg-primary text-primary-foreground'
+        : disabled
+          ? 'border-outline bg-surface-2 text-subtle cursor-not-allowed'
+          : 'border-outline-strong bg-surface-0 hover:border-primary hover:bg-primary-container press';
+      return `<button type="button" data-slot="${s.time}" ${disabled ? 'disabled' : ''} aria-pressed="${on}"
+        class="min-h-[70px] rounded-lg border p-2.5 text-left ${cls}"
+        aria-label="${s.time}, ${label}${disabled ? ', unavailable' : ', available'}">
+        <span class="num text-md font-bold block">${s.time}</span>
+        <span class="flex items-center gap-1 text-2xs mt-0.5 ${on ? '' : disabled ? '' : 'text-' + tone} truncate">
+          ${icon(ic, 'w-3 h-3 shrink-0')}<span class="truncate">${label}</span></span>
+      </button>`;
+    }).join('');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+
+    host.querySelectorAll('[data-slot]').forEach((b) => b.addEventListener('click', () => {
+      S.slot = b.dataset.slot;
+      renderSlots(); renderSummary(); checkConflict();
+    }));
+  }
+
+  /* A second, softer class of conflict: the slot is free for this doctor but the
+     patient is already booked elsewhere at the same time. That is a warning with a
+     resolution path, not a hard block. */
+  function checkConflict() {
+    const host = document.getElementById('conflict');
+    if (!host) return;
+    const clash = S.patient && DB.appointments.find((a) => a.patient === S.patient.mrn && a.time === S.slot && a.status !== 'cancelled');
+    if (!S.slot) { host.innerHTML = ''; return; }
+    if (clash) {
+      host.innerHTML = banner({
+        tone: 'danger', dismissible: false,
+        title: 'This patient already has an appointment at ' + S.slot,
+        body: `<span class="num">${clash.id}</span> with ${DB.byDoctor(clash.doctor).name} (${DB.deptName(clash.dept)}) — “${clash.reason}”. Booking both would send the patient to two departments at once.`,
+        actions: `${button({ label: 'Move the existing one', variant: 'danger', size: 'sm', icon: 'calendar-sync', attrs: 'data-move' })}
+                  ${button({ label: 'Pick another time', variant: 'outline', size: 'sm', icon: 'clock', attrs: 'data-repick' })}`,
+      });
+      lucide.createIcons({ nameAttr: 'data-lucide' });
+      host.querySelector('[data-move]').addEventListener('click', () => toast('Existing appointment moved to 11:00.', { tone: 'success', undo: () => toast('Move reverted.', { tone: 'neutral' }) }));
+      host.querySelector('[data-repick]').addEventListener('click', () => { S.slot = null; renderSlots(); renderSummary(); host.innerHTML = ''; });
+      S.slot = null;
+      return;
+    }
+    host.innerHTML = `<div class="flex flex-wrap items-center gap-3 rounded-xl border border-success/40 bg-success-container text-success-container-foreground p-3">
+      ${icon('check-circle-2', 'w-4.5 h-4.5 shrink-0')}
+      <p class="text-base font-medium flex-1">Slot <span class="num font-bold">${S.slot}</span> is free for ${DB.byDoctor(S.doctor).name}. No conflicts found.</p>
+      ${button({ label: 'Continue', variant: 'primary', size: 'sm', iconRight: 'arrow-right', attrs: 'data-next' })}
+    </div>`;
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    host.querySelector('[data-next]').addEventListener('click', () => go(3));
+  }
+
+  /* ─────────────────────── Step 3 · confirm ─────────────────────── */
+  function panelConfirm() {
+    return card(`
+      ${cardHead({ title: 'Confirm the booking', icon: 'check-check', meta: 'Read this back to the patient before saving' })}
+      <form id="confirmForm" novalidate class="space-y-4">
+        <div data-error-summary hidden></div>
+        <div class="well p-3.5 grid sm:grid-cols-2 gap-x-6 gap-y-3">
+          ${[
+            ['Patient', S.patient ? `${S.patient.name} · <span class="num">${S.patient.mrn}</span>` : '—'],
+            ['Payer', S.patient ? S.patient.insurer : '—'],
+            ['Clinician', `${DB.byDoctor(S.doctor).name}<span class="block text-2xs text-muted">${DB.byDoctor(S.doctor).spec}</span>`],
+            ['Department', DB.deptName(S.dept)],
+            ['Date & time', `<span class="num">${S.date} · ${S.slot || '—'}</span>`],
+            ['Duration', `<span class="num">${S.duration}</span> minutes`],
+          ].map(([k, v]) => `<div><dt class="text-2xs uppercase tracking-wide text-subtle font-semibold">${k}</dt><dd class="text-base mt-0.5">${v}</dd></div>`).join('')}
+        </div>
+        <div id="c1"></div>
+        <div class="grid sm:grid-cols-2 gap-3"><div id="c2"></div><div id="c3"></div></div>
+        <fieldset class="pt-1">
+          <legend class="text-base font-medium mb-2">Notify the patient</legend>
+          <div class="flex flex-wrap gap-x-5 gap-y-2">
+            ${[['SMS to +62 811 2043 118', true], ['WhatsApp reminder 24h before', true], ['Email confirmation', false]]
+              .map(([l, on]) => `<label class="inline-flex items-center gap-2 min-h-11 cursor-pointer">
+                <input type="checkbox" ${on ? 'checked' : ''} class="w-4 h-4 accent-[rgb(var(--primary))] cursor-pointer"><span class="text-base">${l}</span></label>`).join('')}
+          </div>
+        </fieldset>
+      </form>
+      <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-5 pt-4 border-t border-outline">
+        ${button({ label: 'Back to slots', variant: 'ghost', icon: 'arrow-left', attrs: 'data-back' })}
+        ${button({ label: 'Confirm booking', variant: 'primary', icon: 'calendar-check', attrs: 'data-confirm' })}
+      </div>
+    `);
+  }
+
+  /* ─────────────────────── Summary rail ─────────────────────── */
+  function renderSummary() {
+    const rows = [
+      ['Patient', S.patient ? `${S.patient.name}<span class="block text-2xs text-muted num">${S.patient.mrn}</span>` : '<span class="text-subtle">Not selected</span>'],
+      ['Department', DB.deptName(S.dept)],
+      ['Clinician', DB.byDoctor(S.doctor).name],
+      ['Date', `<span class="num">${S.date}</span>`],
+      ['Time', S.slot ? `<span class="num font-semibold">${S.slot}</span>` : '<span class="text-subtle">Not selected</span>'],
+    ];
+    document.getElementById('summary').innerHTML = `
+      <dl class="space-y-2.5">${rows.map(([k, v]) => `<div class="flex items-start justify-between gap-3">
+        <dt class="text-xs text-muted shrink-0">${k}</dt><dd class="text-base text-right min-w-0">${v}</dd></div>`).join('')}</dl>
+      ${S.patient && S.patient.balance ? `<p class="mt-3 pt-3 border-t border-outline text-xs text-warning flex items-start gap-1.5">
+        ${icon('wallet', 'w-3.5 h-3.5 shrink-0 mt-px')}<span>Outstanding balance <span class="num font-semibold">${DB.rp(S.patient.balance)}</span>. Reception may collect at check-in.</span></p>` : ''}
+      ${S.patient && S.patient.allergies.length ? `<p class="mt-2 text-xs text-danger flex items-start gap-1.5">
+        ${icon('alert-triangle', 'w-3.5 h-3.5 shrink-0 mt-px')}<span>Allergies: ${S.patient.allergies.join(', ')}</span></p>` : ''}`;
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────────────────── Panel switch ─────────────────────── */
+  function renderPanel() {
+    const host = document.getElementById('panels');
+    host.innerHTML = S.step === 1 ? panelPatient() : S.step === 2 ? panelSlot() : panelConfirm();
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    UI.applyState('ready');
+
+    if (S.step === 1) {
+      renderPatientResults(S.patient ? '' : '');
+      let t;
+      document.getElementById('pq').addEventListener('input', (e) => {
+        clearTimeout(t);
+        t = setTimeout(() => { UI.setState('ready'); renderPatientResults(e.target.value); }, 200);
+      });
+      document.querySelectorAll('[data-walkin]').forEach((b) => b.addEventListener('click', openWalkIn));
+    }
+
+    if (S.step === 2) {
+      document.getElementById('s1').innerHTML = field({
+        id: 'bDept', label: 'Department', type: 'select', required: true,
+        options: DB.departments.map((d) => ({ label: d.name, value: d.id, selected: d.id === S.dept })),
+      });
+      const list = DB.doctors.filter((d) => d.dept === S.dept && d.onDuty);
+      document.getElementById('s2').innerHTML = field({
+        id: 'bDoc', label: 'Clinician', type: 'select', required: true,
+        options: list.map((d) => ({ label: `${d.name} · ${d.shift}`, value: d.id, selected: d.id === S.doctor })),
+        help: list.length ? `${list.length} on shift in ${DB.deptName(S.dept)}` : 'Nobody on shift — pick another department',
+      });
+      document.getElementById('s3').innerHTML = field({ id: 'bDate', label: 'Date', type: 'date', required: true, value: S.date, attrs: `min="${DB.TODAY}"` });
+      wireFields(document);
+      document.getElementById('bDept').addEventListener('change', (e) => {
+        S.dept = e.target.value;
+        S.doctor = (DB.doctors.find((d) => d.dept === S.dept && d.onDuty) || {}).id || null;
+        S.slot = null; renderPanel(); renderSummary();
+      });
+      document.getElementById('bDoc').addEventListener('change', (e) => { S.doctor = e.target.value; S.slot = null; renderSlots(); renderSummary(); checkConflict(); });
+      document.getElementById('bDate').addEventListener('change', (e) => { S.date = e.target.value; S.slot = null; renderSlots(); renderSummary(); checkConflict(); });
+      renderSlots();
+      checkConflict();
+    }
+
+    if (S.step === 3) {
+      document.getElementById('c1').innerHTML = field({
+        id: 'bReason', label: 'Reason for visit', required: true, value: S.reason,
+        placeholder: 'e.g. Post-PCI follow-up', help: 'Shown to the clinician on their schedule, so be specific.',
+      });
+      document.getElementById('c2').innerHTML = field({
+        id: 'bDur', label: 'Duration', type: 'select',
+        options: [{ label: '15 minutes' }, { label: '30 minutes', selected: true }, { label: '45 minutes' }, { label: '60 minutes' }],
+      });
+      document.getElementById('c3').innerHTML = field({
+        id: 'bPrio', label: 'Priority', type: 'select',
+        options: [{ label: 'Routine' }, { label: 'Standard', selected: true }, { label: 'Urgent — same day' }],
+        help: 'Urgent bookings notify the department lead.',
+      });
+      wireFields(document);
+      document.querySelector('[data-back]').addEventListener('click', () => go(2));
+      document.querySelector('[data-confirm]').addEventListener('click', (e) => {
+        const form = document.getElementById('confirmForm');
+        if (!UI.validateForm(form)) return;
+        if (!S.slot || !S.patient) { toast('Pick a patient and a free slot first.', { tone: 'warning' }); return; }
+        const done = UI.submitting(e.currentTarget, 'Booking…');
+        setTimeout(() => {
+          done();
+          dialog({
+            title: 'Appointment booked',
+            tone: 'success',
+            size: 'sm',
+            body: `<p class="text-base">Reference <span class="num font-semibold">A-8811</span> · ${S.patient.name} with ${DB.byDoctor(S.doctor).name} on <span class="num">${S.date} at ${S.slot}</span>.</p>
+              <p class="text-base text-muted mt-2.5">SMS and WhatsApp reminders are queued. The appointment now appears on the clinician's schedule and today's queue.</p>`,
+            actions: [
+              { label: 'Book another', variant: 'ghost', onClick: () => { S.step = 1; S.patient = null; S.slot = null; S.reason = ''; go(1); } },
+              { label: 'Open schedule', variant: 'primary', icon: 'calendar-days', onClick: () => { location.href = `06-doctor-schedule.html?role=${role}`; } },
+            ],
+          });
+          lucide.createIcons({ nameAttr: 'data-lucide' });
+        }, 950);
+      });
+    }
+  }
+
+  function openWalkIn() {
+    const d = dialog({
+      title: 'Register walk-in patient',
+      size: 'md',
+      dirty: () => !!d.body.querySelector('#wName')?.value,
+      body: `<p class="text-base text-muted mb-4">Minimum fields to get the patient into the queue. Full demographics can be completed after the consultation.</p>
+        <form id="wForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div id="x1"></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="x2"></div><div id="x3"></div></div>
+          <div id="x4"></div>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Register & select', variant: 'primary', icon: 'user-plus',
+          onClick: () => {
+            if (!UI.validateForm(d.body.querySelector('#wForm'))) return false;
+            S.patient = { name: d.body.querySelector('#wName').value, mrn: 'P-001301', dob: d.body.querySelector('#x2 input').value || '1990-01-01', insurer: 'Self-pay', balance: 0, allergies: [], dept: S.dept, doctor: S.doctor, acuity: 'standard', status: 'outpatient', nid: '0000000000000000', phone: '—', sex: 'F', lastVisit: DB.TODAY };
+            toast('Walk-in registered as P-001301.', { tone: 'success' });
+            go(2);
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#x1').innerHTML = field({ id: 'wName', label: 'Full name', required: true, icon: 'user', autocomplete: 'name' });
+    d.body.querySelector('#x2').innerHTML = field({ id: 'wDob', label: 'Date of birth', type: 'date', required: true, attrs: 'data-rule="dob" max="2026-09-09"' });
+    d.body.querySelector('#x3').innerHTML = field({ id: 'wPhone', label: 'Mobile', type: 'tel', required: true, mono: true, attrs: 'data-rule="phone"', placeholder: '+62 8…' });
+    d.body.querySelector('#x4').innerHTML = field({ id: 'wNote', label: 'Presenting complaint', type: 'textarea', rows: 2, required: true, placeholder: 'In the patient’s own words' });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* Leaving mid-flow with a partial booking asks first. */
+  document.querySelector('[data-abort]').addEventListener('click', () => {
+    if (!S.patient && !S.slot) { location.href = `13-receptionist-dashboard.html?role=${role}`; return; }
+    confirmDialog({
+      title: 'Discard this booking?',
+      tone: 'warning',
+      message: 'The patient and slot you selected will not be saved.',
+      confirmLabel: 'Discard booking',
+      onConfirm: () => { location.href = `13-receptionist-dashboard.html?role=${role}`; },
+    });
+  });
+
+  UI.shell({ title: 'Book appointment', subtitle: 'Appointments · new booking', active: 'appointments', role, roleAware: false });
+  renderSteps();
+  renderPanel();
+  renderSummary();
+  if (S.patient) go(2);
+})();
+</script>
+</body>
+</html>

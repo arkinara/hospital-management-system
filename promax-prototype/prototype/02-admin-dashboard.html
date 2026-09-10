@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin dashboard — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, metric, table, chip, acuityBadge, avatar, icon, button,
+          banner, meter, toast, dialog, confirmDialog, emptyState, btnClass } = UI;
+  const C = Charts;
+
+  const occupied = DB.departments.reduce((a, d) => a + d.occupied, 0);
+  const beds = DB.departments.reduce((a, d) => a + d.beds, 0);
+  const onDuty = DB.doctors.filter((d) => d.onDuty).length;
+
+  /* ─────────────────── KPI strip ───────────────────
+     Six dense tiles: the number, an explicit signed delta with a direction icon,
+     and a sparkline for shape. Never a bare number with no baseline. */
+  const kpis = [
+    metric({ label: "Appointments today", value: 61, delta: 11, deltaLabel: 'vs last Tue', icon: 'calendar-clock', spark: C.sparkline(DB.visitsTrend, { tone: 'primary' }) }),
+    metric({ label: 'Admissions today', value: 17, delta: 13, deltaLabel: 'vs last Tue', icon: 'bed-double', spark: C.sparkline(DB.admitTrend, { tone: 'info' }) }),
+    metric({ label: 'Bed occupancy', value: DB.pct(occupied, beds), unit: '%', delta: 4, deltaLabel: `${occupied} of ${beds} beds`, tone: 'inverse', icon: 'activity', spark: C.sparkline([78, 80, 79, 83, 84, 81, 79, 86, 89], { tone: 'warning' }) }),
+    metric({ label: 'Revenue this month', value: '1.32', unit: 'Rp bn', delta: 7, deltaLabel: 'vs Aug', icon: 'trending-up', spark: C.sparkline(DB.revenue.map((r) => r.billed), { tone: 'success' }) }),
+    metric({ label: 'Unsigned records', value: DB.pendingRecords.length, delta: -22, deltaLabel: 'oldest 4 days', tone: 'inverse', icon: 'file-clock', spark: C.sparkline([9, 8, 11, 7, 6, 5, 6, 5, 5], { tone: 'accent' }) }),
+    metric({ label: 'Clinicians on duty', value: onDuty, unit: `of ${DB.doctors.length}`, deltaLabel: 'Emergency fully staffed', icon: 'badge-check', spark: C.sparkline([6, 7, 7, 8, 7, 5, 5, 7, 7], { tone: 'info' }) }),
+  ].join('');
+
+  /* ─────────────────── Widget grid ───────────────────
+     The PRD's modular dashboard: per-user layout, admin locks that win, and a
+     reorder affordance that works with a mouse AND the keyboard. */
+  const layout = DB.widgets.filter((w) => w.roles.includes('Admin') && w.enabled).map((w) => w.key);
+
+  function widgetBody(key) {
+    switch (key) {
+      case 'todays-appointments':
+        return `<div id="w-appts"></div>`;
+      case 'recent-patients':
+        return `<ul class="divide-y divide-outline -mx-1">
+          ${DB.patients.slice(0, 5).map((p) => `<li><a href="04-patient-detail.html?mrn=${p.mrn}&role=Admin" class="flex items-center gap-2.5 px-1 min-h-11 hover:bg-surface-2 rounded-md press">
+            ${avatar(p.name)}
+            <span class="min-w-0 flex-1"><span class="block text-base font-medium truncate">${p.name}</span>
+            <span class="block text-2xs text-muted num truncate">${p.mrn} · ${DB.deptName(p.dept)}</span></span>
+            ${acuityBadge(p.acuity)}</a></li>`).join('')}
+        </ul>`;
+      case 'department-occupancy':
+        return `<div class="space-y-3.5">${DB.departments.map((d) => meter({ label: d.name, value: d.occupied, max: d.beds, tone: 'primary', sub: `${d.doctors} clinicians · ${d.beds - d.occupied} beds free` })).join('')}</div>`;
+      case 'revenue-month':
+        return C.bars({
+          labels: DB.revenue.map((r) => r.d),
+          series: [
+            { label: 'Billed', tone: 'primary', values: DB.revenue.map((r) => r.billed) },
+            { label: 'Collected', tone: 'success', values: DB.revenue.map((r) => r.collected) },
+          ],
+          yUnit: ' Rp mn', height: 170,
+          summary: 'Billed versus collected revenue, 1 to 9 September 2026, in millions of rupiah. Collected trails billed by roughly 18 percent, with the widest gap on 9 September.',
+          caption: 'Daily billed and collected revenue, September 2026 (Rp million)',
+        });
+      case 'pending-records':
+        return `<div id="w-records"></div>`;
+      case 'staff-on-duty':
+        return `<div class="space-y-2.5">
+          ${DB.departments.map((d) => {
+            const staff = DB.doctors.filter((x) => x.dept === d.id && x.onDuty);
+            return `<div class="flex items-center gap-2.5">
+              <span class="text-base font-medium w-20 shrink-0 truncate">${d.name}</span>
+              <span class="flex -space-x-1.5 flex-1">${staff.map((s) => `<span title="${s.name} · ${s.shift}">${avatar(s.name, 'w-6 h-6 text-2xs ring-2 ring-[rgb(var(--s0))]')}</span>`).join('') || '<span class="text-xs text-danger font-medium">Unstaffed</span>'}</span>
+              <span class="num text-xs text-muted shrink-0">${staff.length}</span>
+            </div>`;
+          }).join('')}
+          <p class="text-2xs text-subtle pt-1 border-t border-outline">Night shift handover at 23:00.</p>
+        </div>`;
+      default:
+        return emptyState({ icon: 'layout-grid', title: 'Widget preview', body: 'This widget renders on the role dashboards.' });
+    }
+  }
+
+  const SPAN = { 'todays-appointments': 'xl:col-span-2', 'pending-records': 'xl:col-span-2', 'revenue-month': 'xl:col-span-2', 'staff-on-duty': '' };
+
+  function widgetCard(key, i) {
+    const w = DB.widgets.find((x) => x.key === key);
+    return `<section data-widget="${key}" draggable="true" aria-roledescription="Draggable widget" aria-label="${w.name}"
+      class="card !p-0 overflow-hidden ${SPAN[key] || ''} flex flex-col">
+      <header class="flex items-center gap-2 px-3.5 py-2.5 border-b border-outline bg-surface-1">
+        <button type="button" data-handle tabindex="0"
+          class="w-8 h-8 -ml-1 shrink-0 rounded-md grid place-items-center text-subtle hover:bg-surface-3 cursor-grab active:cursor-grabbing press"
+          aria-label="Reorder ${w.name}. Use the left and right arrow keys to move it."
+          title="Drag, or focus and press ← →">${icon('grip-vertical', 'w-4 h-4')}</button>
+        <h3 class="flex-1 min-w-0 text-base font-semibold font-display truncate flex items-center gap-1.5">
+          ${icon(w.icon, 'w-4 h-4 text-muted shrink-0')}<span class="truncate">${w.name}</span></h3>
+        ${w.locked ? `<span class="inline-flex items-center gap-1 text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-surface-3 text-muted shrink-0" title="Locked by admin — users cannot remove this widget">
+          ${icon('lock', 'w-3 h-3')}Locked</span>` : ''}
+        <button type="button" data-w-remove="${key}" ${w.locked ? 'disabled' : ''}
+          class="w-8 h-8 -mr-1 shrink-0 rounded-md grid place-items-center text-subtle hover:bg-surface-3 disabled:opacity-30 disabled:cursor-not-allowed press"
+          aria-label="${w.locked ? w.name + ' is locked by admin and cannot be removed' : 'Remove ' + w.name + ' from my dashboard'}">${icon('x', 'w-4 h-4')}</button>
+      </header>
+      <div class="p-3.5 flex-1 min-w-0">${widgetBody(key)}</div>
+    </section>`;
+  }
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${pageHead({
+      title: 'Hospital overview',
+      meta: 'Tuesday 9 September 2026 · <span class="num">09:41 WIB</span> · data refreshed 40 seconds ago',
+      actions: `${button({ label: 'Customise dashboard', variant: 'outline', icon: 'layout-grid', attrs: 'data-customise' })}
+                ${button({ label: 'Export report', variant: 'primary', icon: 'download', attrs: 'data-export' })}`,
+    })}
+
+    <div id="alerts" class="space-y-2.5 mb-4"></div>
+
+    <!-- KPI strip -->
+    <div data-stagger class="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6 mb-4">${kpis}</div>
+
+    <!-- Widget grid -->
+    <div class="flex items-center gap-2 mb-2.5">
+      <h2 class="text-lg font-semibold font-display">My widgets</h2>
+      <span class="text-xs text-muted">Drag to reorder · layout is saved per user · locked widgets are set by Admin</span>
+    </div>
+    <div id="grid" class="grid gap-3 md:grid-cols-2 xl:grid-cols-4 items-start"></div>
+
+    <!-- Wider analytics row -->
+    <div class="grid gap-3 lg:grid-cols-3 mt-4">
+      ${card(`${cardHead({ title: 'Appointment load by hour', icon: 'chart-column-big', meta: 'Today · all departments' })}
+        <div data-states><div data-state="ready">${C.heatStrip({
+          summary: 'Appointment load by hour today. Busiest at 09:00 with 11 appointments; quietest over the 12:00 lunch block.',
+          legendLabels: ['quiet', 'busy'],
+          cells: [['08:00', 8, '8a'], ['09:00', 11, '9a'], ['10:00', 9, '10'], ['11:00', 7, '11'], ['12:00', 2, '12'], ['13:00', 6, '1p'], ['14:00', 8, '2p'], ['15:00', 5, '3p'], ['16:00', 3, '4p']]
+            .map(([label, value, short]) => ({ label, value, short })),
+        })}</div>
+        <div data-state="loading" hidden><div class="skel h-11 rounded-lg"></div><div class="skel h-1.5 rounded-full mt-2"></div></div>
+        <div data-state="empty" hidden>${emptyState({ icon: 'calendar-off', title: 'No appointments booked today', body: 'Clinic is closed for the public holiday. Emergency intake is unaffected.' })}</div>
+        <div data-state="error" hidden>${UI.errorState({ title: 'Scheduling service unreachable' })}</div></div>`, 'lg:col-span-1')}
+
+      ${card(`${cardHead({ title: 'Payer mix', icon: 'pie-chart', meta: 'Invoices raised this month' })}
+        <div data-states><div data-state="ready">${C.donut({
+          slices: [
+            { label: 'BPJS Kesehatan', value: 148, tone: 'primary' },
+            { label: 'Mandiri Inhealth', value: 46, tone: 'info' },
+            { label: 'Prudential', value: 28, tone: 'accent' },
+            { label: 'Self-pay', value: 34, tone: 'success' },
+          ],
+          centerLabel: '256', unit: 'invoices',
+          summary: 'Payer mix for September invoices: BPJS Kesehatan 148 of 256 invoices (58 percent), self-pay 34, Mandiri Inhealth 46, Prudential 28.',
+          caption: 'Invoices raised in September 2026 by payer',
+        })}</div>
+        <div data-state="loading" hidden><div class="flex gap-4"><div class="skel w-[124px] h-[124px] rounded-full"></div><div class="flex-1 space-y-2">${'<div class="skel h-3.5"></div>'.repeat(4)}</div></div></div>
+        <div data-state="empty" hidden>${emptyState({ icon: 'receipt', title: 'No invoices yet this month', body: 'Invoices appear here as soon as the first visit is billed.' })}</div>
+        <div data-state="error" hidden>${UI.errorState({ title: 'Billing service unreachable' })}</div></div>`)}
+
+      ${card(`${cardHead({ title: 'Insurance claim aging', icon: 'hourglass', meta: 'Outstanding claims by age · Rp million', action: `<a href="08-billing.html?role=Admin" class="${btnClass('ghost', 'sm')}">Open billing ${icon('arrow-right', 'w-3.5 h-3.5')}</a>` })}
+        <div data-states><div data-state="ready">${C.hbars({
+          rows: DB.claimAging.map((b, i) => ({ label: b.bucket, value: b.value, tone: ['success', 'primary', 'warning', 'danger'][i] })),
+          unit: '', valueLabel: (v) => 'Rp ' + v + ' mn',
+          summary: 'Outstanding insurance claims by age: 0 to 15 days Rp 186 million, 16 to 30 days Rp 121 million, 31 to 60 days Rp 78 million, over 60 days Rp 41 million.',
+          caption: 'Outstanding claim value by age bucket (Rp million)',
+        })}
+        <p class="mt-3 pt-3 border-t border-outline text-xs text-muted flex items-start gap-1.5">
+          ${icon('alert-triangle', 'w-3.5 h-3.5 text-warning shrink-0 mt-px')}
+          <span><strong class="text-foreground">Rp 41 mn across 6 claims</strong> is past 60 days and at risk of rejection. Escalate to the payer desk.</span></p></div>
+        <div data-state="loading" hidden><div class="space-y-3">${'<div class="skel h-4 rounded-md"></div>'.repeat(4)}</div></div>
+        <div data-state="empty" hidden>${emptyState({ icon: 'shield-check', title: 'No outstanding claims', body: 'Every submitted claim has been settled. Nothing needs chasing.' })}</div>
+        <div data-state="error" hidden>${UI.errorState({ title: 'Claims service unreachable' })}</div></div>`)}
+    </div>
+  `);
+
+  /* ── Alerts: the two things an administrator must act on before anything else ── */
+  document.getElementById('alerts').innerHTML = [
+    banner({
+      tone: 'danger',
+      title: 'Emergency is at 100% bed capacity',
+      body: '16 of 16 beds occupied, with 2 patients holding in triage. General has 9 free beds.',
+      actions: `${button({ label: 'Open department board', variant: 'danger', size: 'sm', icon: 'building-2', attrs: 'data-goto-dept' })}
+                ${button({ label: 'Page duty manager', variant: 'outline', size: 'sm', icon: 'bell-ring', attrs: 'data-page-manager' })}`,
+    }),
+    banner({
+      tone: 'warning',
+      title: '1 insurance claim was denied yesterday',
+      body: 'Claim for <span class="num">INV-2026-0914</span> (Agus Salim, Mandiri Inhealth) was denied: missing referral letter. Appeals close in 12 days.',
+      actions: button({ label: 'Review claim', variant: 'outline', size: 'sm', icon: 'file-search', attrs: 'data-claim' }),
+    }),
+  ].join('');
+
+  /* ── Widget grid: render, drag/drop, keyboard reorder, remove with Undo ── */
+  const grid = document.getElementById('grid');
+  let order = layout.slice();
+
+  function renderGrid() {
+    grid.innerHTML = order.map(widgetCard).join('');
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    mountInnerWidgets();
+    C.wire(grid);
+    wireGrid();
+    UI.applyState('ready', grid);
+  }
+
+  function mountInnerWidgets() {
+    const apptHost = document.getElementById('w-appts');
+    if (apptHost) table(apptHost, {
+      label: "Today's appointments",
+      caption: 'Appointments scheduled for 9 September 2026 across all departments',
+      rows: DB.appointments,
+      rowKey: (r) => r.id,
+      maxHeight: '292px',
+      sort: { key: 'time', dir: 'asc' },
+      onRow: (r) => `04-patient-detail.html?mrn=${r.patient}&role=Admin`,
+      columns: [
+        { key: 'time', label: 'Time', mono: true, width: '58px' },
+        { key: 'patient', label: 'Patient', cell: (r) => `<span class="flex items-center gap-2 min-w-0">${avatar(DB.byMrn(r.patient).name, 'w-6 h-6 text-2xs')}<span class="truncate font-medium">${DB.byMrn(r.patient).name}</span></span>`, sortValue: (r) => DB.byMrn(r.patient).name },
+        { key: 'doctor', label: 'Clinician', cell: (r) => `<span class="text-muted truncate">${DB.byDoctor(r.doctor).name}</span>`, sortValue: (r) => DB.byDoctor(r.doctor).name },
+        { key: 'dept', label: 'Dept', cell: (r) => `<span class="text-muted">${DB.deptName(r.dept)}</span>` },
+        { key: 'status', label: 'Status', cell: (r) => chip(r.status) },
+        { key: 'wait', label: 'Wait', align: 'right', mono: true, cell: (r) => r.wait ? `<span class="${r.wait > 15 ? 'text-danger font-semibold' : 'text-muted'}">${r.wait}m</span>` : '<span class="text-subtle">—</span>' },
+      ],
+      mobileCard: (r) => `<span class="flex items-center gap-2.5">
+        <span class="num text-xs font-semibold w-11 shrink-0">${r.time}</span>
+        <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${DB.byMrn(r.patient).name}</span>
+        <span class="block text-2xs text-muted truncate">${DB.byDoctor(r.doctor).name} · ${DB.deptName(r.dept)}</span></span>
+        ${chip(r.status, { size: 'sm' })}</span>`,
+      empty: { icon: 'calendar-off', title: 'Nothing booked today', body: 'The clinic day is clear. Walk-ins will appear here the moment they are registered.', action: button({ label: 'Book an appointment', variant: 'primary', icon: 'calendar-plus' }) },
+      footer: `<span>Showing <span class="num">10</span> of <span class="num">61</span> today</span><a href="06-doctor-schedule.html?role=Admin" class="font-medium text-primary hover:underline underline-offset-2">Open full schedule</a>`,
+    });
+
+    const recHost = document.getElementById('w-records');
+    if (recHost) table(recHost, {
+      label: 'Records pending sign-off',
+      caption: 'Visit notes that have not yet been signed, oldest first',
+      rows: DB.pendingRecords,
+      rowKey: (r) => r.id,
+      select: true,
+      sort: { key: 'visit', dir: 'asc' },
+      rowLabel: (r) => `record ${r.id}`,
+      bulkActions: [
+        { label: 'Remind clinician', icon: 'bell', variant: 'primary', onClick: (ids) => UI.toast(`Reminder sent for ${ids.length} record${ids.length > 1 ? 's' : ''}.`, { tone: 'success', undo: () => UI.toast('Reminder withdrawn.', { tone: 'neutral' }) }) },
+        { label: 'Export', icon: 'download', variant: 'subtle', onClick: (ids) => UI.toast(`${ids.length} records queued for export.`, { tone: 'info' }) },
+      ],
+      onRow: (r) => `07-record-entry.html?record=${r.id}&role=Admin`,
+      columns: [
+        { key: 'id', label: 'Record', mono: true, width: '78px' },
+        { key: 'patient', label: 'Patient', cell: (r) => `<span class="font-medium truncate">${DB.byMrn(r.patient).name}</span>`, sortValue: (r) => DB.byMrn(r.patient).name },
+        { key: 'doctor', label: 'Clinician', cell: (r) => `<span class="text-muted truncate">${DB.byDoctor(r.doctor).name}</span>`, sortValue: (r) => DB.byDoctor(r.doctor).name },
+        { key: 'visit', label: 'Visit', mono: true, cell: (r) => `<span class="text-muted">${r.visit.slice(5)}</span>` },
+        { key: 'age', label: 'Waiting', align: 'right', mono: true, cell: (r) => `<span class="${/d$/.test(r.age) ? 'text-danger font-semibold' : 'text-muted'}">${r.age}</span>`, sortValue: (r) => (/d$/.test(r.age) ? 1000 : parseInt(r.age)) },
+        { key: 'state', label: 'State', cell: (r) => chip(r.state) },
+      ],
+      mobileCard: (r) => `<span class="flex items-center gap-2.5">
+        <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${DB.byMrn(r.patient).name}</span>
+        <span class="block text-2xs text-muted num truncate">${r.id} · ${DB.byDoctor(r.doctor).name} · waiting ${r.age}</span></span>
+        ${chip(r.state, { size: 'sm' })}</span>`,
+      empty: { icon: 'check-check', title: 'Every record is signed', body: 'No visit notes are waiting on a clinician signature. Nothing to chase today.' },
+      footer: `<span>Oldest unsigned: <span class="num">4 days</span> (R-4398)</span><a href="07-record-entry.html?role=Admin" class="font-medium text-primary hover:underline underline-offset-2">Open records</a>`,
+    });
+  }
+
+  function move(key, delta) {
+    const i = order.indexOf(key);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= order.length) return false;
+    order.splice(j, 0, order.splice(i, 1)[0]);
+    renderGrid();
+    // Return focus to the handle that was just used, so keyboard reordering is continuous.
+    grid.querySelector(`[data-widget="${key}"] [data-handle]`)?.focus();
+    UI.announce(`${DB.widgets.find((w) => w.key === key).name} moved to position ${j + 1} of ${order.length}`);
+    return true;
+  }
+
+  function wireGrid() {
+    let dragKey = null;
+    grid.querySelectorAll('[data-widget]').forEach((node) => {
+      node.addEventListener('dragstart', (e) => {
+        dragKey = node.dataset.widget;
+        node.style.opacity = '0.45';
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      node.addEventListener('dragend', () => { node.style.opacity = ''; dragKey = null; });
+      node.addEventListener('dragover', (e) => { e.preventDefault(); node.classList.add('ring-2', 'ring-primary'); });
+      node.addEventListener('dragleave', () => node.classList.remove('ring-2', 'ring-primary'));
+      node.addEventListener('drop', (e) => {
+        e.preventDefault();
+        node.classList.remove('ring-2', 'ring-primary');
+        const target = node.dataset.widget;
+        if (!dragKey || dragKey === target) return;
+        order.splice(order.indexOf(target), 0, order.splice(order.indexOf(dragKey), 1)[0]);
+        renderGrid();
+        UI.toast('Dashboard layout saved.', { tone: 'success', detail: 'Your layout follows you to any device.' });
+      });
+    });
+
+    // Keyboard equivalent for drag-and-drop (WCAG 2.5.7).
+    grid.querySelectorAll('[data-handle]').forEach((h) => {
+      h.addEventListener('keydown', (e) => {
+        const key = h.closest('[data-widget]').dataset.widget;
+        if (e.key === 'ArrowLeft') { e.preventDefault(); move(key, -1); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); move(key, 1); }
+      });
+    });
+
+    grid.querySelectorAll('[data-w-remove]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.wRemove;
+      const w = DB.widgets.find((x) => x.key === key);
+      const at = order.indexOf(key);
+      order = order.filter((k) => k !== key);
+      renderGrid();
+      UI.toast(`${w.name} removed from your dashboard.`, {
+        tone: 'neutral',
+        undo: () => { order.splice(at, 0, key); renderGrid(); UI.toast(`${w.name} restored.`, { tone: 'success' }); },
+      });
+    }));
+  }
+
+  renderGrid();
+
+  /* ── Page-level actions ── */
+  UI.shell({ title: 'Dashboard', subtitle: 'Admin · hospital-wide', active: 'dashboard', role: 'Admin' });
+  C.wire(document);
+
+  document.querySelector('[data-goto-dept]')?.addEventListener('click', () => { location.href = '10-admin-departments.html?role=Admin'; });
+  document.querySelector('[data-page-manager]')?.addEventListener('click', (e) => {
+    const done = UI.submitting(e.currentTarget, 'Paging…');
+    setTimeout(() => { done(); UI.toast('Duty manager paged — acknowledged in 40s.', { tone: 'success' }); }, 900);
+  });
+  document.querySelector('[data-claim]')?.addEventListener('click', () => { location.href = '08-billing.html?role=Admin&invoice=INV-2026-0914'; });
+
+  document.querySelector('[data-export]')?.addEventListener('click', () => {
+    dialog({
+      title: 'Export hospital report',
+      size: 'sm',
+      body: `<div class="space-y-4">
+        ${UI.field({ id: 'exRange', label: 'Period', type: 'select', options: [{ label: 'Today (9 Sep 2026)' }, { label: 'This month (Sep 2026)', selected: true }, { label: 'Last 90 days' }, { label: 'Custom range' }] })}
+        ${UI.field({ id: 'exFmt', label: 'Format', type: 'select', options: [{ label: 'CSV — raw rows', selected: true }, { label: 'XLSX — one sheet per module' }, { label: 'PDF — formatted summary' }], help: 'CSV keeps every column; PDF is the version the board reads.' })}
+        <fieldset><legend class="text-base font-medium mb-2">Include</legend>
+          <div class="space-y-1.5">
+            ${['Appointments & no-shows', 'Admissions & occupancy', 'Revenue & collections', 'Insurance claim aging'].map((l, i) => `<label class="flex items-center gap-2.5 min-h-11 cursor-pointer">
+              <input type="checkbox" ${i < 3 ? 'checked' : ''} class="w-4 h-4 accent-[rgb(var(--primary))] cursor-pointer"><span class="text-base">${l}</span></label>`).join('')}
+          </div></fieldset>
+      </div>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        { label: 'Generate export', variant: 'primary', icon: 'download', onClick: () => UI.toast('Export queued — we will email the link when it is ready.', { tone: 'success', detail: 'Typically under a minute for one month of data.' }) },
+      ],
+    });
+    UI.wireFields(document);
+  });
+
+  document.querySelector('[data-customise]')?.addEventListener('click', () => { location.href = '11-admin-widget-library.html?role=Admin'; });
+})();
+</script>
+</body>
+</html>

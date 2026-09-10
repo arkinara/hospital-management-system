@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · Users — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, avatar, icon, button, toast, dialog,
+          confirmDialog, btnClass, field, wireFields, banner, breadcrumb, emptyState, metric, table, filterChip } = UI;
+  const C = Charts;
+  const role = new URLSearchParams(location.search).get('role') || 'Admin';
+  let users = DB.users.map((u) => ({ ...u }));
+  let roleFilter = new Set();
+  let q = '';
+
+  const ROLE_TONE = { Admin: 'danger', Doctor: 'info', Nurse: 'success', Receptionist: 'warning' };
+  const roleChip = (r) => `<span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${UI.TONE_CHIP[ROLE_TONE[r]]}">
+    ${icon({ Admin: 'shield-check', Doctor: 'stethoscope', Nurse: 'heart-pulse', Receptionist: 'concierge-bell' }[r], 'w-3 h-3')}${r}</span>`;
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([{ label: 'Admin' }, { label: 'Users' }])}
+    ${pageHead({
+      title: 'User accounts',
+      meta: `<span class="num">${users.length}</span> accounts · <span class="num">${users.filter((u) => u.status === 'active').length}</span> active · <span class="num">${users.filter((u) => !u.mfa && u.status === 'active').length}</span> without two-factor`,
+      actions: `${button({ label: 'Audit log', variant: 'ghost', icon: 'scroll-text', attrs: 'data-audit' })}
+                ${button({ label: 'Invite user', variant: 'primary', icon: 'user-plus', attrs: 'data-invite' })}`,
+    })}
+
+    <div id="alerts" class="mb-3"></div>
+
+    <div data-stagger class="grid gap-3 grid-cols-2 xl:grid-cols-4 mb-3">
+      ${metric({ label: 'Active accounts', value: users.filter((u) => u.status === 'active').length, deltaLabel: '1 invite pending', icon: 'user-check' })}
+      ${metric({ label: 'Two-factor coverage', value: Math.round((users.filter((u) => u.mfa).length / users.length) * 100), unit: '%', delta: 12, deltaLabel: 'target 100% by Q4', icon: 'shield-check', spark: C.sparkline([38, 42, 50, 50, 62, 62, 62], { tone: 'success' }) })}
+      ${metric({ label: 'Signed in today', value: 6, unit: `of ${users.length}`, deltaLabel: 'Night shift not yet on', icon: 'log-in' })}
+      ${metric({ label: 'Dormant 90+ days', value: 1, deltaLabel: 'Sinta Maharani', tone: 'inverse', icon: 'user-minus' })}
+    </div>
+
+    <div class="card !p-0 overflow-hidden">
+      <div class="flex flex-wrap items-center gap-2 px-3.5 py-2.5 border-b border-outline bg-surface-1">
+        <div class="relative flex-1 min-w-[180px]">
+          <label for="uq" class="sr-only">Search users by name or email</label>
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted">${icon('search', 'w-4 h-4')}</span>
+          <input id="uq" type="search" placeholder="Name or email…"
+            class="w-full h-10 rounded-lg bg-surface-2 border border-outline pr-3 text-base focus-inset" style="padding-left:2.15rem">
+        </div>
+        <div class="flex flex-wrap gap-1.5" data-role-filters></div>
+      </div>
+      <div id="tbl"></div>
+    </div>
+  `);
+
+  document.getElementById('alerts').innerHTML = banner({
+    tone: 'warning',
+    title: '3 active accounts have no two-factor authentication',
+    body: 'Policy requires two-factor for every account with Records or Billing access. Dr. Adi Nugroho, Ika Permata and Bagus Saputra are non-compliant.',
+    actions: `${button({ label: 'Require 2FA for all', variant: 'outline', size: 'sm', icon: 'shield-check', attrs: 'data-force-mfa' })}
+              ${button({ label: 'See the 3 accounts', variant: 'ghost', size: 'sm', icon: 'filter', attrs: 'data-filter-mfa' })}`,
+  });
+
+  function renderFilters() {
+    const host = document.querySelector('[data-role-filters]');
+    host.innerHTML = Object.keys(DB.sessions).map((r) =>
+      filterChip({ label: r, count: users.filter((u) => u.role === r).length, active: roleFilter.has(r), key: r })).join('');
+    host.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => {
+      const k = b.dataset.filter;
+      roleFilter.has(k) ? roleFilter.delete(k) : roleFilter.add(k);
+      renderFilters(); renderTable();
+    }));
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  let mfaOnly = false;
+  function renderTable() {
+    const rows = users.filter((u) => {
+      if (roleFilter.size && !roleFilter.has(u.role)) return false;
+      if (mfaOnly && (u.mfa || u.status !== 'active')) return false;
+      if (q && !`${u.name} ${u.email}`.toLowerCase().includes(q.toLowerCase())) return false;
+      return true;
+    });
+
+    table('#tbl', {
+      label: 'User accounts',
+      caption: 'Staff accounts with role, department, two-factor status and last sign-in',
+      rows,
+      rowKey: (u) => u.id,
+      rowLabel: (u) => u.name,
+      select: true,
+      sort: { key: 'name', dir: 'asc' },
+      bulkActions: [
+        { label: 'Require 2FA', icon: 'shield-check', variant: 'primary', onClick: (ids) => { ids.forEach((id) => { const u = users.find((x) => x.id === id); if (u) u.mfa = true; }); renderTable(); toast(`Two-factor enforced for ${ids.length} account${ids.length > 1 ? 's' : ''}.`, { tone: 'success', detail: 'They will be prompted to enrol at next sign-in.' }); } },
+        { label: 'Deactivate', icon: 'user-x', variant: 'danger', onClick: (ids) => bulkDeactivate(ids) },
+      ],
+      columns: [
+        {
+          key: 'name', label: 'User', width: '26%',
+          cell: (u) => `<span class="flex items-center gap-2.5 min-w-0">${avatar(u.name)}
+            <span class="min-w-0"><span class="block font-medium truncate">${u.name}</span>
+            <span class="block text-2xs text-muted truncate">${u.email}</span></span></span>`,
+        },
+        { key: 'role', label: 'Role', cell: (u) => roleChip(u.role) },
+        { key: 'dept', label: 'Department', cell: (u) => `<span class="text-muted">${u.dept === '—' ? '<span class="text-subtle">All</span>' : DB.deptName(u.dept)}</span>` },
+        {
+          key: 'mfa', label: '2FA', width: '78px',
+          cell: (u) => u.mfa
+            ? `<span class="inline-flex items-center gap-1 text-xs font-semibold text-success">${icon('shield-check', 'w-3.5 h-3.5')}On</span>`
+            : `<span class="inline-flex items-center gap-1 text-xs font-semibold text-danger">${icon('shield-off', 'w-3.5 h-3.5')}Off</span>`,
+          sortValue: (u) => (u.mfa ? 1 : 0),
+        },
+        { key: 'status', label: 'Status', cell: (u) => chip(u.status) },
+        { key: 'lastLogin', label: 'Last sign-in', mono: true, cell: (u) => `<span class="text-muted">${u.lastLogin === '—' ? '<span class="text-subtle">Never</span>' : u.lastLogin.slice(5)}</span>` },
+        {
+          key: 'act', label: '', sortable: false, align: 'right', width: '88px',
+          cell: (u) => `<span class="flex items-center justify-end gap-0.5">
+            <button type="button" data-edit="${u.id}" class="w-8 h-8 rounded-md grid place-items-center text-muted hover:bg-surface-3 press" title="Edit ${u.name}" aria-label="Edit ${u.name}">${icon('square-pen', 'w-4 h-4')}</button>
+            <button type="button" data-reset="${u.id}" class="w-8 h-8 rounded-md grid place-items-center text-muted hover:bg-surface-3 press" title="Send password reset to ${u.name}" aria-label="Send password reset to ${u.name}">${icon('key-round', 'w-4 h-4')}</button>
+            <button type="button" data-deact="${u.id}" class="w-8 h-8 rounded-md grid place-items-center text-danger hover:bg-danger-container press" title="${u.status === 'inactive' ? 'Reactivate' : 'Deactivate'} ${u.name}" aria-label="${u.status === 'inactive' ? 'Reactivate' : 'Deactivate'} ${u.name}">${icon(u.status === 'inactive' ? 'user-check' : 'user-x', 'w-4 h-4')}</button></span>`,
+        },
+      ],
+      mobileCard: (u) => `<span class="flex items-center gap-2.5">
+        ${avatar(u.name, 'w-9 h-9 text-xs')}
+        <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${u.name}</span>
+        <span class="block text-2xs text-muted truncate">${u.email}</span>
+        <span class="block text-2xs text-muted num">${u.dept === '—' ? 'All departments' : DB.deptName(u.dept)} · ${u.mfa ? '2FA on' : '2FA off'}</span></span>
+        <span class="shrink-0 flex flex-col items-end gap-1">${roleChip(u.role)}${chip(u.status, { size: 'sm' })}</span></span>`,
+      empty: {
+        icon: 'user-search',
+        title: 'No account matches',
+        body: 'Clear the role filter or search a different name. Deactivated accounts are included in this list.',
+        action: button({ label: 'Clear filters', variant: 'primary', icon: 'filter-x', attrs: 'data-uclear' }),
+      },
+      error: { title: 'Directory service unreachable', body: 'Account data could not be loaded. Existing sessions are unaffected.' },
+      footer: `<span>Showing <span class="num">${rows.length}</span> of <span class="num">${users.length}</span> accounts</span>
+        <span class="text-subtle">Role changes take effect at the user's next sign-in</span>`,
+    });
+
+    document.querySelectorAll('[data-uclear]').forEach((b) => b.addEventListener('click', () => { roleFilter.clear(); mfaOnly = false; q = ''; document.getElementById('uq').value = ''; renderFilters(); renderTable(); }));
+    document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); openEdit(b.dataset.edit); }));
+    document.querySelectorAll('[data-reset]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const u = users.find((x) => x.id === b.dataset.reset);
+      toast(`Password reset link sent to ${u.email}.`, { tone: 'success', detail: 'The link expires in 30 minutes.' });
+    }));
+    document.querySelectorAll('[data-deact]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); toggleActive(b.dataset.deact); }));
+  }
+
+  function toggleActive(id) {
+    const u = users.find((x) => x.id === id);
+    if (u.status === 'inactive') {
+      u.status = 'active';
+      renderTable();
+      toast(`${u.name} reactivated.`, { tone: 'success', undo: () => { u.status = 'inactive'; renderTable(); toast('Reactivation reversed.', { tone: 'neutral' }); } });
+      return;
+    }
+    const prev = u.status;
+    confirmDialog({
+      title: `Deactivate ${u.name}?`,
+      message: 'The account can no longer sign in. Nothing they created is deleted.',
+      consequence: [
+        u.role === 'Doctor' ? 'Their future appointments stay booked and must be reassigned manually.' : 'Any work in progress is preserved and remains attributable to them.',
+        'Active sessions are terminated within 60 seconds.',
+        'Reactivation restores the same role and department.',
+      ],
+      confirmLabel: 'Deactivate account',
+      onConfirm: () => {
+        u.status = 'inactive';
+        renderTable();
+        toast(`${u.name} deactivated.`, { tone: 'neutral', undo: () => { u.status = prev; renderTable(); toast(`${u.name} restored.`, { tone: 'success' }); } });
+      },
+    });
+  }
+
+  function bulkDeactivate(ids) {
+    const snapshot = ids.map((id) => ({ id, status: users.find((u) => u.id === id).status }));
+    confirmDialog({
+      title: `Deactivate ${ids.length} account${ids.length > 1 ? 's' : ''}?`,
+      message: 'Selected users will be signed out and blocked from signing in again.',
+      consequence: ['Future appointments owned by these users need reassigning.', 'This can be undone from the toast, or reversed individually later.'],
+      confirmLabel: `Deactivate ${ids.length}`,
+      onConfirm: () => {
+        ids.forEach((id) => { users.find((u) => u.id === id).status = 'inactive'; });
+        renderTable();
+        toast(`${ids.length} account${ids.length > 1 ? 's' : ''} deactivated.`, {
+          tone: 'neutral',
+          undo: () => { snapshot.forEach((s) => { users.find((u) => u.id === s.id).status = s.status; }); renderTable(); toast('Deactivation reversed.', { tone: 'success' }); },
+        });
+      },
+    });
+  }
+
+  /* ─────────── Invite ─────────── */
+  function openInvite() {
+    const d = dialog({
+      title: 'Invite a user',
+      size: 'md',
+      dirty: () => !!d.body.querySelector('#iName')?.value,
+      body: `<p class="text-base text-muted mb-4">An invitation email is sent with a one-time enrolment link valid for 7 days. The account has no access until it is accepted.</p>
+        <form id="invForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="i1"></div><div id="i2"></div></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="i3"></div><div id="i4"></div></div>
+          <div id="permPreview" class="well p-3"></div>
+          <label class="flex items-start gap-2.5 min-h-11 cursor-pointer">
+            <input type="checkbox" id="iMfa" checked class="w-4 h-4 mt-1 accent-[rgb(var(--primary))] cursor-pointer">
+            <span><span class="block text-base font-medium">Require two-factor at first sign-in</span>
+            <span class="block text-xs text-muted">Mandatory for any role with Records or Billing access.</span></span></label>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Send invitation', variant: 'primary', icon: 'send',
+          onClick: () => {
+            const form = d.body.querySelector('#invForm');
+            if (!UI.validateForm(form)) return false;
+            const name = d.body.querySelector('#iName').value;
+            const newUser = {
+              id: 'U-1' + (10 + users.length), name,
+              email: d.body.querySelector('#iEmail').value,
+              role: d.body.querySelector('#iRole').value,
+              dept: d.body.querySelector('#iDept').value,
+              status: 'invited', lastLogin: '—', mfa: d.body.querySelector('#iMfa').checked,
+            };
+            users.push(newUser);
+            renderFilters(); renderTable();
+            toast(`Invitation sent to ${newUser.email}.`, { tone: 'success', undo: () => { users = users.filter((u) => u.id !== newUser.id); renderFilters(); renderTable(); toast('Invitation revoked.', { tone: 'neutral' }); } });
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#i1').innerHTML = field({ id: 'iName', label: 'Full name', required: true, icon: 'user', autocomplete: 'name' });
+    d.body.querySelector('#i2').innerHTML = field({ id: 'iEmail', label: 'Work email', type: 'email', required: true, icon: 'mail', placeholder: 'name@sirkaya.health', autocomplete: 'email' });
+    d.body.querySelector('#i3').innerHTML = field({ id: 'iRole', label: 'Role', type: 'select', required: true, options: [{ label: 'Select…', value: '' }, ...Object.keys(DB.sessions).map((r) => ({ label: r, value: r }))] });
+    d.body.querySelector('#i4').innerHTML = field({ id: 'iDept', label: 'Department', type: 'select', required: true, options: [{ label: 'Select…', value: '' }, { label: 'All departments', value: '—' }, ...DB.departments.map((x) => ({ label: x.name, value: x.id }))] });
+    wireFields(d.body);
+
+    // Show exactly what the chosen role can do — the matrix, not a promise.
+    const preview = d.body.querySelector('#permPreview');
+    const drawPreview = (r) => {
+      if (!r) { preview.innerHTML = `<p class="text-base text-muted">Pick a role to preview its access.</p>`; return; }
+      const perms = DB.permissions[r];
+      preview.innerHTML = `<p class="text-2xs uppercase tracking-wide text-subtle font-semibold mb-2">${r} will be able to…</p>
+        <ul class="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+          ${DB.modules.map((m) => {
+            const p = perms[m] || '';
+            const acts = [['v', 'view'], ['c', 'create'], ['e', 'edit'], ['d', 'delete']].filter(([f]) => p.includes(f)).map(([, l]) => l);
+            return `<li class="flex items-center gap-2 text-base">
+              <span class="${acts.length ? 'text-success' : 'text-subtle'} shrink-0">${icon(acts.length ? 'check' : 'x', 'w-3.5 h-3.5')}</span>
+              <span class="flex-1 truncate ${acts.length ? '' : 'text-subtle'}">${m}</span>
+              <span class="text-2xs text-muted">${acts.join(', ') || 'no access'}</span></li>`;
+          }).join('')}
+        </ul>
+        <a href="12-admin-permissions.html?role=${role}" class="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline underline-offset-2 mt-2.5">Edit the permission matrix ${icon('arrow-right', 'w-3 h-3')}</a>`;
+      lucide.createIcons({ nameAttr: 'data-lucide' });
+    };
+    drawPreview('');
+    d.body.querySelector('#iRole').addEventListener('change', (e) => drawPreview(e.target.value));
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────── Edit ─────────── */
+  function openEdit(id) {
+    const u = users.find((x) => x.id === id);
+    const d = dialog({
+      title: `Edit ${u.name}`,
+      size: 'md',
+      body: `<form id="edForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="e1"></div><div id="e2"></div></div>
+          <div class="grid sm:grid-cols-2 gap-3"><div id="e3"></div><div id="e4"></div></div>
+          <div id="roleWarn"></div>
+          <dl class="well p-3 grid grid-cols-2 gap-x-4 gap-y-2">
+            ${[['Account ID', u.id], ['Created', '2024-02-11'], ['Last sign-in', u.lastLogin], ['Sessions', '1 active (Chrome, Jakarta)']]
+              .map(([k, v]) => `<div><dt class="text-2xs uppercase tracking-wide text-subtle font-semibold">${k}</dt><dd class="num text-base">${v}</dd></div>`).join('')}
+          </dl>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Save changes', variant: 'primary', icon: 'check',
+          onClick: () => {
+            const form = d.body.querySelector('#edForm');
+            if (!UI.validateForm(form)) return false;
+            const before = { role: u.role, dept: u.dept };
+            u.name = d.body.querySelector('#eName').value;
+            u.email = d.body.querySelector('#eEmail').value;
+            u.role = d.body.querySelector('#eRole').value;
+            u.dept = d.body.querySelector('#eDept').value;
+            renderFilters(); renderTable();
+            const changedRole = before.role !== u.role;
+            toast(`${u.name} updated.`, {
+              tone: 'success',
+              detail: changedRole ? `Role changed ${before.role} → ${u.role}. Applies at next sign-in.` : undefined,
+              undo: () => { Object.assign(u, before); renderFilters(); renderTable(); toast('Changes reverted.', { tone: 'neutral' }); },
+            });
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#e1').innerHTML = field({ id: 'eName', label: 'Full name', required: true, value: u.name });
+    d.body.querySelector('#e2').innerHTML = field({ id: 'eEmail', label: 'Work email', type: 'email', required: true, value: u.email });
+    d.body.querySelector('#e3').innerHTML = field({ id: 'eRole', label: 'Role', type: 'select', required: true, options: Object.keys(DB.sessions).map((r) => ({ label: r, value: r, selected: r === u.role })) });
+    d.body.querySelector('#e4').innerHTML = field({ id: 'eDept', label: 'Department', type: 'select', required: true, options: [{ label: 'All departments', value: '—', selected: u.dept === '—' }, ...DB.departments.map((x) => ({ label: x.name, value: x.id, selected: x.id === u.dept }))] });
+    wireFields(d.body);
+
+    // Escalating someone to Admin deserves a warning, not a silent save.
+    const warn = d.body.querySelector('#roleWarn');
+    d.body.querySelector('#eRole').addEventListener('change', (e) => {
+      warn.innerHTML = e.target.value === 'Admin' && u.role !== 'Admin'
+        ? banner({ tone: 'warning', dismissible: false, title: 'This grants full administrative access', body: 'Admins can edit the permission matrix, manage every user, and see all billing data across departments.' })
+        : '';
+      lucide.createIcons({ nameAttr: 'data-lucide' });
+    });
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────── Wiring ─────────── */
+  UI.shell({ title: 'Users', subtitle: 'Admin · account management', active: 'users', role, roleAware: false });
+  renderFilters();
+  renderTable();
+  C.wire(document);
+
+  let qt;
+  document.getElementById('uq').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { q = e.target.value; renderTable(); }, 200); });
+  document.querySelector('[data-invite]').addEventListener('click', openInvite);
+  document.querySelector('[data-force-mfa]').addEventListener('click', () => {
+    const snapshot = users.map((u) => ({ id: u.id, mfa: u.mfa }));
+    confirmDialog({
+      title: 'Require two-factor for every account?',
+      tone: 'info',
+      message: 'All users without two-factor will be prompted to enrol the next time they sign in, and cannot proceed until they do.',
+      consequence: ['3 accounts are affected.', 'Nobody is signed out immediately.', 'Night-shift staff will be prompted at 23:00 handover.'],
+      confirmLabel: 'Require two-factor',
+      onConfirm: () => {
+        users.forEach((u) => { u.mfa = true; });
+        renderTable();
+        toast('Two-factor now required for all accounts.', { tone: 'success', undo: () => { snapshot.forEach((s) => { users.find((u) => u.id === s.id).mfa = s.mfa; }); renderTable(); toast('Policy reverted.', { tone: 'neutral' }); } });
+      },
+    });
+  });
+  document.querySelector('[data-filter-mfa]').addEventListener('click', () => { mfaOnly = !mfaOnly; renderTable(); UI.announce(mfaOnly ? 'Showing accounts without two-factor' : 'Showing all accounts'); });
+  document.querySelector('[data-audit]').addEventListener('click', () => {
+    dialog({
+      title: 'Recent account activity',
+      size: 'lg',
+      body: `<ul class="divide-y divide-outline">
+        ${[
+          ['09:15', 'Rahmat Hidayat', 'changed role', 'Bagus Saputra · Receptionist → Nurse', 'user-cog'],
+          ['08:40', 'Rahmat Hidayat', 'invited', 'bagus.s@sirkaya.health as Nurse (Emergency)', 'user-plus'],
+          ['07:40', 'Dr. Adi Nugroho', 'signed in', 'Chrome · 103.28.14.7 · Jakarta', 'log-in'],
+          ['07:12', 'Dr. Sari Wibowo', 'signed in', 'Safari · iOS · Jakarta', 'log-in'],
+          ['06:58', 'Rahmat Hidayat', 'signed in', 'Chrome · 103.28.14.2 · Jakarta', 'log-in'],
+          ['Yesterday 17:22', 'Rahmat Hidayat', 'deactivated', 'Sinta Maharani — dormant 90 days', 'user-x'],
+        ].map(([t, who, what, detail, ic]) => `<li class="flex items-start gap-2.5 py-2.5">
+          <span class="w-7 h-7 shrink-0 rounded-md bg-surface-2 grid place-items-center text-muted">${icon(ic, 'w-3.5 h-3.5')}</span>
+          <span class="flex-1 min-w-0"><span class="block text-base"><strong>${who}</strong> ${what} <span class="text-muted">${detail}</span></span></span>
+          <span class="num text-2xs text-subtle shrink-0">${t}</span></li>`).join('')}
+      </ul>
+      <p class="text-xs text-muted mt-3 pt-3 border-t border-outline">The full audit log is immutable and retained for 7 years. Export requires a second Admin approval.</p>`,
+      actions: [{ label: 'Close', variant: 'ghost' }, { label: 'Request full export', variant: 'outline', icon: 'download', onClick: () => toast('Export request raised — awaiting second Admin approval.', { tone: 'info' }) }],
+    });
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  });
+})();
+</script>
+</body>
+</html>

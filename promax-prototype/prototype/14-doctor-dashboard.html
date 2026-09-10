@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Doctor dashboard — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, acuityBadge, avatar, icon, button, toast, dialog,
+          confirmDialog, btnClass, field, wireFields, banner, emptyState, metric, table, dashboard } = UI;
+  const C = Charts;
+  const role = 'Doctor';
+  const me = DB.byDoctor('D01');                 // Dr. Sari Wibowo, Cardiology
+  const myAppts = DB.appointments.filter((a) => a.doctor === me.id);
+  const myRecords = DB.pendingRecords.filter((r) => r.doctor === me.id);
+
+  const vitalsQueue = [
+    { mrn: 'P-001042', at: '07:42', flag: 'BP 148/94 — above target', tone: 'warning' },
+    { mrn: 'P-001200', at: '08:20', flag: 'All within range', tone: 'success' },
+    { mrn: 'P-001244', at: '09:05', flag: 'HR 112 — tachycardic', tone: 'danger' },
+  ];
+
+  const WIDGETS = [
+    {
+      key: 'todays-schedule', name: "Today's schedule", icon: 'calendar-days', locked: true,
+      span: 'xl:col-span-2', meta: `${myAppts.length} patients`,
+      body: () => `<div id="w-sched"></div>`,
+    },
+    {
+      key: 'pending-records', name: 'Records to sign', icon: 'file-clock', locked: true,
+      span: 'xl:col-span-2', meta: `${myRecords.length} unsigned`,
+      body: () => `<div id="w-recs"></div>`,
+    },
+    {
+      key: 'vitals-queue', name: 'Vitals ready for review', icon: 'activity', locked: false,
+      body: () => `<ul class="divide-y divide-outline -mx-1">
+        ${vitalsQueue.map((v) => {
+          const p = DB.byMrn(v.mrn);
+          return `<li><a href="04-patient-detail.html?mrn=${v.mrn}&role=${role}" class="flex items-center gap-2.5 px-1 py-2.5 rounded-md hover:bg-surface-2 press">
+            ${avatar(p.name)}
+            <span class="flex-1 min-w-0">
+              <span class="block text-base font-medium truncate">${p.name}</span>
+              <span class="flex items-center gap-1 text-2xs ${v.tone === 'success' ? 'text-muted' : 'text-' + v.tone} truncate">
+                ${icon(v.tone === 'success' ? 'check' : 'alert-triangle', 'w-3 h-3 shrink-0')}<span class="truncate">${v.flag}</span></span>
+            </span>
+            <span class="num text-2xs text-subtle shrink-0">${v.at}</span></a></li>`;
+        }).join('')}
+      </ul>`,
+    },
+    {
+      key: 'my-load', name: 'My week', icon: 'chart-column-big', locked: false,
+      body: () => C.bars({
+        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+        series: [
+          { label: 'Seen', tone: 'primary', values: [12, 4, 0, 0, 0] },
+          { label: 'Booked', tone: 'info', pattern: true, values: [0, 5, 11, 6, 13] },
+        ],
+        height: 170, yUnit: ' patients',
+        summary: 'Clinic load this week: 12 patients seen Monday, 4 seen so far Tuesday with 5 remaining, then 11 booked Wednesday, 6 Thursday and 13 Friday.',
+        caption: 'Patients seen and booked this week',
+      }),
+    },
+    {
+      key: 'recent-patients', name: 'Recently opened', icon: 'history', locked: false,
+      body: () => `<ul class="divide-y divide-outline -mx-1">
+        ${DB.patients.filter((p) => p.doctor === me.id || p.dept === me.dept).slice(0, 5).map((p) => `<li>
+          <a href="04-patient-detail.html?mrn=${p.mrn}&role=${role}" class="flex items-center gap-2.5 px-1 min-h-11 rounded-md hover:bg-surface-2 press">
+            ${avatar(p.name)}
+            <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${p.name}</span>
+            <span class="num block text-2xs text-muted truncate">${p.mrn} · ${DB.age(p.dob)}y</span></span>
+            ${acuityBadge(p.acuity)}</a></li>`).join('')}
+      </ul>`,
+    },
+  ];
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${pageHead({
+      title: `Good morning, ${me.name.replace('Dr. ', 'Dr ')}`,
+      meta: `Tuesday 9 September 2026 · shift <span class="num">${me.shift}</span> · ${DB.deptName(me.dept)}`,
+      actions: `${button({ label: 'My schedule', variant: 'outline', icon: 'calendar-days', attrs: 'data-sched' })}
+                ${button({ label: 'New visit note', variant: 'primary', icon: 'file-plus-2', attrs: 'data-note' })}`,
+    })}
+
+    <div id="alerts" class="space-y-2.5 mb-4"></div>
+
+    <div data-stagger class="grid gap-3 grid-cols-2 xl:grid-cols-4 mb-4">
+      ${metric({ label: 'Patients today', value: myAppts.length, unit: '2 seen', deltaLabel: 'next at 13:00', icon: 'users' })}
+      ${metric({ label: 'Waiting now', value: DB.appointments.filter((a) => a.doctor === me.id && a.status === 'checked_in').length, deltaLabel: 'longest 4 min', icon: 'armchair' })}
+      ${metric({ label: 'Records to sign', value: myRecords.length, deltaLabel: 'oldest 2h 14m', tone: 'inverse', icon: 'file-clock', spark: C.sparkline([3, 2, 4, 2, 1, 1, 2, 1, 1], { tone: 'accent' }) })}
+      ${metric({ label: 'Mean consult', value: 26, unit: 'min', delta: -8, deltaLabel: 'vs 30-min blocks', tone: 'inverse', icon: 'timer', spark: C.sparkline([31, 29, 30, 27, 26, 28, 26], { tone: 'info' }) })}
+    </div>
+
+    <div class="flex items-center gap-2 mb-2.5">
+      <h2 class="text-lg font-semibold font-display">My widgets</h2>
+      <span class="text-xs text-muted">Drag to reorder · two widgets are locked by Admin</span>
+    </div>
+    <div id="grid" class="grid gap-3 md:grid-cols-2 xl:grid-cols-4 items-start"></div>
+  `);
+
+  document.getElementById('alerts').innerHTML = [
+    banner({
+      tone: 'danger',
+      title: 'Joko Prasetyo is tachycardic at 112 bpm',
+      body: 'Vitals logged <span class="num">09:05</span> by nursing intake. He is booked at <span class="num">09:30</span> with Dr. Bayu Setiawan, who is off shift today — the appointment is unattended.',
+      actions: `${button({ label: 'Take this patient', variant: 'danger', size: 'sm', icon: 'user-check', attrs: 'data-take' })}
+                ${button({ label: 'Open the record', variant: 'outline', size: 'sm', icon: 'file-text', attrs: 'data-open-joko' })}`,
+    }),
+    banner({
+      tone: 'warning',
+      title: 'One visit note has been unsigned for 4 days',
+      body: '<span class="num">R-4398</span> (Lestari Ningsih, 5 Sep) is past the 72-hour signing policy and is blocking the invoice for that visit.',
+      actions: button({ label: 'Sign it now', variant: 'outline', size: 'sm', icon: 'check-check', attrs: 'data-sign-old' }),
+    }),
+  ].join('');
+
+  /* ─────────── Widgets ─────────── */
+  const dash = dashboard('#grid', { widgets: WIDGETS, onChange: () => mountInner() });
+
+  function mountInner() {
+    const sched = document.getElementById('w-sched');
+    if (sched) table(sched, {
+      label: 'My schedule today',
+      caption: 'Appointments assigned to me on 9 September 2026',
+      rows: myAppts,
+      rowKey: (r) => r.id,
+      sort: { key: 'time', dir: 'asc' },
+      onRow: (r) => `04-patient-detail.html?mrn=${r.patient}&role=${role}`,
+      columns: [
+        { key: 'time', label: 'Time', mono: true, width: '56px' },
+        {
+          key: 'patient', label: 'Patient',
+          cell: (r) => {
+            const p = DB.byMrn(r.patient);
+            return `<span class="flex items-center gap-2 min-w-0">${avatar(p.name, 'w-6 h-6 text-2xs')}
+              <span class="min-w-0"><span class="flex items-center gap-1.5"><span class="font-medium truncate">${p.name}</span>
+              ${p.allergies.length ? `<span class="text-danger shrink-0" title="Allergies: ${p.allergies.join(', ')}" aria-label="Has allergies">${icon('alert-triangle', 'w-3 h-3')}</span>` : ''}</span>
+              <span class="num block text-2xs text-muted">${p.mrn} · ${DB.age(p.dob)}y</span></span></span>`;
+          },
+          sortValue: (r) => DB.byMrn(r.patient).name,
+        },
+        { key: 'reason', label: 'Reason', cell: (r) => `<span class="text-muted truncate">${r.reason}</span>` },
+        { key: 'status', label: 'Status', cell: (r) => chip(r.status) },
+        {
+          key: 'act', label: '', sortable: false, align: 'right', width: '92px',
+          cell: (r) => r.status === 'checked_in'
+            ? `<a href="07-record-entry.html?mrn=${r.patient}&role=${role}" class="${btnClass('primary', 'sm')}">${icon('play', 'w-3.5 h-3.5')}<span>Start</span></a>`
+            : r.status === 'completed' ? `<span class="text-2xs text-success font-semibold">Done</span>` : '<span class="text-subtle text-2xs">—</span>',
+        },
+      ],
+      mobileCard: (r) => `<span class="flex items-center gap-2.5">
+        <span class="num text-xs font-semibold w-11 shrink-0">${r.time}</span>
+        <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${DB.byMrn(r.patient).name}</span>
+        <span class="block text-2xs text-muted truncate">${r.reason}</span></span>
+        ${chip(r.status, { size: 'sm' })}</span>`,
+      empty: { icon: 'calendar-off', title: 'No clinic today', body: 'You have no appointments scheduled. Your next clinic is Wednesday at 08:00.' },
+      footer: `<span>Next patient <span class="num font-semibold">13:00</span> · Siti Rahayu</span><a href="06-doctor-schedule.html?role=${role}" class="font-medium text-primary hover:underline underline-offset-2">Day view</a>`,
+    });
+
+    const recs = document.getElementById('w-recs');
+    if (recs) table(recs, {
+      label: 'My records pending signature',
+      caption: 'Visit notes I have not yet signed',
+      rows: myRecords,
+      rowKey: (r) => r.id,
+      select: true,
+      sort: { key: 'visit', dir: 'asc' },
+      rowLabel: (r) => `record ${r.id}`,
+      bulkActions: [
+        {
+          label: 'Sign selected', icon: 'check-check', variant: 'primary',
+          onClick: (ids) => confirmDialog({
+            title: `Sign ${ids.length} visit note${ids.length > 1 ? 's' : ''}?`,
+            tone: 'info',
+            message: 'Signing in bulk is for notes you have already reviewed. Each becomes part of the permanent record.',
+            consequence: ['Prescriptions on those notes are issued immediately.', 'Amendments after signing are appended, never overwritten.', 'The related invoices are unblocked.'],
+            confirmLabel: `Sign ${ids.length}`,
+            onConfirm: () => toast(`${ids.length} note${ids.length > 1 ? 's' : ''} signed.`, { tone: 'success' }),
+          }),
+        },
+      ],
+      onRow: (r) => `07-record-entry.html?mrn=${r.patient}&role=${role}`,
+      columns: [
+        { key: 'id', label: 'Record', mono: true, width: '76px' },
+        { key: 'patient', label: 'Patient', cell: (r) => `<span class="font-medium truncate">${DB.byMrn(r.patient).name}</span>`, sortValue: (r) => DB.byMrn(r.patient).name },
+        { key: 'visit', label: 'Visit', mono: true, cell: (r) => `<span class="text-muted">${r.visit.slice(5)}</span>` },
+        { key: 'age', label: 'Waiting', align: 'right', mono: true, cell: (r) => `<span class="${/d$/.test(r.age) ? 'text-danger font-semibold' : 'text-muted'}">${r.age}</span>`, sortValue: (r) => (/d$/.test(r.age) ? 1000 : parseInt(r.age)) },
+        { key: 'state', label: 'State', cell: (r) => chip(r.state) },
+      ],
+      mobileCard: (r) => `<span class="flex items-center gap-2.5">
+        <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">${DB.byMrn(r.patient).name}</span>
+        <span class="num block text-2xs text-muted truncate">${r.id} · waiting ${r.age}</span></span>
+        ${chip(r.state, { size: 'sm' })}</span>`,
+      empty: { icon: 'check-check', title: 'Everything is signed', body: 'No visit notes are waiting on your signature. Nothing is blocking billing.' },
+      footer: `<span>Policy: sign within <span class="num">72 hours</span> of the encounter</span>`,
+    });
+  }
+
+  /* ─────────── Actions ─────────── */
+  document.querySelector('[data-take]').addEventListener('click', (e) => {
+    const done = UI.submitting(e.currentTarget, 'Reassigning…');
+    setTimeout(() => {
+      done();
+      const a = DB.appointments.find((x) => x.id === 'A-8805');
+      if (a) { a.doctor = me.id; a.status = 'checked_in'; }
+      toast('Joko Prasetyo reassigned to you.', {
+        tone: 'success',
+        detail: 'Now on your 09:30 slot. Reception notified.',
+        undo: () => { const b = DB.appointments.find((x) => x.id === 'A-8805'); if (b) { b.doctor = 'D06'; b.status = 'no_show'; } toast('Reassignment reversed.', { tone: 'neutral' }); },
+      });
+    }, 900);
+  });
+  document.querySelector('[data-open-joko]').addEventListener('click', () => { location.href = `04-patient-detail.html?mrn=P-001244&role=${role}`; });
+  document.querySelector('[data-sign-old]').addEventListener('click', () => { location.href = `07-record-entry.html?mrn=P-001271&record=R-4398&role=${role}`; });
+  document.querySelector('[data-sched]').addEventListener('click', () => { location.href = `06-doctor-schedule.html?role=${role}&doctor=${me.id}`; });
+  document.querySelector('[data-note]').addEventListener('click', () => {
+    const d = dialog({
+      title: 'New visit note',
+      size: 'sm',
+      body: `<p class="text-base text-muted mb-4">Pick the patient this note belongs to. Notes must attach to an encounter so billing and the timeline stay consistent.</p><div id="np"></div>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        { label: 'Open note', variant: 'primary', icon: 'file-plus-2', onClick: () => { location.href = `07-record-entry.html?mrn=${d.body.querySelector('#npSel').value}&role=${role}`; } },
+      ],
+    });
+    d.body.querySelector('#np').innerHTML = field({
+      id: 'npSel', label: 'Patient', type: 'select', required: true,
+      options: myAppts.map((a) => ({ label: `${a.time} · ${DB.byMrn(a.patient).name} · ${a.reason}`, value: a.patient })),
+      help: 'Only patients on your schedule today are listed.',
+    });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  });
+
+  UI.shell({ title: 'Dashboard', subtitle: `Doctor · ${DB.deptName(me.dept)}`, active: 'dashboard', role });
+  mountInner();
+  C.wire(document);
+})();
+</script>
+</body>
+</html>

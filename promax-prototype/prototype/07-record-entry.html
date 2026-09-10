@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Visit note — Hospital MS Pro Max</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="ui.js"></script>
+</head>
+<body>
+
+<main id="content" hidden>
+  <div id="page"></div>
+</main>
+
+<script>
+(function () {
+  const { wrap, pageHead, card, cardHead, chip, avatar, icon, button, toast, dialog,
+          confirmDialog, btnClass, field, wireFields, banner, breadcrumb, emptyState } = UI;
+  const params = new URLSearchParams(location.search);
+  const role = params.get('role') || 'Doctor';
+  const p = DB.byMrn(params.get('mrn') || 'P-001042');
+  const canSign = role === 'Doctor' || role === 'Admin';
+
+  let dirty = false;
+  let lastSaved = null;
+  let prescriptions = [
+    { drug: 'Bisoprolol 5 mg', dose: '1 tablet', freq: 'Once daily, morning', days: 30 },
+  ];
+
+  const ICD = [
+    ['I25.10', 'Atherosclerotic heart disease of native coronary artery'],
+    ['I10', 'Essential (primary) hypertension'],
+    ['E78.5', 'Hyperlipidaemia, unspecified'],
+    ['R06.00', 'Dyspnoea, unspecified'],
+    ['I48.91', 'Atrial fibrillation, unspecified'],
+    ['I20.9', 'Angina pectoris, unspecified'],
+  ];
+
+  document.getElementById('page').innerHTML = wrap(`
+    ${breadcrumb([
+      { label: 'Patients', href: `03-patient-list.html?role=${role}` },
+      { label: p.name, href: `04-patient-detail.html?mrn=${p.mrn}&role=${role}` },
+      { label: 'New visit note' },
+    ])}
+    ${pageHead({
+      title: 'Visit note',
+      meta: `${p.name} · <span class="num">${p.mrn}</span> · ${DB.deptName(p.dept)} · encounter <span class="num">9 Sep 2026 08:00</span>`,
+      actions: `<span id="autosave" class="inline-flex items-center gap-1.5 text-xs text-muted" aria-live="polite"></span>
+        ${button({ label: 'Discard', variant: 'ghost', icon: 'trash-2', attrs: 'data-discard' })}
+        ${button({ label: 'Save draft', variant: 'outline', icon: 'save', attrs: 'data-draft' })}
+        ${canSign ? button({ label: 'Sign & submit', variant: 'primary', icon: 'check-check', attrs: 'data-sign' }) : ''}`,
+    })}
+
+    ${p.allergies.length ? banner({
+      tone: 'danger', dismissible: false,
+      title: `Allergies on file: ${p.allergies.join(', ')}`,
+      body: 'Prescriptions below are checked against this list before the note can be signed.',
+    }) : ''}
+
+    <div class="grid gap-3 lg:grid-cols-[1fr_340px] items-start mt-3">
+      <form id="noteForm" novalidate class="min-w-0 space-y-3">
+        <div data-error-summary hidden></div>
+
+        <!-- ─────────── Progressive disclosure ───────────
+             The five sections a clinician fills in order. Optional sections start
+             collapsed so the form is not a wall on first open. -->
+        ${card(`
+          ${cardHead({ title: 'Presenting complaint & history', icon: 'message-square-text', meta: 'Subjective — the patient’s account' })}
+          <div class="space-y-3">
+            <div id="f1"></div>
+            <div id="f2"></div>
+          </div>`)}
+
+        ${card(`
+          ${cardHead({ title: 'Examination', icon: 'stethoscope', meta: 'Objective — what you observed. Vitals are pulled from nursing intake.' })}
+          <div class="well p-3 mb-3">
+            <p class="text-2xs uppercase tracking-wide text-subtle font-semibold mb-2 flex items-center gap-1.5">${icon('activity', 'w-3.5 h-3.5')}Vitals · recorded 07:42 by Nurse Wati Lestari</p>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              ${[['BP', '148/94', 'mmHg', true], ['HR', '88', 'bpm', false], ['SpO₂', '96', '%', false], ['Temp', '36.8', '°C', false], ['RR', '18', '/min', false]]
+                .map(([l, v, u, warn]) => `<div>
+                  <p class="text-2xs text-subtle font-semibold">${l}</p>
+                  <p class="num text-md font-bold ${warn ? 'text-warning' : ''}">${v}<span class="text-2xs font-normal text-muted ml-0.5">${u}</span></p></div>`).join('')}
+            </div>
+          </div>
+          <div id="f3"></div>`)}
+
+        ${card(`
+          ${cardHead({ title: 'Diagnosis', icon: 'tag', meta: 'ICD-10 coded — required before signing' })}
+          <div id="f4"></div>
+          <div id="dxList" class="mt-3 space-y-1.5"></div>`)}
+
+        ${card(`
+          ${cardHead({
+            title: 'Prescriptions',
+            icon: 'pill',
+            meta: 'Checked against allergies and current medication',
+            action: button({ label: 'Add drug', variant: 'outline', size: 'sm', icon: 'plus', attrs: 'data-add-rx' }),
+          })}
+          <div id="rxList"></div>`)}
+
+        ${card(`
+          ${cardHead({ title: 'Plan & follow-up', icon: 'route', meta: 'What happens next, and when' })}
+          <div class="space-y-3">
+            <div id="f5"></div>
+            <div class="grid sm:grid-cols-2 gap-3"><div id="f6"></div><div id="f7"></div></div>
+          </div>`)}
+
+        <details class="card !p-0 overflow-hidden">
+          <summary class="flex items-center gap-2 px-4 min-h-12 cursor-pointer hover:bg-surface-2 select-none">
+            ${icon('paperclip', 'w-4 h-4 text-muted')}
+            <span class="flex-1 text-base font-semibold font-display">Attachments <span class="font-normal text-muted">(optional)</span></span>
+            ${icon('chevron-down', 'w-4 h-4 text-muted')}
+          </summary>
+          <div class="p-4 border-t border-outline">
+            <div class="rounded-xl border-2 border-dashed border-outline-strong p-6 text-center">
+              ${icon('upload-cloud', 'w-7 h-7 text-muted mx-auto mb-2')}
+              <p class="text-base font-medium">Drop lab reports, images or scans here</p>
+              <p class="text-xs text-muted mt-1">PDF, JPG or PNG up to 20 MB each. Files attach to this encounter and appear on the patient timeline.</p>
+              <button type="button" class="${btnClass('outline', 'sm')} mt-3" data-browse>${icon('folder-open', 'w-3.5 h-3.5')}<span>Browse files</span></button>
+            </div>
+            <ul class="mt-3 space-y-2" id="fileList">
+              <li class="flex items-center gap-2.5 p-2.5 rounded-lg border border-outline">
+                <span class="w-8 h-8 shrink-0 rounded-md bg-surface-2 grid place-items-center text-muted">${icon('file-text', 'w-4 h-4')}</span>
+                <span class="flex-1 min-w-0"><span class="block text-base font-medium truncate">ECG — 9 Sep 2026.pdf</span>
+                <span class="block text-2xs text-muted num">412 KB · uploaded 08:06</span></span>
+                <button type="button" class="w-8 h-8 rounded-md grid place-items-center text-muted hover:bg-surface-2 press" aria-label="Remove ECG — 9 Sep 2026.pdf">${icon('x', 'w-4 h-4')}</button>
+              </li>
+            </ul>
+          </div>
+        </details>
+      </form>
+
+      <!-- ─────────── Context rail ───────────
+           A clinician should not have to leave a half-written note to check what
+           happened last visit. -->
+      <aside class="space-y-3 min-w-0 lg:sticky lg:top-[6.5rem]">
+        ${card(`<div class="flex items-center gap-2.5">
+          ${avatar(p.name, 'w-10 h-10 text-sm')}
+          <span class="min-w-0 flex-1"><span class="block text-base font-semibold truncate">${p.name}</span>
+          <span class="block text-2xs text-muted num">${p.mrn} · ${DB.age(p.dob)}y ${p.sex} · ${p.insurer}</span></span>
+          <a href="04-patient-detail.html?mrn=${p.mrn}&role=${role}" class="w-9 h-9 shrink-0 rounded-lg grid place-items-center text-muted hover:bg-surface-2 press" aria-label="Open full record">${icon('external-link', 'w-4 h-4')}</a>
+        </div>`)}
+
+        ${card(`${cardHead({ title: 'Previous encounter', icon: 'history', meta: '8 Sep 2026 · Cardiology' })}
+          <p class="text-base leading-relaxed">Stable angina, NYHA II. Stent patent on angiography. Continue dual antiplatelet therapy. Review in 4 weeks.</p>
+          <p class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-md bg-surface-2 border border-outline num">${icon('tag', 'w-3 h-3')}I25.10</p>
+          <button type="button" data-copy-prev class="${btnClass('ghost', 'sm')} mt-3 !px-0">${icon('copy', 'w-3.5 h-3.5')}<span>Copy plan into this note</span></button>`)}
+
+        ${card(`${cardHead({ title: 'Active medication', icon: 'pill', meta: 'Before this note' })}
+          <ul class="space-y-2 text-base">
+            <li class="flex items-start gap-2"><span class="text-muted mt-0.5 shrink-0">${icon('pill', 'w-3.5 h-3.5')}</span><span>Bisoprolol 5 mg — 1×/day<span class="block text-2xs text-muted">Dr. Sari Wibowo · 22 days remaining</span></span></li>
+            <li class="flex items-start gap-2"><span class="text-muted mt-0.5 shrink-0">${icon('pill', 'w-3.5 h-3.5')}</span><span>Atorvastatin 20 mg — 1×/night<span class="block text-2xs text-muted">Dr. Sari Wibowo · 22 days remaining</span></span></li>
+          </ul>`)}
+
+        ${card(`${cardHead({ title: 'Recent labs', icon: 'flask-conical', meta: '4 Sep 2026' })}
+          <ul class="space-y-1.5 text-base">
+            ${[['LDL cholesterol', '138', 'mg/dL', true], ['HDL cholesterol', '41', 'mg/dL', false], ['Triglycerides', '190', 'mg/dL', true], ['Troponin I', '<0.01', 'ng/mL', false]]
+              .map(([l, v, u, high]) => `<li class="flex items-center gap-2">
+                <span class="flex-1 truncate">${l}</span>
+                <span class="num font-semibold ${high ? 'text-warning' : ''}">${v}</span>
+                <span class="text-2xs text-muted w-14">${u}</span>
+                ${high ? `<span class="text-warning shrink-0" aria-label="Above reference range">${icon('arrow-up', 'w-3.5 h-3.5')}</span>` : `<span class="w-3.5 shrink-0"></span>`}</li>`).join('')}
+          </ul>`)}
+      </aside>
+    </div>
+  `);
+
+  /* ─────────── Fields ─────────── */
+  document.getElementById('f1').innerHTML = field({ id: 'nComplaint', label: 'Presenting complaint', required: true, placeholder: 'In the patient’s own words', help: 'Quote the patient where you can — it is the most useful line in the note six months later.' });
+  document.getElementById('f2').innerHTML = field({ id: 'nHistory', label: 'History of presenting complaint', type: 'textarea', rows: 4, required: true, placeholder: 'Onset, duration, character, aggravating and relieving factors…' });
+  document.getElementById('f3').innerHTML = field({ id: 'nExam', label: 'Examination findings', type: 'textarea', rows: 5, required: true, placeholder: 'General appearance, cardiovascular, respiratory, abdominal…' });
+  document.getElementById('f4').innerHTML = field({ id: 'nDx', label: 'Search ICD-10 code or description', required: true, icon: 'search', placeholder: 'Type “hyperten” or “I10”…', help: 'At least one coded diagnosis is required before the note can be signed.', attrs: 'role="combobox" aria-expanded="false" aria-controls="dxSug" autocomplete="off"' });
+  document.getElementById('f5').innerHTML = field({ id: 'nPlan', label: 'Plan', type: 'textarea', rows: 4, required: true, placeholder: 'Investigations, referrals, patient advice…' });
+  document.getElementById('f6').innerHTML = field({ id: 'nFollow', label: 'Follow-up in', type: 'select', options: [{ label: 'No follow-up needed' }, { label: '1 week' }, { label: '2 weeks' }, { label: '4 weeks', selected: true }, { label: '3 months' }, { label: '6 months' }] });
+  document.getElementById('f7').innerHTML = field({ id: 'nRefer', label: 'Refer to department', type: 'select', optional: true, options: [{ label: 'No referral', selected: true }, ...DB.departments.map((d) => ({ label: d.name }))], help: 'A referral appears on the receiving department’s queue immediately.' });
+  wireFields(document);
+
+  /* ─────────── ICD-10 combobox ─────────── */
+  let dx = [['I25.10', 'Atherosclerotic heart disease of native coronary artery']];
+  const dxInput = document.getElementById('nDx');
+  const dxHolder = dxInput.closest('[data-field]');
+  const sug = UI.el(`<ul id="dxSug" role="listbox" aria-label="ICD-10 suggestions" hidden
+    class="absolute left-0 right-0 top-full mt-1 z-nav max-h-56 overflow-y-auto rounded-lg border border-outline bg-surface-0 shadow-overlay p-1"></ul>`);
+  dxHolder.querySelector('.relative').appendChild(sug);
+
+  function renderDx() {
+    document.getElementById('dxList').innerHTML = dx.length ? dx.map(([code, label], i) => `
+      <div class="flex items-center gap-2.5 p-2.5 rounded-lg border border-outline bg-surface-1">
+        <span class="num text-xs font-bold px-1.5 py-0.5 rounded bg-primary-container text-primary-container-foreground shrink-0">${code}</span>
+        <span class="flex-1 min-w-0 text-base truncate">${label}</span>
+        ${i === 0 ? '<span class="text-2xs font-semibold text-muted shrink-0">Primary</span>' : ''}
+        <button type="button" data-dx-rm="${i}" class="w-8 h-8 shrink-0 rounded-md grid place-items-center text-muted hover:bg-surface-3 press" aria-label="Remove diagnosis ${code}">${icon('x', 'w-4 h-4')}</button>
+      </div>`).join('') : `<p class="text-base text-muted flex items-center gap-1.5">${icon('info', 'w-4 h-4')}No diagnosis coded yet.</p>`;
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    document.querySelectorAll('[data-dx-rm]').forEach((b) => b.addEventListener('click', () => { dx.splice(+b.dataset.dxRm, 1); renderDx(); markDirty(); }));
+  }
+
+  dxInput.addEventListener('input', () => {
+    const q = dxInput.value.trim().toLowerCase();
+    const hits = q ? ICD.filter(([c, l]) => c.toLowerCase().includes(q) || l.toLowerCase().includes(q)) : [];
+    if (!hits.length) { sug.hidden = true; dxInput.setAttribute('aria-expanded', 'false'); return; }
+    sug.hidden = false;
+    dxInput.setAttribute('aria-expanded', 'true');
+    sug.innerHTML = hits.map(([c, l]) => `<li role="option" tabindex="-1" data-dx="${c}"
+      class="flex items-center gap-2.5 px-2.5 min-h-11 rounded-md cursor-pointer hover:bg-surface-2">
+      <span class="num text-xs font-bold shrink-0 w-14">${c}</span><span class="text-base truncate">${l}</span></li>`).join('');
+    sug.querySelectorAll('[data-dx]').forEach((li) => li.addEventListener('click', () => {
+      const hit = ICD.find(([c]) => c === li.dataset.dx);
+      if (!dx.some(([c]) => c === hit[0])) dx.push(hit);
+      dxInput.value = ''; sug.hidden = true; dxInput.setAttribute('aria-expanded', 'false');
+      renderDx(); markDirty();
+      UI.setFieldError(dxInput, '');
+    }));
+  });
+  dxInput.addEventListener('blur', () => setTimeout(() => { sug.hidden = true; }, 150));
+
+  /* ─────────── Prescription repeater with allergy check ─────────── */
+  function renderRx() {
+    const host = document.getElementById('rxList');
+    host.innerHTML = prescriptions.length ? `<div class="space-y-2">${prescriptions.map((r, i) => {
+      const clash = p.allergies.some((a) => r.drug.toLowerCase().includes(a.toLowerCase().slice(0, 5)));
+      return `<div class="rounded-lg border ${clash ? 'border-danger bg-danger-container' : 'border-outline bg-surface-1'} p-3">
+        <div class="flex items-start gap-2.5">
+          <span class="w-8 h-8 shrink-0 rounded-md grid place-items-center ${clash ? 'bg-danger text-surface-0' : 'bg-primary-container text-primary-container-foreground'}">${icon(clash ? 'alert-triangle' : 'pill', 'w-4 h-4')}</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-base font-semibold">${r.drug}</p>
+            <p class="text-base text-muted">${r.dose} · ${r.freq} · <span class="num">${r.days}</span> days</p>
+            ${clash ? `<p class="text-base font-semibold text-danger mt-1.5 flex items-start gap-1.5">${icon('alert-octagon', 'w-4 h-4 shrink-0 mt-0.5')}
+              <span>Contraindicated: patient is allergic to ${p.allergies.join(', ')}. Remove this drug or record an override reason before signing.</span></p>` : ''}
+          </div>
+          <button type="button" data-rx-rm="${i}" class="w-8 h-8 shrink-0 rounded-md grid place-items-center text-muted hover:bg-surface-3 press" aria-label="Remove ${r.drug}">${icon('x', 'w-4 h-4')}</button>
+        </div></div>`;
+    }).join('')}</div>` : emptyState({ icon: 'pill', title: 'No prescription on this note', body: 'Add a drug if this encounter changes the patient’s medication. Existing prescriptions continue unchanged.', action: button({ label: 'Add drug', variant: 'primary', icon: 'plus', attrs: 'data-add-rx' }) });
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+    host.querySelectorAll('[data-rx-rm]').forEach((b) => b.addEventListener('click', () => { prescriptions.splice(+b.dataset.rxRm, 1); renderRx(); markDirty(); }));
+    host.querySelectorAll('[data-add-rx]').forEach((b) => b.addEventListener('click', openRx));
+  }
+
+  function openRx() {
+    const d = dialog({
+      title: 'Add prescription',
+      size: 'md',
+      body: `<form id="rxForm" novalidate class="space-y-3">
+          <div data-error-summary hidden></div>
+          <div id="r1"></div>
+          <div class="grid sm:grid-cols-3 gap-3"><div id="r2"></div><div id="r3"></div><div id="r4"></div></div>
+          <div id="r5"></div>
+        </form>`,
+      actions: [
+        { label: 'Cancel', variant: 'ghost' },
+        {
+          label: 'Add to note', variant: 'primary', icon: 'plus',
+          onClick: () => {
+            const form = d.body.querySelector('#rxForm');
+            if (!UI.validateForm(form)) return false;
+            prescriptions.push({
+              drug: d.body.querySelector('#rDrug').value,
+              dose: d.body.querySelector('#rDose').value || '1 tablet',
+              freq: d.body.querySelector('#rFreq').value,
+              days: +d.body.querySelector('#rDays').value || 7,
+            });
+            renderRx(); markDirty();
+            toast('Prescription added to the note.', { tone: 'success' });
+          },
+        },
+      ],
+    });
+    d.body.querySelector('#r1').innerHTML = field({ id: 'rDrug', label: 'Drug and strength', required: true, icon: 'search', placeholder: 'e.g. Amlodipine 5 mg', help: `Formulary search. Allergy check runs against: ${p.allergies.join(', ') || 'none on file'}.` });
+    d.body.querySelector('#r2').innerHTML = field({ id: 'rDose', label: 'Dose', required: true, value: '1 tablet' });
+    d.body.querySelector('#r3').innerHTML = field({ id: 'rFreq', label: 'Frequency', type: 'select', required: true, options: ['Once daily, morning', 'Once daily, night', 'Twice daily', 'Three times daily', 'As needed'] });
+    d.body.querySelector('#r4').innerHTML = field({ id: 'rDays', label: 'Duration (days)', type: 'number', required: true, mono: true, value: '30', inputmode: 'numeric' });
+    d.body.querySelector('#r5').innerHTML = field({ id: 'rNote', label: 'Instructions for the patient', type: 'textarea', rows: 2, optional: true, placeholder: 'e.g. Take with food. Do not stop abruptly.' });
+    wireFields(d.body);
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+
+  /* ─────────── Autosave ───────────
+     A long clinical note must survive a dropped connection or a mis-click. Draft
+     saves every 20 seconds while dirty, and the state is stated in words. */
+  const autosaveEl = document.getElementById('autosave');
+  function setAutosave(text, ic, tone = 'muted') {
+    autosaveEl.innerHTML = `${icon(ic, `w-3.5 h-3.5 text-${tone}`)}<span>${text}</span>`;
+    lucide.createIcons({ nameAttr: 'data-lucide' });
+  }
+  function markDirty() { dirty = true; setAutosave('Unsaved changes', 'circle-dot', 'warning'); }
+  function saveDraft(silent) {
+    dirty = false;
+    lastSaved = '09:47';
+    setAutosave(`Draft saved ${lastSaved}`, 'cloud-check', 'success');
+    if (!silent) toast('Draft saved.', { tone: 'success', detail: 'Drafts are private to you until signed.' });
+  }
+  setAutosave('No changes yet', 'circle', 'subtle');
+  document.getElementById('noteForm').addEventListener('input', markDirty);
+  setInterval(() => { if (dirty) saveDraft(true); }, 20000);
+
+  window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  /* ─────────── Actions ─────────── */
+  document.querySelector('[data-draft]').addEventListener('click', () => saveDraft(false));
+  document.querySelector('[data-copy-prev]').addEventListener('click', () => {
+    document.getElementById('nPlan').value = 'Continue dual antiplatelet therapy. Continue bisoprolol 5 mg and atorvastatin 20 mg. Repeat lipid panel at 4 weeks. Advise on salt intake and 30 minutes of daily walking.';
+    markDirty();
+    toast('Previous plan copied — review before signing.', { tone: 'info' });
+  });
+  document.querySelector('[data-browse]').addEventListener('click', () => toast('File picker opens here in the real build.', { tone: 'neutral' }));
+
+  document.querySelector('[data-discard]').addEventListener('click', () => {
+    confirmDialog({
+      title: 'Discard this visit note?',
+      message: 'Everything typed on this note is deleted, including the draft.',
+      consequence: ['The encounter stays open and will keep appearing in Pending Records.', 'Prescriptions on this note are not issued.', 'This action is recorded in the audit log.'],
+      confirmLabel: 'Discard note',
+      onConfirm: () => { dirty = false; location.href = `04-patient-detail.html?mrn=${p.mrn}&role=${role}`; },
+    });
+  });
+
+  document.querySelector('[data-sign]')?.addEventListener('click', (e) => {
+    const form = document.getElementById('noteForm');
+    let ok = UI.validateForm(form);
+    if (!dx.length) {
+      UI.setFieldError(dxInput, 'At least one ICD-10 diagnosis is required — search above and select a code.');
+      if (ok) dxInput.focus();
+      ok = false;
+    }
+    const clash = prescriptions.some((r) => p.allergies.some((a) => r.drug.toLowerCase().includes(a.toLowerCase().slice(0, 5))));
+    if (!ok) return;
+    if (clash) { toast('Resolve the contraindicated prescription before signing.', { tone: 'danger' }); document.getElementById('rxList').scrollIntoView({ block: 'center' }); return; }
+
+    confirmDialog({
+      title: 'Sign and submit this note?',
+      tone: 'info',
+      message: 'Signing makes the note part of the permanent record and visible to every department with Records access.',
+      consequence: [`${dx.length} diagnosis code${dx.length > 1 ? 's' : ''} and ${prescriptions.length} prescription${prescriptions.length === 1 ? '' : 's'} will be issued.`, 'Amendments after signing are appended, never overwritten.', 'The encounter leaves Pending Records.'],
+      confirmLabel: 'Sign & submit',
+      onConfirm: () => {
+        const done = UI.submitting(e.currentTarget, 'Signing…');
+        setTimeout(() => {
+          done();
+          dirty = false;
+          toast('Visit note signed as R-4413.', { tone: 'success', detail: 'Now visible on the patient timeline.' });
+          setTimeout(() => { location.href = `04-patient-detail.html?mrn=${p.mrn}&role=${role}`; }, 900);
+        }, 1000);
+      },
+    });
+  });
+
+  document.querySelectorAll('[data-add-rx]').forEach((b) => b.addEventListener('click', openRx));
+
+  UI.shell({ title: 'Visit note', subtitle: `${p.name} · ${p.mrn}`, active: 'records', role, roleAware: false });
+  renderDx();
+  renderRx();
+})();
+</script>
+</body>
+</html>
