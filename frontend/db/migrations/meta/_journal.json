@@ -15,6 +15,20 @@
       "when": 1789027020928,
       "tag": "0001_outgoing_gertrude_yorkes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789035052276,
+      "tag": "0002_nasty_lockjaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789035120000,
+      "tag": "0003_patient_domain",
+      "breakpoints": true
     }
   ]
 }

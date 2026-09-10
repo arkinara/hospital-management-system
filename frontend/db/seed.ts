@@ -35,7 +35,7 @@ async function main() {
   const patientSeed = await db
     .insert(patients)
     .values([
-      { mrn: "MRN-000001", fullName: "Seed Patient One", acuity: "standard", status: "outpatient" },
+      { mrn: "MRN-000001", fullName: "Seed Patient One", acuity: "standard", admissionStatus: "outpatient" },
     ])
     .onConflictDoNothing()
     .returning({ id: patients.id });

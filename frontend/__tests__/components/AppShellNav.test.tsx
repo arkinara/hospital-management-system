@@ -60,11 +60,11 @@ describe("role-based sidebar from the fixture matrix", () => {
     expect(linkCount("Users")).toBe(0);
   });
 
-  it("Nurse does not see Appointments, Billing or Admin", () => {
+  it("Nurse sees Appointments and Records but not Billing or Admin", () => {
     renderForRole("Nurse");
     expect(linkCount("Patients")).toBeGreaterThan(0);
     expect(linkCount("Records")).toBeGreaterThan(0);
-    expect(linkCount("Appointments")).toBe(0);
+    expect(linkCount("Appointments")).toBeGreaterThan(0);
     expect(linkCount("Billing")).toBe(0);
     expect(linkCount("Users")).toBe(0);
   });

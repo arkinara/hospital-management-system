@@ -42764,8 +42764,8 @@
     {
       "role": "nurse",
       "module": "appointments",
-      "allowed": false,
-      "canView": false,
+      "allowed": true,
+      "canView": true,
       "canCreate": false,
       "canEdit": false,
       "canDelete": false

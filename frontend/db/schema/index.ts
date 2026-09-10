@@ -10,10 +10,21 @@ import * as widgetConfig from "./widget_config";
 export { admin, appointment, audit, auth, billing, medicalRecords, patient, widgetConfig };
 
 export const { departments, departmentStaff } = admin;
-export const { appointments, doctorAvailability, doctorBlockedDays } = appointment;
+export const {
+  appointments,
+  appointmentLifecycleEvents,
+  doctorAvailability,
+  doctorBlockedDays,
+} = appointment;
 export const { auditLog } = audit;
 export const { users, sessions, permissionMatrix, passwordResets } = auth;
 export const { invoices, invoiceLineItems, payments, insuranceClaims } = billing;
 export const { visitNotes, prescriptions, attachments, vitals, carePlanItems } = medicalRecords;
-export const { patients, patientAllergies, patientDedupFlags, patientAssignments } = patient;
+export const {
+  patients,
+  patientAllergies,
+  patientDepartments,
+  patientDedupFlags,
+  patientAssignments,
+} = patient;
 export const { widgetDefinitions, userWidgetLayout } = widgetConfig;

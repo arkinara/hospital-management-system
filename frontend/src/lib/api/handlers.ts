@@ -141,6 +141,25 @@ function readBody<T>(request: Request): Promise<T> {
   return request.json() as Promise<T>;
 }
 
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+  if (a.length < b.length) [a, b] = [b, a];
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 0; i < a.length; i++) {
+    const current = [i + 1];
+    for (let j = 0; j < b.length; j++) {
+      const insert = current[j] + 1;
+      const del = previous[j + 1] + 1;
+      const sub = previous[j] + (a[i] !== b[j] ? 1 : 0);
+      current.push(Math.min(insert, del, sub));
+    }
+    previous = current;
+  }
+  return previous[previous.length - 1];
+}
+
 function roleFromRequest(request: Request, fallback: Role = "doctor"): Role {
   const role = new URL(request.url).searchParams.get("role");
   if (role && role in ROLE_TO_USER) return role as Role;
@@ -193,23 +212,59 @@ export const handlers = [
   http.get("*/patients", async ({ request }) => {
     const url = new URL(request.url);
     let items = db.patients;
-    const dept = url.searchParams.get("dept");
+    const dept = url.searchParams.get("department") ?? url.searchParams.get("dept");
     const acuity = url.searchParams.get("acuity");
-    const status = url.searchParams.get("status");
-    const q = url.searchParams.get("q")?.toLowerCase();
+    const admissionStatus =
+      url.searchParams.get("admission_status") ?? url.searchParams.get("status");
+    const q = (url.searchParams.get("query") ?? url.searchParams.get("q"))?.toLowerCase();
     if (dept) items = items.filter((p) => p.dept === dept);
     if (acuity) items = items.filter((p) => p.acuity === acuity);
-    if (status) items = items.filter((p) => p.status === status);
-    if (q) items = items.filter((p) => p.name.toLowerCase().includes(q) || p.mrn.toLowerCase().includes(q));
+    if (admissionStatus) items = items.filter((p) => p.status === admissionStatus);
+    if (q)
+      items = items.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.mrn.toLowerCase().includes(q) ||
+          p.nid.toLowerCase().includes(q) ||
+          p.phone.toLowerCase().includes(q),
+      );
     const page = Number(url.searchParams.get("page") ?? "1");
-    const pageSize = Number(url.searchParams.get("pageSize") ?? "20");
+    const requestedSize = Number(url.searchParams.get("page_size") ?? url.searchParams.get("pageSize") ?? "20");
+    const pageSize = Math.max(1, Math.min(requestedSize, 100));
     const total = items.length;
     const paged = items.slice((page - 1) * pageSize, page * pageSize);
     return respond(
       mockConfig.patients.list,
-      { patients: paged, total, page, pageSize },
-      { patients: [], total: 0, page, pageSize },
+      { patients: paged, total, page, page_size: pageSize },
+      { patients: [], total: 0, page, page_size: pageSize },
     );
+  }),
+
+  http.post("*/patients/dedup-check", async ({ request }) => {
+    const body = await readBody<{ national_id?: string; full_name?: string; dob?: string }>(request);
+    const candidates = db.patients.filter((p) => {
+      if (body.national_id && p.nid === body.national_id) return true;
+      if (body.full_name && body.dob) {
+        const a = body.full_name.trim().toLowerCase();
+        const b = p.name.trim().toLowerCase();
+        const maxLen = Math.max(a.length, b.length);
+        const dist = levenshtein(a, b);
+        const similarity = maxLen === 0 ? 1 : 1 - dist / maxLen;
+        return p.dob === body.dob && similarity > 0.85;
+      }
+      return false;
+    });
+    const suspects = candidates.slice(0, 5).map((p) => ({
+      patient_id: p.mrn,
+      id: p.mrn,
+      mrn: p.mrn,
+      full_name: p.name,
+      dob: p.dob,
+      national_id: p.nid,
+      match_type: body.national_id && p.nid === body.national_id ? "national_id" : "fuzzy_name_dob",
+      similarity: body.national_id && p.nid === body.national_id ? 1 : 0.9,
+    }));
+    return respond(mockConfig.patients.dedupCheck, { suspects }, { suspects: [] });
   }),
 
   http.post("*/patients", async ({ request }) => {

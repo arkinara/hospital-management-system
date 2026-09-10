@@ -25,7 +25,7 @@ import json
 import sqlite3
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.config import get_settings
@@ -181,15 +181,15 @@ def run_seed(db_path: Path) -> int:
     # ---- Patients (mrn unique) -------------------------------------------
     cursor = conn.executemany(
         "INSERT OR IGNORE INTO patients "
-        "(mrn, full_name, dob, sex, national_id, phone, acuity, status, "
-        "primary_department_id, payer_name, created_by, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "(mrn, full_name, dob, sex, national_id, phone, acuity, admission_status, "
+        "primary_department_id, payer_name, is_active, created_by, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
         [
             (
                 p["mrn"],
                 p["name"],
                 _date_ts(p["dob"]),
-                p["sex"],
+                (p.get("sex") or "").lower() or None,
                 p["nid"],
                 p["phone"],
                 p["acuity"],
@@ -208,6 +208,22 @@ def run_seed(db_path: Path) -> int:
         r["mrn"]: r["id"] for r in conn.execute("SELECT id, mrn FROM patients")
     }
 
+    # ---- Patient departments (join; cross-department tracking) ------------
+    for patient in fx["patients"]:
+        patient_id = patient_id_by_mrn.get(patient["mrn"])
+        dept_id = dept_id_by_code.get(patient["dept"])
+        if patient_id is None or dept_id is None:
+            continue
+        inserted += _insert_if_absent(
+            conn,
+            "INSERT INTO patient_departments (patient_id, department_id, since_date) "
+            "VALUES (?, ?, ?)",
+            "SELECT 1 FROM patient_departments WHERE patient_id = ? AND department_id = ?",
+            (patient_id, dept_id),
+            (patient_id, dept_id, now),
+        )
+
+
     # ---- Allergies (no unique key -> existence check) ---------------------
     noted_by: dict[str, int | None] = {
         uid: user_id_by_fixture.get(uid) for uid in ("U-104", "U-203")
@@ -218,9 +234,9 @@ def run_seed(db_path: Path) -> int:
             continue
         inserted += _insert_if_absent(
             conn,
-            "INSERT INTO patient_allergies (patient_id, substance, severity, noted_by, noted_at) "
+            "INSERT INTO patient_allergies (patient_id, allergen, severity, noted_by, noted_at) "
             "VALUES (?, ?, ?, ?, ?)",
-            "SELECT 1 FROM patient_allergies WHERE patient_id = ? AND substance = ?",
+            "SELECT 1 FROM patient_allergies WHERE patient_id = ? AND allergen = ?",
             (patient_id, allergy["substance"]),
             (
                 patient_id,
@@ -233,17 +249,20 @@ def run_seed(db_path: Path) -> int:
 
     # ---- Appointments (natural key: patient + doctor + scheduled_at) ------
     doctor_user_by_id = {d["id"]: user_id_by_email.get(d["email"]) for d in fx["doctors"]}
+    receptionist_id = user_id_by_fixture.get("U-105")
     for appt in fx["appointments"]:
         patient_id = patient_id_by_mrn.get(appt["patient"])
         doctor_id = doctor_user_by_id.get(appt["doctor"])
         if patient_id is None or doctor_id is None:
             continue
         scheduled_at = _appointment_ts(appt["date"], appt["time"])
+        scheduled_end = scheduled_at + 30 * 60
         inserted += _insert_if_absent(
             conn,
             "INSERT INTO appointments (patient_id, doctor_id, department_id, scheduled_at, "
-            "duration_minutes, reason, status, checked_in_at, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "scheduled_end, duration_minutes, reason, notes, status, checked_in_at, "
+            "created_by, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             "SELECT 1 FROM appointments WHERE patient_id = ? AND doctor_id = ? "
             "AND scheduled_at = ?",
             (patient_id, doctor_id, scheduled_at),
@@ -252,10 +271,14 @@ def run_seed(db_path: Path) -> int:
                 doctor_id,
                 dept_id_by_code.get(appt["dept"]),
                 scheduled_at,
+                scheduled_end,
                 30,
                 appt["reason"],
+                None,
                 appt["status"],
                 _iso_ts(appt["checkedInAt"]),
+                receptionist_id,
+                now,
                 now,
             ),
         )
@@ -274,6 +297,94 @@ def run_seed(db_path: Path) -> int:
         ).fetchone()
         if row is not None:
             appointment_id_by_key[appt["id"]] = row["id"]
+
+    # ---- Cross-department joins (from appointments) ------------------------
+    for appt in fx["appointments"]:
+        patient_id = patient_id_by_mrn.get(appt["patient"])
+        dept_id = dept_id_by_code.get(appt["dept"])
+        if patient_id is None or dept_id is None:
+            continue
+        inserted += _insert_if_absent(
+            conn,
+            "INSERT INTO patient_departments (patient_id, department_id, since_date) "
+            "VALUES (?, ?, ?)",
+            "SELECT 1 FROM patient_departments WHERE patient_id = ? AND department_id = ?",
+            (patient_id, dept_id),
+            (patient_id, dept_id, now),
+        )
+
+    # ---- Doctor availability (default weekly hours, idempotent) -----------
+    # Doctors with no configured windows default to Mon-Fri 08:00-17:00 so the
+    # slot grid is useful straight after seeding.
+    for doc in fx["doctors"]:
+        doctor_user_id = doctor_user_by_id.get(doc["id"])
+        if doctor_user_id is None:
+            continue
+        for weekday in range(5):
+            inserted += _insert_if_absent(
+                conn,
+                "INSERT INTO doctor_availability "
+                "(doctor_id, day_of_week, start_time, end_time) VALUES (?, ?, ?, ?)",
+                "SELECT 1 FROM doctor_availability WHERE doctor_id = ? "
+                "AND day_of_week = ? AND start_time = ?",
+                (doctor_user_id, weekday, "08:00"),
+                (doctor_user_id, weekday, "08:00", "17:00"),
+            )
+
+    # ---- Doctor blocked days (vacation/sick, idempotent) ------------------
+    blocked_specs = [
+        (fx["doctors"][0]["id"], 10, "vacation"),
+        (fx["doctors"][1]["id"], 3, "off-site training"),
+    ]
+    for doc_id, offset_days, reason in blocked_specs:
+        doctor_user_id = doctor_user_by_id.get(doc_id)
+        if doctor_user_id is None:
+            continue
+        blocked_date = (datetime.now(UTC).date() + timedelta(days=offset_days)).isoformat()
+        inserted += _insert_if_absent(
+            conn,
+            "INSERT INTO doctor_blocked_days (doctor_id, blocked_date, reason) "
+            "VALUES (?, ?, ?)",
+            "SELECT 1 FROM doctor_blocked_days WHERE doctor_id = ? AND blocked_date = ?",
+            (doctor_user_id, blocked_date),
+            (doctor_user_id, blocked_date, reason),
+        )
+
+    # ---- Appointment lifecycle events (derived from fixture status) -------
+    for appt in fx["appointments"]:
+        appointment_id = appointment_id_by_key.get(appt["id"])
+        if appointment_id is None:
+            continue
+        scheduled_at = _appointment_ts(appt["date"], appt["time"])
+        created_at = now
+        inserted += _insert_if_absent(
+            conn,
+            "INSERT INTO appointment_lifecycle_events "
+            "(appointment_id, from_status, to_status, occurred_at, by_user_id, reason) "
+            "VALUES (?, NULL, 'booked', ?, ?, NULL)",
+            "SELECT 1 FROM appointment_lifecycle_events WHERE appointment_id = ? "
+            "AND to_status = 'booked' AND from_status IS NULL",
+            (appointment_id,),
+            (appointment_id, created_at, receptionist_id),
+        )
+        status = appt["status"]
+        if status != "booked":
+            inserted += _insert_if_absent(
+                conn,
+                "INSERT INTO appointment_lifecycle_events "
+                "(appointment_id, from_status, to_status, occurred_at, by_user_id, reason) "
+                "VALUES (?, 'booked', ?, ?, ?, ?)",
+                "SELECT 1 FROM appointment_lifecycle_events WHERE appointment_id = ? "
+                "AND to_status = ?",
+                (appointment_id, status),
+                (
+                    appointment_id,
+                    status,
+                    created_at + 60,
+                    receptionist_id,
+                    None if status in ("checked_in", "in_progress", "completed") else "per fixture",
+                ),
+            )
 
     # ---- Visit notes ------------------------------------------------------
     note_doctor_by_id = doctor_user_by_id
@@ -319,6 +430,21 @@ def run_seed(db_path: Path) -> int:
         ).fetchone()
         if row is not None:
             note_id_by_fixture[note["id"]] = row["id"]
+
+    # ---- Cross-department joins (from visit notes) -------------------------
+    for note in fx["visitNotes"]:
+        patient_id = patient_id_by_mrn.get(note["patient"])
+        dept_id = dept_id_by_code.get(note["dept"])
+        if patient_id is None or dept_id is None:
+            continue
+        inserted += _insert_if_absent(
+            conn,
+            "INSERT INTO patient_departments (patient_id, department_id, since_date) "
+            "VALUES (?, ?, ?)",
+            "SELECT 1 FROM patient_departments WHERE patient_id = ? AND department_id = ?",
+            (patient_id, dept_id),
+            (patient_id, dept_id, now),
+        )
 
     # ---- Prescriptions ----------------------------------------------------
     for pres in fx["prescriptions"]:
@@ -494,11 +620,16 @@ def run_seed(db_path: Path) -> int:
             ),
         )
 
-    # ---- Permission matrix (role, module unique) --------------------------
+    # ---- Permission matrix (role, module unique; upsert so fixture edits
+    # ---- like nurse->appointments read access apply to existing DBs) -----
     cursor = conn.executemany(
-        "INSERT OR IGNORE INTO permission_matrix "
+        "INSERT INTO permission_matrix "
         "(role, module, allowed, can_view, can_create, can_edit, can_delete) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(role, module) DO UPDATE SET "
+        "allowed = excluded.allowed, can_view = excluded.can_view, "
+        "can_create = excluded.can_create, can_edit = excluded.can_edit, "
+        "can_delete = excluded.can_delete",
         [
             (
                 entry["role"],

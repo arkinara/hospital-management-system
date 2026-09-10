@@ -553,7 +553,7 @@ const RBAC_MODULES: Module[] = ["patients", "appointments", "records", "billing"
 const RBAC_ALLOWED: Record<Role, Module[]> = {
   admin: RBAC_MODULES,
   doctor: ["patients", "appointments", "records"],
-  nurse: ["patients", "records"],
+  nurse: ["patients", "appointments", "records"],
   receptionist: ["patients", "appointments", "billing"],
 };
 

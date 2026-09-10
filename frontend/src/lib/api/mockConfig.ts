@@ -28,6 +28,7 @@ export interface MockConfig {
     create: Scenario;
     update: Scenario;
     timeline: Scenario;
+    dedupCheck: Scenario;
   };
   appointments: {
     list: Scenario;
@@ -81,6 +82,7 @@ export function createDefaultMockConfig(): MockConfig {
       create: scenario(),
       update: scenario(),
       timeline: scenario(),
+      dedupCheck: scenario(),
     },
     appointments: { list: scenario(), create: scenario(), checkIn: scenario() },
     records: { visits: scenario(), createVisit: scenario() },

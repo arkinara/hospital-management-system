@@ -11,22 +11,15 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
-import tempfile
 import time
 
 import jwt as pyjwt
 
-os.environ["DATABASE_PATH"] = str(pathlib.Path(tempfile.mkdtemp()) / "test.db")
+_SHARED_TEST_DB = pathlib.Path("/tmp/hospital-test-shared.db").resolve()
+os.environ["DATABASE_PATH"] = str(_SHARED_TEST_DB)
 os.environ["JWT_SECRET"] = "test-secret"
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-
-from db.migrate import run_migrations  # noqa: E402
-from db.seed import run_seed  # noqa: E402
-
-_db_path = pathlib.Path(os.environ["DATABASE_PATH"])
-assert run_migrations(_db_path) >= 0
-run_seed(_db_path)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -34,6 +27,7 @@ from app.config import get_settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.routers import auth as auth_module  # noqa: E402
 
+_db_path = _SHARED_TEST_DB
 client = TestClient(app)
 
 ADMIN = ("admin@hospital.test", "Hospital2025!")
