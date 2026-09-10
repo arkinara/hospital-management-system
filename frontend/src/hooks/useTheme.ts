@@ -43,6 +43,7 @@ export const applyTheme = (pref: ThemePref): "light" | "dark" => {
   const root = document.documentElement;
   root.classList.toggle("dark", resolved === "dark");
   root.dataset.themePref = pref;
+  root.dataset.theme = resolved;
   return resolved;
 };
 

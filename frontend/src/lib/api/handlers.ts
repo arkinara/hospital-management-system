@@ -147,6 +147,28 @@ function roleFromRequest(request: Request, fallback: Role = "doctor"): Role {
   return fallback;
 }
 
+/**
+ * The dev login token is `mock_<role>_<nonce>`, so `/auth/me` can recover the
+ * signed-in role without a server-side session store. Any other (or missing)
+ * bearer token falls back to the `?role=` query param, then to the default.
+ */
+function roleFromToken(request: Request): Role | null {
+  const auth = request.headers.get("Authorization") ?? "";
+  const match = /Bearer mock_([a-z]+)_/i.exec(auth);
+  if (match && match[1] in ROLE_TO_USER) return match[1] as Role;
+  return null;
+}
+
+/** Shared dev credential accepted by the mock login handler. */
+const DEMO_PASSWORD = "Hospital2025!";
+
+interface LoginResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  user: AuthUser;
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -437,8 +459,36 @@ export const handlers = [
   }),
 
   // ---- Auth ---------------------------------------------------------------
+  http.post("*/auth/login", async ({ request }) => {
+    const body = await readBody<{ email?: string; password?: string }>(request);
+    const email = body.email?.trim().toLowerCase() ?? "";
+    const password = body.password ?? "";
+    const index = db.users.findIndex((u) => u.email.toLowerCase() === email);
+    if (index === -1 || password !== DEMO_PASSWORD) {
+      return errorResponse(
+        "invalid_credentials",
+        "Email or password is incorrect. Use one of the demo accounts (password Hospital2025!).",
+        401,
+      );
+    }
+    const user = db.users[index];
+    const role = user.role.toLowerCase() as Role;
+    const authUser = toAuthUser(user, index);
+    const payload: LoginResponse = {
+      access_token: `mock_${role}_${Math.random().toString(36).slice(2, 10)}`,
+      refresh_token: `mock_r_${Math.random().toString(36).slice(2, 12)}`,
+      token_type: "bearer",
+      user: authUser,
+    };
+    return respond(mockConfig.auth.login, payload, payload);
+  }),
+
+  http.post("*/auth/logout", async () => {
+    return new HttpResponse(null, { status: 204 });
+  }),
+
   http.get("*/auth/me", async ({ request }) => {
-    const role = roleFromRequest(request, "admin");
+    const role = roleFromToken(request) ?? roleFromRequest(request, "admin");
     const userIndex = db.users.findIndex((u) => u.role.toLowerCase() === role);
     if (userIndex === -1) return notFound("User", role);
     const user = db.users[userIndex];

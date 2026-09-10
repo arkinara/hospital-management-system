@@ -1,37 +1,84 @@
-import type { Metadata } from "next";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Dashboard — Hospital MS",
-};
+import React from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { AppShell, ErrorState, SkeletonRows } from "@/components/ui";
+import { CurrentUserProvider } from "@/lib/auth/currentUserContext";
+import {
+  SHELL_NAV,
+  hasModuleAccess,
+  moduleForPath,
+  navKeyForPath,
+  titleForPath,
+} from "@/lib/auth/nav";
+import { clearSession } from "@/lib/auth/session";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useDensity } from "@/hooks/useDensity";
+import { useTheme } from "@/hooks/useTheme";
+import { renderIcon } from "@/lib/iconRenderer";
 
 export default function AppLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <div className="flex min-h-screen bg-surface-2">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-outline bg-surface-0 lg:flex">
-        <div className="flex h-14 items-center border-b border-outline px-4">
-          <span className="font-display text-base font-semibold">Hospital MS</span>
-        </div>
-        <nav className="grid gap-1 p-3" aria-label="Main">
-          <span className="rounded-md bg-surface-1 px-3 py-2 text-sm font-medium text-fg">
-            Dashboard
-          </span>
-          <span className="rounded-md px-3 py-2 text-sm text-fg-muted">Patients</span>
-          <span className="rounded-md px-3 py-2 text-sm text-fg-muted">Appointments</span>
-          <span className="rounded-md px-3 py-2 text-sm text-fg-muted">Records</span>
-          <span className="rounded-md px-3 py-2 text-sm text-fg-muted">Billing</span>
-          <span className="rounded-md px-3 py-2 text-sm text-fg-muted">Admin</span>
-        </nav>
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-sticky flex h-14 items-center border-b border-outline bg-surface-0 px-4">
-          <h1 className="text-base font-semibold">Authenticated shell</h1>
-        </header>
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+  const pathname = usePathname();
+  const router = useRouter();
+  const { session, permissions, loading, error, switchRole } = useCurrentUser();
+  const { isDark, toggleTheme } = useTheme();
+  const { effectiveDensity, toggleDensity } = useDensity();
+
+  const requiredModule = moduleForPath(pathname);
+  const allowed = session ? hasModuleAccess(session.role, requiredModule, permissions) : false;
+
+  React.useEffect(() => {
+    if (session && !allowed) router.replace("/not-authorized");
+  }, [session, allowed, router]);
+
+  if (error) {
+    return (
+      <div className="grid min-h-dvh place-items-center bg-background p-6">
+        <ErrorState
+          title="Could not load your session"
+          body={error}
+          onRetry={() => window.location.reload()}
+          renderIcon={renderIcon}
+        />
       </div>
-    </div>
+    );
+  }
+
+  if (loading || !session) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-6xl bg-background p-6">
+        <SkeletonRows rows={4} columns={3} />
+      </div>
+    );
+  }
+
+  return (
+    <CurrentUserProvider value={{ session, permissions, switchRole }}>
+      <AppShell
+        title={titleForPath(pathname)}
+        subtitle={`Signed in as ${session.role}`}
+        active={navKeyForPath(pathname)}
+        nav={SHELL_NAV}
+        session={session}
+        permissions={permissions}
+        density={effectiveDensity}
+        isDark={isDark}
+        onToggleDensity={toggleDensity}
+        onToggleTheme={toggleTheme}
+        onOpenPalette={() => undefined}
+        onSwitchRole={switchRole}
+        onSignOut={() => {
+          clearSession();
+          router.push("/sign-in");
+        }}
+        renderIcon={renderIcon}
+      >
+        {allowed ? children : null}
+      </AppShell>
+    </CurrentUserProvider>
   );
 }

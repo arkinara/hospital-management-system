@@ -58,6 +58,8 @@ export interface MockConfig {
     update: Scenario;
   };
   auth: {
+    login: Scenario;
+    logout: Scenario;
     me: Scenario;
     users: Scenario;
     createUser: Scenario;
@@ -86,7 +88,7 @@ export function createDefaultMockConfig(): MockConfig {
     invoices: { list: scenario(), create: scenario(), payment: scenario() },
     permissions: { get: scenario(), put: scenario() },
     widgets: { me: scenario(), saveMe: scenario(), library: scenario(), update: scenario() },
-    auth: { me: scenario(), users: scenario(), createUser: scenario() },
+    auth: { login: scenario(), logout: scenario(), me: scenario(), users: scenario(), createUser: scenario() },
     audit: { list: scenario() },
   };
 }

@@ -43,6 +43,7 @@ var dark=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: da
 var root=document.documentElement;
 root.classList.toggle('dark',dark);
 root.dataset.themePref=t;
+root.dataset.theme=dark?'dark':'light';
 var compact=d==='compact'&&window.innerWidth>=1024;
 root.dataset.density=compact?'compact':'comfortable';
 root.classList.toggle('density-compact',compact);
