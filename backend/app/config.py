@@ -12,6 +12,8 @@ Set values in a `.env` file at the repository root of the backend
   the interactive API docs in the /docs and /redoc routes.
 """
 
+import secrets as _secrets
+import warnings
 from functools import lru_cache
 from pathlib import Path
 
@@ -38,6 +40,15 @@ class Settings(BaseSettings):
         default="http://localhost:3000",
         description="Comma-separated list of allowed CORS origins.",
     )
+    jwt_secret: str = Field(
+        default="",
+        description="Secret used to sign access tokens. MUST be set in production; "
+        "falls back to a random per-startup secret in development.",
+    )
+    jwt_algorithm: str = Field(default="HS256", description="JWT signing algorithm.")
+    access_token_ttl_minutes: int = Field(default=15, description="Access token lifetime.")
+    refresh_token_ttl_days: int = Field(default=7, description="Refresh token lifetime.")
+    bcrypt_rounds: int = Field(default=12, description="bcrypt cost factor for passwords.")
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -57,4 +68,12 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    if not settings.jwt_secret:
+        settings.jwt_secret = _secrets.token_urlsafe(48)
+        warnings.warn(
+            "JWT_SECRET is not set. Using a random per-startup secret — sessions will "
+            "not survive a restart. Set JWT_SECRET in backend/.env for a stable secret.",
+            stacklevel=2,
+        )
+    return settings

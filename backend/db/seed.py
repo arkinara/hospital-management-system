@@ -1,12 +1,21 @@
-"""Seed placeholder fixtures into the shared SQLite file.
+"""Seed fixtures into the shared SQLite file.
 
 Usage: `python -m db.seed` (run from `backend/`). Must be run after migrate.
 
 Idempotent by construction: every row uses a natural unique key and inserts
-with INSERT OR IGNORE, so re-seeding never duplicates rows. The real fixture
-set lands in ticket #38; this file currently seeds a few departments plus one
-placeholder patient so the health check and the frontend token demo have data
-to point at.
+with INSERT OR IGNORE, so re-seeding never duplicates rows. Passwords are
+bcrypt-hashed; the seeded accounts use the dev password below (documented in
+the repo README).
+
+Seed accounts (password: `Hospital2025!`):
+  admin@hospital.test          admin
+  doctor@hospital.test         doctor
+  nurse@hospital.test          nurse
+  receptionist@hospital.test   receptionist
+
+The permission_matrix is seeded with an explicit allow/deny row for every
+role x module combination (admin all; doctor patients/appointments/records;
+nurse patients/records; receptionist patients/appointments/billing).
 """
 
 from __future__ import annotations
@@ -17,6 +26,7 @@ import time
 from pathlib import Path
 
 from app.config import get_settings
+from app.security import hash_password
 
 DEPARTMENTS = [
     ("General", "GEN", "general", 40, 4),
@@ -28,6 +38,33 @@ DEPARTMENTS = [
 PLACEHOLDER_PATIENTS = [
     ("MRN-000001", "Seed Patient One", "standard", "outpatient"),
 ]
+
+SEED_PASSWORD = "Hospital2025!"
+
+USERS = [
+    ("admin@hospital.test", "System Admin", "admin", None),
+    ("doctor@hospital.test", "Dr. Alice Chen", "doctor", 3),
+    ("nurse@hospital.test", "Nurse Bob Tan", "nurse", 2),
+    ("receptionist@hospital.test", "Receptionist Carol", "receptionist", 1),
+]
+
+MODULES = [
+    "patients",
+    "appointments",
+    "records",
+    "billing",
+    "admin",
+    "widget-config",
+    "audit",
+]
+
+# Role -> modules allowed. Everything not listed is explicitly denied.
+MATRIX = {
+    "admin": set(MODULES),
+    "doctor": {"patients", "appointments", "records"},
+    "nurse": {"patients", "records"},
+    "receptionist": {"patients", "appointments", "billing"},
+}
 
 
 def run_seed(db_path: Path) -> int:
@@ -52,6 +89,39 @@ def run_seed(db_path: Path) -> int:
         [(*patient, now) for patient in PLACEHOLDER_PATIENTS],
     )
     inserted += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+    password_hash = hash_password(SEED_PASSWORD)
+    cursor = conn.executemany(
+        "INSERT OR IGNORE INTO users "
+        "(email, full_name, role, department_id, password_hash, is_active, created_at) "
+        "VALUES (?, ?, ?, ?, ?, 1, ?)",
+        [(*user, password_hash, now) for user in USERS],
+    )
+    inserted += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+    matrix_rows = [
+        (role, module, int(module in MATRIX[role]), int(module in MATRIX[role]))
+        for role in MATRIX
+        for module in MODULES
+    ]
+    cursor = conn.executemany(
+        "INSERT OR IGNORE INTO permission_matrix "
+        "(role, module, allowed, can_view) VALUES (?, ?, ?, ?)",
+        matrix_rows,
+    )
+    inserted += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+    has_init = conn.execute(
+        "SELECT 1 FROM audit_log WHERE action = 'system.init' LIMIT 1"
+    ).fetchone()
+    if has_init is None:
+        conn.execute(
+            "INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, "
+            "after_json, created_at) "
+            "VALUES (NULL, 'system.init', 'system', NULL, NULL, ?)",
+            (now,),
+        )
+        inserted += 1
 
     conn.commit()
     conn.close()

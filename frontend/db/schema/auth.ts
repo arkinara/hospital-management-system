@@ -18,11 +18,13 @@ export const users = sqliteTable(
     status: text("status", { enum: ["active", "invited", "inactive"] })
       .notNull()
       .default("active"),
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
     mfaEnabled: integer("mfa_enabled", { mode: "boolean" }).notNull().default(false),
     lastLoginAt: integer("last_login_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" }),
   },
   (table) => [uniqueIndex("users_email_unique").on(table.email)]
 );
@@ -35,10 +37,15 @@ export const sessions = sqliteTable(
       .notNull()
       .references(() => users.id),
     token: text("token").notNull(),
+    refreshTokenHash: text("refresh_token_hash"),
     expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    revokedAt: integer("revoked_at", { mode: "timestamp" }),
   },
   (table) => [uniqueIndex("sessions_token_unique").on(table.token)]
 );
@@ -53,6 +60,20 @@ export const permissionMatrix = sqliteTable(
     canCreate: integer("can_create", { mode: "boolean" }).notNull().default(false),
     canEdit: integer("can_edit", { mode: "boolean" }).notNull().default(false),
     canDelete: integer("can_delete", { mode: "boolean" }).notNull().default(false),
+    allowed: integer("allowed", { mode: "boolean" }).notNull().default(false),
   },
   (table) => [uniqueIndex("permission_matrix_role_module_unique").on(table.role, table.module)]
 );
+
+export const passwordResets = sqliteTable("password_resets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  usedAt: integer("used_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
