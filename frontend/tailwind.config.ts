@@ -106,6 +106,17 @@ const config: Config = {
         overlay: "0 16px 40px -8px rgb(2 8 23 / 0.28), 0 4px 12px -4px rgb(2 8 23 / 0.16)",
       },
       spacing: { 4.5: "1.125rem", 13: "3.25rem", 15: "3.75rem" },
+      // min/max width and height resolve from the spacing scale so the
+      // prototype's `min-h-11`, `min-w-56`, `max-w-32` and `h-dvh` utilities
+      // all exist in the compiled build.
+      minHeight: ({ theme }) => ({
+        ...theme("spacing"),
+        dvh: "100dvh",
+        lvh: "100lvh",
+        svh: "100svh",
+      }),
+      minWidth: ({ theme }) => ({ ...theme("spacing") }),
+      maxWidth: ({ theme }) => ({ ...theme("spacing") }),
       zIndex: { nav: "20", sticky: "30", fab: "40", scrim: "50", overlay: "60", toast: "70" },
       transitionDuration: { fast: "120ms", DEFAULT: "180ms", slow: "260ms" },
     },

@@ -1,0 +1,337 @@
+/* ============================================================================
+   Hospital MS — Pro Max design token seed block.
+   THE ONLY PLACE RAW COLOUR LITERALS EXIST.
+
+   Contract: promax-prototype/DESIGN_SYSTEM.md section 2.
+   Source:   promax-prototype/prototype/theme.js (canonical token source).
+
+   Both palettes are designed separately — dark is NOT an inversion of light.
+   Values are stored as RGB triplets so Tailwind can apply the <alpha-value>
+   modifier (rgb(var(--token) / <alpha-value>)).
+
+   Hex reference (design intent, not consumed at runtime):
+     Token                  Light      Dark
+     --bg                   #F6F8FB    #080B11
+     --fg                   #0F172A    #E2E8F0
+     --fg-muted             #475569    #9CACBF
+     --fg-subtle            #64748B    #8292A6
+     --primary              #1E40AF    #93BBFF
+     --primary-fg           #FFFFFF    #04183F
+     --primary-container    #DBEAFE    #1E3A8A
+     --primary-container-fg #172554    #DBEAFE
+     --accent               #B45309    #FBBF24
+     --accent-fg            #FFFFFF    #291400
+     --accent-container     #FEF3C7    #452703
+     --accent-container-fg  #451A03    #FDE68A
+     --outline              #CBD5E1    #2C3646
+     --outline-strong       #94A3B8    #5A6980
+     --s0                   #FFFFFF    #11161F
+     --s1                   #FAFBFD    #151B25
+     --s2                   #F1F5F9    #1A212D
+     --s3                   #E9EFF6    #212A39
+     --s4                   #E0E8F1    #2A3547
+     --success              #15803D    #4ADE80
+     --success-container    #DCFCE7    #063018
+     --success-container-fg #052E16    #BBF7D0
+     --warning              #B45309    #FBBF24
+     --warning-container    #FEF3C7    #422006
+     --warning-container-fg #451A03    #FDE68A
+     --danger               #B91C1C    #FCA5A5
+     --danger-container     #FEE2E2    #480C0C
+     --danger-container-fg  #450A0A    #FECACA
+     --info                 #1D4ED8    #93BBFF
+     --info-container       #DBEAFE    #1B347A
+     --info-container-fg    #172554    #DBEAFE
+     --focus                #1D4ED8    #93BBFF
+     --scrim                #0F172A    #020408
+   ========================================================================== */
+
+/* ---------- Light (default) ---------- */
+:root {
+  --bg: 246 248 251;
+  --fg: 15 23 42; /* on --bg 15.6:1 */
+  --fg-muted: 71 85 105; /* on --bg 6.9:1 */
+  --fg-subtle: 100 116 139; /* on --bg 4.6:1 */
+
+  --primary: 30 64 175;
+  --primary-fg: 255 255 255;
+  --primary-container: 219 234 254;
+  --primary-container-fg: 23 37 84;
+
+  --accent: 180 83 9;
+  --accent-fg: 255 255 255;
+  --accent-container: 254 243 199;
+  --accent-container-fg: 69 26 3;
+
+  --outline: 203 213 225;
+  --outline-strong: 148 163 184;
+
+  --s0: 255 255 255;
+  --s1: 250 251 253;
+  --s2: 241 245 249;
+  --s3: 233 239 246;
+  --s4: 224 232 241;
+
+  --success: 21 128 61;
+  --success-container: 220 252 231;
+  --success-container-fg: 5 46 22;
+  --warning: 180 83 9;
+  --warning-container: 254 243 199;
+  --warning-container-fg: 69 26 3;
+  --danger: 185 28 28;
+  --danger-container: 254 226 226;
+  --danger-container-fg: 69 10 10;
+  --info: 29 78 216;
+  --info-container: 219 234 254;
+  --info-container-fg: 23 37 84;
+
+  --focus: 29 78 216;
+  --scrim: 15 23 42;
+  --scrim-alpha: 0.48;
+  color-scheme: light;
+}
+
+/* ---------- Dark (separately designed, not an inversion) ---------- */
+.dark {
+  --bg: 8 11 17;
+  --fg: 226 232 240; /* on --bg 14.9:1 */
+  --fg-muted: 156 172 191; /* on --bg 7.7:1 */
+  --fg-subtle: 130 146 166; /* on --bg 5.6:1 */
+
+  --primary: 147 187 255;
+  --primary-fg: 4 24 63;
+  --primary-container: 30 58 138;
+  --primary-container-fg: 219 234 254;
+
+  --accent: 251 191 36;
+  --accent-fg: 41 20 0;
+  --accent-container: 69 39 3;
+  --accent-container-fg: 253 230 138;
+
+  --outline: 44 54 70;
+  --outline-strong: 90 105 128;
+
+  --s0: 17 22 31;
+  --s1: 21 27 37;
+  --s2: 26 33 45;
+  --s3: 33 42 57;
+  --s4: 42 53 71;
+
+  --success: 74 222 128;
+  --success-container: 6 48 24;
+  --success-container-fg: 187 247 208;
+  --warning: 251 191 36;
+  --warning-container: 66 32 6;
+  --warning-container-fg: 253 230 138;
+  --danger: 252 165 165;
+  --danger-container: 72 12 12;
+  --danger-container-fg: 254 202 202;
+  --info: 147 187 255;
+  --info-container: 27 52 122;
+  --info-container-fg: 219 234 254;
+
+  --focus: 147 187 255;
+  --scrim: 2 4 8;
+  --scrim-alpha: 0.66;
+  color-scheme: dark;
+}
+
+/* ---------- Shape scale (DESIGN_SYSTEM.md section 5) ----------
+   Sharper than a consumer app: a data tool reads as precise, not soft. */
+:root {
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+  --radius-3xl: 18px;
+  --radius-pill: 9999px;
+}
+
+/* ---------- Z-index scale (DESIGN_SYSTEM.md section 5) ---------- */
+:root {
+  --z-nav: 20;
+  --z-sticky: 30;
+  --z-fab: 40;
+  --z-scrim: 50;
+  --z-overlay: 60;
+  --z-toast: 70;
+}
+
+/* ---------- Density (DESIGN_SYSTEM.md section 4) ----------
+   Compact is a POINTER-WIDTH affordance only. Below 1024px every interactive
+   row falls back to comfortable so touch targets stay >= 44px. */
+:root,
+.density-comfortable,
+[data-density="comfortable"] {
+  --row-h: 52px;
+  --cell-py: 10px;
+  --card-pad: 20px;
+  --gap: 16px;
+  --sec-gap: 28px;
+  --cell-fs: 0.875rem;
+}
+
+@media (min-width: 1024px) {
+  .density-compact,
+  [data-density="compact"] {
+    --row-h: 40px;
+    --cell-py: 5px;
+    --card-pad: 14px;
+    --gap: 12px;
+    --sec-gap: 20px;
+    --cell-fs: 0.8125rem;
+  }
+}
+
+/* ============================================================================
+   Base + density-driven primitives
+   ========================================================================== */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--outline-strong)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--outline-strong) / 0.7);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+html {
+  font-family: var(--font-sans), "Source Sans 3", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+h1,
+h2,
+h3,
+h4,
+.font-display {
+  font-family: var(--font-display), Lexend, system-ui, sans-serif;
+  letter-spacing: -0.011em;
+}
+body {
+  overflow-x: hidden;
+}
+
+/* Tabular figures everywhere a number must not reflow as it changes. */
+.num {
+  font-family: var(--font-mono), "Fira Code", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
+}
+table,
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus: never removed, always 2px + offset, visible on every surface. */
+:focus-visible {
+  outline: 2px solid rgb(var(--focus));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.focus-inset:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Density-driven primitives */
+.card {
+  background: rgb(var(--s0));
+  border: 1px solid rgb(var(--outline));
+  border-radius: 14px;
+  padding: var(--card-pad);
+}
+.well {
+  background: rgb(var(--s2));
+  border: 1px solid rgb(var(--outline));
+  border-radius: 10px;
+}
+.row-h {
+  min-height: var(--row-h);
+}
+.grid-gap {
+  gap: var(--gap);
+}
+.sec-gap > * + * {
+  margin-top: var(--sec-gap);
+}
+
+/* Dense table */
+.dt {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--cell-fs);
+}
+.dt thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgb(var(--s2));
+  color: rgb(var(--fg-muted));
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgb(var(--outline));
+}
+.dt tbody td {
+  padding: var(--cell-py) 12px;
+  border-bottom: 1px solid rgb(var(--outline) / 0.7);
+  vertical-align: middle;
+}
+.dt tbody tr {
+  height: var(--row-h);
+}
+.dt tbody tr:hover {
+  background: rgb(var(--s3) / 0.75);
+}
+.dt tbody tr[aria-selected="true"] {
+  background: rgb(var(--primary-container) / 0.55);
+}
+.dt tbody tr:last-child td {
+  border-bottom: 0;
+}
+.dt th[aria-sort] {
+  cursor: pointer;
+}
+.dt th[aria-sort]:hover {
+  color: rgb(var(--fg));
+  background: rgb(var(--s3));
+}
+
+/* Safe areas — for the mobile bottom nav and any fixed bar. */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+
+/* Screen-reader only, but focusable (skip link). */
+.sr-only:not(:focus):not(:focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+[hidden] {
+  display: none !important;
+}

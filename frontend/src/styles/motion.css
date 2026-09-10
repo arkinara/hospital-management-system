@@ -1,0 +1,114 @@
+/* ============================================================================
+   Hospital MS — Motion primitives (DESIGN_SYSTEM.md section 6, tier 4/10).
+   Short, purposeful, interruptible. Nothing decorative.
+   ========================================================================== */
+
+:root {
+  /* Duration tier. Names are stable; components reference these, not ms. */
+  --motion-duration-short1: 120ms; /* hover, colour, press */
+  --motion-duration-short2: 180ms; /* default transition */
+  --motion-duration-medium1: 200ms; /* enter */
+  --motion-duration-medium2: 220ms; /* sheet / dialog */
+  --motion-duration-long1: 260ms; /* reserved */
+  --motion-duration-long2: 350ms; /* stagger cap */
+
+  /* Easing tier. */
+  --motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-easing-enter: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --motion-easing-exit: ease-out;
+
+  --motion-stagger: 35ms;
+}
+
+/* ---------- Keyframes ---------- */
+@keyframes hms-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes hms-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes hms-sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes hms-skel {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* ---------- Enter animations ---------- */
+.anim-in {
+  animation: hms-fade-up var(--motion-duration-medium1) var(--motion-easing-enter) both;
+}
+.anim-scrim {
+  animation: hms-fade-in var(--motion-duration-short1) var(--motion-easing-exit) both;
+}
+.anim-sheet {
+  animation: hms-sheet-up var(--motion-duration-medium2) var(--motion-easing-enter) both;
+}
+
+/* ---------- Press feedback ----------
+   Scales rather than moving layout bounds, so a tap cannot reflow the row. */
+.press {
+  transition:
+    transform var(--motion-duration-short1) var(--motion-easing-exit),
+    background-color var(--motion-duration-short2) var(--motion-easing-exit),
+    color var(--motion-duration-short2) var(--motion-easing-exit),
+    border-color var(--motion-duration-short2) var(--motion-easing-exit);
+}
+.press:active {
+  transform: scale(0.98);
+}
+
+/* ---------- Skeleton shimmer ----------
+   Shaped like the content it replaces so the layout does not jump. */
+.skel {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--s2)) 25%,
+    rgb(var(--s4)) 37%,
+    rgb(var(--s2)) 63%
+  );
+  background-size: 400% 100%;
+  animation: hms-skel 1.4s ease infinite;
+  border-radius: 6px;
+}
+
+/* ---------- Reduced motion ----------
+   Collapses every animation and swaps the shimmer for a static block. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skel {
+    background: rgb(var(--s3));
+    animation: none;
+  }
+}
