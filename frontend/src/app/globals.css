@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Hospital MS — design token seed block.
+   Single source of truth for colour. Mirrors
+   promax-prototype/prototype/theme.js (the design contract).
+   Values are RGB triplets (same encoding as the prototype) so
+   Tailwind utilities can apply the <alpha-value> modifier.
+   Both palettes are defined separately: dark is a design, not an
+   inversion of light.
+   ============================================================ */
+
+/* ---------- Light (default) ---------- */
+:root {
+  --bg: 246 248 251;
+  --fg: 15 23 42;
+  --fg-muted: 71 85 105;
+  --fg-subtle: 100 116 139;
+
+  --primary: 30 64 175;
+  --primary-fg: 255 255 255;
+  --primary-container: 219 234 254;
+  --primary-container-fg: 23 37 84;
+
+  --accent: 180 83 9;
+  --accent-fg: 255 255 255;
+  --accent-container: 254 243 199;
+  --accent-container-fg: 69 26 3;
+
+  --outline: 203 213 225;
+  --outline-strong: 148 163 184;
+
+  --s0: 255 255 255;
+  --s1: 250 251 253;
+  --s2: 241 245 249;
+  --s3: 233 239 246;
+  --s4: 224 232 241;
+
+  --success: 21 128 61;
+  --success-container: 220 252 231;
+  --success-container-fg: 5 46 22;
+  --warning: 180 83 9;
+  --warning-container: 254 243 199;
+  --warning-container-fg: 69 26 3;
+  --danger: 185 28 28;
+  --danger-container: 254 226 226;
+  --danger-container-fg: 69 10 10;
+  --info: 29 78 216;
+  --info-container: 219 234 254;
+  --info-container-fg: 23 37 84;
+
+  --focus: 29 78 216;
+  --scrim: 15 23 42;
+  --scrim-alpha: 0.48;
+  color-scheme: light;
+}
+
+/* ---------- Dark ---------- */
+.dark {
+  --bg: 8 11 17;
+  --fg: 226 232 240;
+  --fg-muted: 156 172 191;
+  --fg-subtle: 130 146 166;
+
+  --primary: 147 187 255;
+  --primary-fg: 4 24 63;
+  --primary-container: 30 58 138;
+  --primary-container-fg: 219 234 254;
+
+  --accent: 251 191 36;
+  --accent-fg: 41 20 0;
+  --accent-container: 69 39 3;
+  --accent-container-fg: 253 230 138;
+
+  --outline: 44 54 70;
+  --outline-strong: 90 105 128;
+
+  --s0: 17 22 31;
+  --s1: 21 27 37;
+  --s2: 26 33 45;
+  --s3: 33 42 57;
+  --s4: 42 53 71;
+
+  --success: 74 222 128;
+  --success-container: 6 48 24;
+  --success-container-fg: 187 247 208;
+  --warning: 251 191 36;
+  --warning-container: 66 32 6;
+  --warning-container-fg: 253 230 138;
+  --danger: 252 165 165;
+  --danger-container: 72 12 12;
+  --danger-container-fg: 254 202 202;
+  --info: 147 187 255;
+  --info-container: 27 52 122;
+  --info-container-fg: 219 234 254;
+
+  --focus: 147 187 255;
+  --scrim: 2 4 8;
+  --scrim-alpha: 0.66;
+  color-scheme: dark;
+}
+
+/* ---------- Density (DESIGN_SYSTEM.md section 4) ----------
+   Compact is a pointer-width affordance only; below 1024px every
+   interactive row falls back to comfortable for >= 44px targets. */
+:root,
+[data-density="comfortable"] {
+  --row-h: 52px;
+  --cell-py: 10px;
+  --card-pad: 20px;
+  --gap: 16px;
+  --sec-gap: 28px;
+  --cell-fs: 0.875rem;
+}
+
+@media (min-width: 1024px) {
+  [data-density="compact"] {
+    --row-h: 40px;
+    --cell-py: 5px;
+    --card-pad: 14px;
+    --gap: 12px;
+    --sec-gap: 20px;
+    --cell-fs: 0.8125rem;
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans), "Source Sans 3", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display), Lexend, system-ui, sans-serif;
+    letter-spacing: -0.011em;
+  }
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* Tabular figures wherever a number must not reflow as it changes. */
+.num {
+  font-family: var(--font-mono), "Fira Code", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
+}
+
+/* Focus: never removed, always 2px + offset, visible on every surface. */
+:focus-visible {
+  outline: 2px solid rgb(var(--focus));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

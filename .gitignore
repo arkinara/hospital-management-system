@@ -1,0 +1,23 @@
+# Root, cross-cutting ignores. Per-package ignores live in
+# frontend/.gitignore; this file only covers paths shared across the repo.
+
+# Frontend build + tooling artifacts
+/frontend/.next/
+/frontend/next-env.d.ts
+/frontend/tsconfig.tsbuildinfo
+/frontend/db/data/
+/frontend/node_modules/
+
+# Backend Python + database artifacts
+/backend/__pycache__/
+/backend/**/__pycache__/
+/backend/.venv/
+/backend/db/*.db
+/backend/db/*.db-journal
+
+# Generic Python
+.venv/
+__pycache__/
+
+# Local dev logs written by scripts/dev.sh
+/.dev-logs/

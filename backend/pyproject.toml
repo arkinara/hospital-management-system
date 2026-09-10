@@ -1,0 +1,17 @@
+[project]
+name = "hospital-ms-backend"
+version = "0.1.0"
+description = "Hospital MS FastAPI backend — one router per domain, Drizzle/SQLite via shared file."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
