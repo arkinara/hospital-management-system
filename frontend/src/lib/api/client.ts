@@ -9,13 +9,15 @@
  * body types.
  */
 
-import { getAccessToken } from "@/lib/auth/session";
+import { clearSession, getAccessToken, getRefreshToken, setSession } from "@/lib/auth/session";
+import { normaliseError, normaliseNetworkError, type NormalisedError } from "./errors";
 import type { ApiErrorEnvelope } from "@/lib/fixtures";
 
 export class ApiError extends Error {
   readonly code: string;
   readonly traceId: string;
   readonly status: number;
+  readonly normalised: NormalisedError;
 
   constructor(code: string, message: string, status: number, traceId = "") {
     super(message);
@@ -23,6 +25,9 @@ export class ApiError extends Error {
     this.code = code;
     this.status = status;
     this.traceId = traceId;
+    this.normalised = normaliseError(status, {
+      error: { code, message, trace_id: traceId },
+    });
   }
 }
 
@@ -62,6 +67,7 @@ async function request<T>(
   path: string,
   body?: RequestBody,
   opts: RequestOptions = {},
+  _retried = false,
 ): Promise<T> {
   const url = `${apiBase()}${path}${buildQuery(opts.query)}`;
   const headers: Record<string, string> = {
@@ -80,11 +86,22 @@ async function request<T>(
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") throw err;
-    throw new ApiError(
-      "network_error",
-      err instanceof Error ? err.message : "Network request failed",
-      0,
-    );
+    const norm = normaliseNetworkError(err);
+    throw new ApiError(norm.code, norm.message, 0, norm.traceId);
+  }
+
+  // Refresh-on-401: try once, then retry the original request.
+  if (response.status === 401 && !_retried && path !== "/auth/login" && path !== "/auth/refresh") {
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      const refreshed = await tryRefresh(refreshToken);
+      if (refreshed) {
+        return request<T>(method, path, body, opts, true);
+      }
+    }
+    // No refresh token or refresh failed — clear session and fall through
+    // to throw the 401 (caller decides what to do, usually redirect to sign-in).
+    clearSession();
   }
 
   if (response.status === 204) return undefined as T;
@@ -107,6 +124,37 @@ async function request<T>(
   }
 
   return data as T;
+}
+
+let refreshInflight: Promise<boolean> | null = null;
+
+async function tryRefresh(refreshToken: string): Promise<boolean> {
+  // Coalesce concurrent refresh attempts into one.
+  if (!refreshInflight) {
+    refreshInflight = (async () => {
+      try {
+        const url = `${apiBase()}/auth/refresh`;
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!resp.ok) return false;
+        const data = (await resp.json()) as {
+          access_token: string;
+          refresh_token?: string;
+        };
+        setSession({ accessToken: data.access_token, refreshToken: data.refresh_token });
+        return true;
+      } catch {
+        return false;
+      } finally {
+        // Clear after a short delay so subsequent 401s can re-trigger
+        setTimeout(() => { refreshInflight = null; }, 50);
+      }
+    })();
+  }
+  return refreshInflight;
 }
 
 export const api = {
