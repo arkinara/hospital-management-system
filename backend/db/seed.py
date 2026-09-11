@@ -320,7 +320,7 @@ def run_seed(db_path: Path) -> int:
         doctor_user_id = doctor_user_by_id.get(doc["id"])
         if doctor_user_id is None:
             continue
-        for weekday in range(5):
+        for weekday in range(6):  # Mon–Sat
             inserted += _insert_if_absent(
                 conn,
                 "INSERT INTO doctor_availability "
