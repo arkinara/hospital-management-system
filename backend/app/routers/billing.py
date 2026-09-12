@@ -21,12 +21,15 @@ from pydantic import BaseModel, Field
 from app.audit import write_audit
 from app.db import get_db as get_conn
 from app.dependencies import require_permission, require_role
+from app.services.billing import (
+    CLAIM_STATUSES,
+    INVOICE_STATUSES,
+    PAYMENT_METHODS,
+    compute_payment_status,
+    next_invoice_number,
+)
 
 router = APIRouter(prefix="/billing", tags=["billing"])
-
-INVOICE_STATUSES = {"draft", "unpaid", "partially_paid", "paid", "void"}
-CLAIM_STATUSES = {"none", "draft", "submitted", "in_review", "approved", "denied", "settled"}
-PAYMENT_METHODS = {"cash", "card", "insurance", "other"}
 
 
 class LineItemIn(BaseModel):
@@ -69,17 +72,19 @@ def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
 
 
 def _gen_invoice_number(conn: sqlite3.Connection, now: int) -> str:
-    # INV-YYYY-NNNN using count of current year invoices
+    # INV-YYYY-NNNN monotonic within the current year
     cols = _table_columns(conn, "invoices")
     yr_prefix = f"INV-{datetime.now(UTC).year}-"
     if "invoice_number" in cols:
         # Production path
-        last = conn.execute(
-            "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? "
-            "ORDER BY invoice_number DESC LIMIT 1", [f"{yr_prefix}%"]
-        ).fetchone()
-        n = int(last["invoice_number"].rsplit("-", 1)[1]) + 1 if last else 1
-        return f"{yr_prefix}{n:04d}"
+        existing = [
+            r["invoice_number"]
+            for r in conn.execute(
+                "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ?",
+                [f"{yr_prefix}%"],
+            ).fetchall()
+        ]
+        return next_invoice_number(existing)
     # Fallback when invoice_number column doesn't exist: skip generation
     return ""
 
@@ -151,12 +156,7 @@ def _update_status_from_payments(conn: sqlite3.Connection, invoice_id: int) -> N
         [invoice_id],
     ).fetchone()
     paid = paid_row["s"]
-    if paid <= 0:
-        new_status = "unpaid"
-    elif paid < total:
-        new_status = "partially_paid"
-    else:
-        new_status = "paid"
+    new_status = compute_payment_status(paid, total, inv["status"])
     if new_status != inv["status"]:
         conn.execute(
             "UPDATE invoices SET status = ? WHERE id = ?", [new_status, invoice_id]

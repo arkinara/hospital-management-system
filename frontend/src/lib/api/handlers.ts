@@ -20,16 +20,21 @@ import type {
   AvailabilityWindow,
   BlockedDay,
   BlockedDayConflict,
+  CarePlanItem,
   Claim,
   Department,
+  DepartmentStaff,
   DoctorAvailability,
   Invoice,
   Patient,
+  PatientAllergy,
   Payment,
   PermissionMatrixEntry,
+  Prescription,
   Role,
   RoleDisplay,
   ScheduleSlot,
+  TimelineEntry,
   User,
   VisitNote,
   Vitals,
@@ -66,6 +71,8 @@ interface MockDb {
   widgetLayouts: WidgetLayout[];
   users: User[];
   auditLog: AuditLogEntry[];
+  carePlanItems: CarePlanItem[];
+  departmentStaff: DepartmentStaff[];
   availability: Record<string, MockAvailabilityState>;
 }
 
@@ -94,6 +101,8 @@ function createDb(): MockDb {
       widgetLayouts: fixtures.widgetLayouts,
       users: fixtures.users,
       auditLog: fixtures.auditLog,
+      carePlanItems: fixtures.carePlanItems,
+      departmentStaff: fixtures.departmentStaff,
     }),
     availability: {},
   };
@@ -360,7 +369,45 @@ export const handlers = [
     const id = String(params.id);
     const patient = db.patients.find((p) => p.mrn === id);
     if (!patient) return notFound("Patient", id);
-    const timeline = patient.mrn === "P-001042" ? fixtures.timeline : [];
+
+    const visits: TimelineEntry[] = db.visitNotes
+      .filter((v) => v.patient === id)
+      .map((v) => ({
+        at: v.createdAt,
+        dept: v.dept,
+        kind: "note" as const,
+        by: v.doctor,
+        title: v.diagnosis || "Visit note",
+        body: v.chiefComplaint,
+        flag: "normal" as const,
+      }));
+
+    const vitals: TimelineEntry[] = db.vitals
+      .filter((v) => v.patient === id)
+      .map((v) => ({
+        at: v.recordedAt,
+        dept: "GEN",
+        kind: "vitals" as const,
+        by: v.recordedBy,
+        title: "Vitals recorded",
+        body: `BP ${v.systolic}/${v.diastolic} · HR ${v.heartRate} · SpO2 ${v.spo2}%`,
+        flag: "normal" as const,
+      }));
+
+    const carePlan: TimelineEntry[] = db.carePlanItems
+      .filter((c) => c.patient === id)
+      .map((c) => ({
+        at: c.dueAt,
+        dept: "GEN",
+        kind: "note" as const,
+        by: c.completedBy ?? "nurse",
+        title: `Care plan — ${c.description}`,
+        body: c.completed ? "completed" : "open",
+        flag: "normal" as const,
+      }));
+
+    const base = patient.mrn === "P-001042" ? fixtures.timeline : [];
+    const timeline = [...carePlan, ...vitals, ...visits, ...base];
     return respond(mockConfig.patients.timeline, { timeline }, { timeline: [] });
   }),
 
@@ -709,6 +756,72 @@ export const handlers = [
     return respond(mockConfig.records.createVisit, visit, visit);
   }),
 
+  http.post("*/medical-records/visits/:visitId/sign", async ({ params }) => {
+    const visitId = String(params.visitId);
+    const index = db.visitNotes.findIndex((v) => v.id === visitId);
+    if (index === -1) return notFound("Visit", visitId);
+    if (db.visitNotes[index].signedAt) {
+      return errorResponse("visit_already_signed", "Visit is already signed", 409);
+    }
+    db.visitNotes[index] = {
+      ...db.visitNotes[index],
+      status: "signed",
+      signedAt: new Date().toISOString(),
+    };
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.post("*/medical-records/visits/:visitId/prescriptions", async ({ params, request }) => {
+    const visitId = String(params.visitId);
+    const visit = db.visitNotes.find((v) => v.id === visitId);
+    if (!visit) return notFound("Visit", visitId);
+    const body = await readBody<Partial<Prescription>>(request);
+    const medication = String(body.medication ?? "");
+    // Server-enforced allergy block: penicillin-allergic patients cannot get
+    // amoxicillin/penicillin-family drugs (mirrors the backend rule from #21).
+    const allergies: PatientAllergy[] = fixtures.patientAllergies.filter(
+      (a) => a.patient === visit.patient && a.severity === "severe",
+    );
+    const medLower = medication.toLowerCase();
+    const blocked = allergies.find((a) => {
+      const allergen = a.substance.toLowerCase();
+      if (medLower.includes(allergen)) return true;
+      if (allergen === "penicillin" && medLower.includes("amoxicillin")) return true;
+      if (allergen === "penicillin" && medLower.includes("ampicillin")) return true;
+      return false;
+    });
+    if (blocked) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "allergy_contraindication",
+            message: "Patient allergy blocks this medication",
+            trace_id: `mock-${Math.random().toString(36).slice(2, 10)}`,
+          },
+          matched_medication_class: medLower,
+          allergens: [
+            { allergen: blocked.substance, severity: blocked.severity, reaction: null },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    const rx: Prescription = {
+      id: `PR-${9700 + db.visitNotes.reduce((n, v) => n + v.prescriptions.length, 0)}`,
+      visitNoteId: visitId,
+      medication,
+      dosage: body.dosage ?? "",
+      frequency: body.frequency ?? "",
+      durationDays: body.durationDays ?? 30,
+    };
+    const visitIndex = db.visitNotes.findIndex((v) => v.id === visitId);
+    db.visitNotes[visitIndex] = {
+      ...db.visitNotes[visitIndex],
+      prescriptions: [...db.visitNotes[visitIndex].prescriptions, rx],
+    };
+    return respond(mockConfig.records.createVisit, rx, rx);
+  }),
+
   // ---- Vitals -------------------------------------------------------------
   http.get("*/vitals", async ({ request }) => {
     const url = new URL(request.url);
@@ -737,6 +850,22 @@ export const handlers = [
     };
     db.vitals = [reading, ...db.vitals];
     return respond(mockConfig.vitals.create, reading, reading);
+  }),
+
+  http.post("*/patients/:id/care-plan/:itemId/complete", async ({ params }) => {
+    const itemId = String(params.itemId);
+    const index = db.carePlanItems.findIndex((c) => c.id === itemId);
+    if (index === -1) return notFound("Care plan item", itemId);
+    db.carePlanItems[index] = {
+      ...db.carePlanItems[index],
+      completed: true,
+      completedBy: "U-104",
+    };
+    return respond(
+      mockConfig.vitals.create,
+      db.carePlanItems[index],
+      db.carePlanItems[index],
+    );
   }),
 
   // ---- Billing ------------------------------------------------------------
@@ -822,6 +951,17 @@ export const handlers = [
     if (index === -1) return notFound("Widget", id);
     const body = await readBody<Partial<Widget>>(request);
     db.widgets[index] = { ...db.widgets[index], ...body, key: id };
+    db.auditLog = [
+      {
+        id: `AUD-${8000 + db.auditLog.length}`,
+        actorUserId: 1,
+        action: "widget.lock_toggle",
+        entityType: "widget",
+        entityId: id,
+        createdAt: new Date().toISOString(),
+      },
+      ...db.auditLog,
+    ];
     return respond(mockConfig.widgets.update, db.widgets[index], db.widgets[index]);
   }),
 
@@ -917,7 +1057,47 @@ export const handlers = [
       mfa: false,
     };
     db.users = [...db.users, user];
+    db.auditLog = [
+      {
+        id: `AUD-${8000 + db.auditLog.length}`,
+        actorUserId: 1,
+        action: "admin.user_create",
+        entityType: "user",
+        entityId: user.id,
+        createdAt: new Date().toISOString(),
+      },
+      ...db.auditLog,
+    ];
     return respond(mockConfig.auth.createUser, toAuthUser(user, db.users.length - 1), toAuthUser(user, db.users.length - 1));
+  }),
+
+  http.post("*/admin/department-staff", async ({ request }) => {
+    const body = await readBody<{ userId?: string; departmentId?: string }>(request);
+    if (!body.userId || !body.departmentId) {
+      return errorResponse("validation_error", "user_id and department_id are required", 422);
+    }
+    const duplicate = db.departmentStaff.find(
+      (d) => d.userId === body.userId && d.departmentId === body.departmentId,
+    );
+    if (duplicate) return errorResponse("already_assigned", "Already assigned", 409);
+    const assignment: DepartmentStaff = {
+      departmentId: body.departmentId,
+      userId: body.userId,
+      assignedAt: new Date().toISOString(),
+    };
+    db.departmentStaff = [assignment, ...db.departmentStaff];
+    db.auditLog = [
+      {
+        id: `AUD-${8000 + db.auditLog.length}`,
+        actorUserId: 1,
+        action: "admin.staff_assign",
+        entityType: "department_staff",
+        entityId: body.userId,
+        createdAt: new Date().toISOString(),
+      },
+      ...db.auditLog,
+    ];
+    return respond(mockConfig.admin.departments, assignment, null as unknown as DepartmentStaff);
   }),
 
   // ---- Audit --------------------------------------------------------------

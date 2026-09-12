@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from app.audit import write_audit
 from app.db import get_db as get_conn
 from app.dependencies import require_admin, require_role
+from app.services.widget_lock import resolve_layout
 
 router = APIRouter(prefix="/widget-config", tags=["widget-config"])
 
@@ -110,40 +111,41 @@ def save_my_layout(
     user_id = user["id"]
     with get_conn() as conn:
         # Enforce global locks: locked widgets stay enabled at admin's chosen
-        # position; user cannot disable or remove them. We silently re-add
-        # any missing locked widget at the end of the list.
-        locked_ids = [
+        # position; user cannot disable or remove them.
+        locked_ids = {
             r["id"] for r in conn.execute(
                 "SELECT id FROM widget_definitions WHERE globally_locked = 1"
             ).fetchall()
-        ]
+        }
         valid_widget_ids = {
             r["id"] for r in conn.execute("SELECT id FROM widget_definitions").fetchall()
         }
         for item in body.items:
             if item.widget_id not in valid_widget_ids:
                 raise HTTPException(400, f"Unknown widget_id {item.widget_id}")
-        # Wipe + replace
+        # Wipe + replace with the lock-resolved layout.
+        resolved = resolve_layout(
+            [
+                {
+                    "widget_id": item.widget_id,
+                    "position_order": item.position_order,
+                    "enabled": item.enabled,
+                    "size": item.size,
+                }
+                for item in body.items
+            ],
+            locked_ids,
+        )
         conn.execute("DELETE FROM user_widget_layout WHERE user_id = ?", [user_id])
         inserted = 0
-        for item in body.items:
+        for item in resolved:
             cur = conn.execute(
                 "INSERT INTO user_widget_layout (user_id, widget_id, position_order, enabled, size) "
                 "VALUES (?, ?, ?, ?, ?)",
-                [user_id, item.widget_id, item.position_order,
-                 int(item.enabled), item.size],
+                [user_id, item["widget_id"], item["position_order"],
+                 int(item["enabled"]), item["size"]],
             )
             inserted += cur.rowcount
-        # Re-insert locked widgets not in body
-        body_widget_ids = {i.widget_id for i in body.items}
-        for wid in locked_ids:
-            if wid not in body_widget_ids:
-                cur = conn.execute(
-                    "INSERT INTO user_widget_layout (user_id, widget_id, position_order, enabled, size) "
-                    "VALUES (?, ?, ?, 1, 'medium')",
-                    [user_id, wid, 9999],
-                )
-                inserted += cur.rowcount
         write_audit(conn=conn, actor_user_id=user_id, action="widget.layout_save",
                     target_type="user_widget_layout", target_id=user_id,
                     metadata={"items": len(body.items), "inserted": inserted})

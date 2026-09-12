@@ -24,6 +24,7 @@ from app.audit import write_audit
 from app.db import get_db as get_conn
 from app.dependencies import require_permission, require_role
 from app.security import verify_password
+from app.services.allergy import RecordedAllergy, match_contraindication
 
 router = APIRouter(prefix="/medical-records", tags=["medical-records"])
 
@@ -33,17 +34,6 @@ ATTACHMENT_STORAGE = (
 ATTACHMENT_STORAGE.mkdir(parents=True, exist_ok=True)
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 ALLOWED_MIME = {"image/png", "image/jpeg", "application/pdf"}
-
-_ALLERGY_CLASS_HINTS = {
-    "penicillin": ["penicillin"],
-    "amoxicillin": ["penicillin"],
-    "ampicillin": ["penicillin"],
-    "aspirin": ["aspirin", "nsaid"],
-    "ibuprofen": ["nsaid", "ibuprofen"],
-    "sulfa": ["sulfa", "sulfonamide"],
-    "latex": ["latex"],
-}
-ALLERGY_BLOCKING_SEVERITIES = {"severe", "life_threatening"}
 
 
 class VisitIn(BaseModel):
@@ -77,26 +67,16 @@ def _check_allergy(conn: sqlite3.Connection, patient_id: int, medication_name: s
     if not _table_exists(conn, "patient_allergies"):
         # can't check; assume safe
         return None
-    med_lower = medication_name.lower()
-    matched_classes: list[str] = []
-    for med_class, allergens in _ALLERGY_CLASS_HINTS.items():
-        if med_lower == med_class or med_class in med_lower:
-            matched_classes.extend(allergens)
-    if not matched_classes:
-        return None
-    placeholders = ",".join("?" for _ in matched_classes)
     rows = conn.execute(
-        f"SELECT allergen, severity, reaction FROM patient_allergies "
-        f"WHERE patient_id = ? AND LOWER(allergen) IN ({placeholders})",
-        [patient_id, *matched_classes],
+        "SELECT allergen, severity, reaction FROM patient_allergies "
+        "WHERE patient_id = ?",
+        [patient_id],
     ).fetchall()
-    blocking = [r for r in rows if r["severity"] in ALLERGY_BLOCKING_SEVERITIES]
-    if blocking:
-        return {
-            "matched_medication_class": med_lower,
-            "allergens": [_row_to_dict(r) for r in blocking],
-        }
-    return None
+    recorded = [
+        RecordedAllergy(allergen=r["allergen"], severity=r["severity"], reaction=r["reaction"])
+        for r in rows
+    ]
+    return match_contraindication(medication_name, recorded)
 
 
 # ---------------------------------------------------------------------------
@@ -470,11 +450,11 @@ def patient_history(
                 })
         if _table_exists(conn, "invoices"):
             for inv in conn.execute(
-                "SELECT id, issued_at, payer_name FROM invoices WHERE patient_id = ?",
+                "SELECT id, created_at, payer_name FROM invoices WHERE patient_id = ?",
                 [patient_id],
             ).fetchall():
                 events.append({
-                    "timestamp": inv["issued_at"], "type": "billing",
+                    "timestamp": inv["created_at"], "type": "billing",
                     "department_code": None,
                     "summary": f"Invoice ({inv['payer_name']})",
                     "source_id": inv["id"], "signed": False,
