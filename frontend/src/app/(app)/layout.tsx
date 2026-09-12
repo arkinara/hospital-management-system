@@ -16,6 +16,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDensity } from "@/hooks/useDensity";
 import { useTheme } from "@/hooks/useTheme";
 import { renderIcon } from "@/lib/iconRenderer";
+import GlobalCommandPalette, { useCommandPalette } from "@/components/GlobalCommandPalette";
 
 export default function AppLayout({
   children,
@@ -27,6 +28,7 @@ export default function AppLayout({
   const { session, permissions, loading, error, switchRole } = useCurrentUser();
   const { isDark, toggleTheme } = useTheme();
   const { effectiveDensity, toggleDensity } = useDensity();
+  const { open: openPalette } = useCommandPalette();
 
   const requiredModule = moduleForPath(pathname);
   const allowed = session ? hasModuleAccess(session.role, requiredModule, permissions) : false;
@@ -69,7 +71,7 @@ export default function AppLayout({
         isDark={isDark}
         onToggleDensity={toggleDensity}
         onToggleTheme={toggleTheme}
-        onOpenPalette={() => undefined}
+        onOpenPalette={openPalette}
         onSwitchRole={switchRole}
         onSignOut={() => {
           clearSession();
@@ -78,6 +80,7 @@ export default function AppLayout({
         renderIcon={renderIcon}
       >
         {allowed ? children : null}
+        <GlobalCommandPalette />
       </AppShell>
     </CurrentUserProvider>
   );
