@@ -10,6 +10,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
   usePathname: () => "/sign-in",
+  useSearchParams: () => new URLSearchParams(""),
 }));
 
 import SignInPage from "@/app/(auth)/sign-in/page";

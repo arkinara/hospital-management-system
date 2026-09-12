@@ -37,6 +37,7 @@ export const queryKeys = {
   claims: (q?: Record<string, unknown>) => ["billing", "claims", q ?? {}] as const,
   claim: (id: number | string) => ["billing", "claims", id] as const,
   widgetLibrary: () => ["widgets", "library"] as const,
+  widgetDefinitions: () => ["widget-config", "widgets"] as const,
   myLayout: () => ["widgets", "me"] as const,
   permissions: () => ["auth", "permissions"] as const,
   auditLog: (q?: Record<string, unknown>) => ["audit", q ?? {}] as const,

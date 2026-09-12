@@ -170,7 +170,9 @@ async function doctorJourney(): Promise<JourneyStep[]> {
   );
   steps.push({ route: "/records/visits", note: `Started visit ${visit.id}` });
 
-  await api.post(`/medical-records/visits/${visit.id}/sign`);
+  await api.post(`/medical-records/visits/${visit.id}/sign`, {
+    password_confirmation: "Hospital2025!",
+  });
   steps.push({ route: "/records/visits", note: `Signed visit ${visit.id}` });
 
   let blocked = false;

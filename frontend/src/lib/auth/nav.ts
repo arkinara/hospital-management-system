@@ -37,7 +37,7 @@ export const SHELL_NAV: NavItem[] = [
     children: [
       { key: "users", label: "Users", icon: "user-cog", href: "/admin/users" },
       { key: "departments", label: "Departments", icon: "building-2", href: "/admin/departments" },
-      { key: "widgets", label: "Widget Library", icon: "layout-grid", href: "/admin/widgets" },
+      { key: "widgets", label: "Widget Library", icon: "layout-grid", href: "/admin/widget-library" },
       { key: "permissions", label: "Permissions", icon: "key-round", href: "/admin/permissions" },
       { key: "reports", label: "Reports", icon: "bar-chart-3", href: "/admin/reports" },
     ],
@@ -59,6 +59,10 @@ const ROUTES: Array<{ prefix: string; meta: RouteMeta }> = [
     meta: { key: "appointments", title: "Appointments", module: "Appointments" },
   },
   { prefix: "/records", meta: { key: "records", title: "Records", module: "Records" } },
+  {
+    prefix: "/medical-records",
+    meta: { key: "records", title: "Records", module: "Records" },
+  },
   { prefix: "/billing", meta: { key: "billing", title: "Billing", module: "Billing" } },
   { prefix: "/admin", meta: { key: "admin", title: "Admin", module: "Admin" } },
   {

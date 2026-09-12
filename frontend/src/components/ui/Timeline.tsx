@@ -5,15 +5,27 @@ import { cn } from "./cn";
 import { TONE_CONTAINER, type Tone } from "./tokens";
 import type { IconRenderer } from "./StatusChip";
 
-export type EntryKind = "note" | "vitals" | "prescription" | "lab" | "admission" | "procedure";
+export type EntryKind =
+  | "note"
+  | "vitals"
+  | "prescription"
+  | "lab"
+  | "admission"
+  | "procedure"
+  | "attachment"
+  | "care_plan"
+  | "billing";
 
 export const ENTRY_KIND: Record<EntryKind, { label: string; icon: string; tone: Tone }> = {
   note: { label: "Visit note", icon: "file-text", tone: "info" },
   vitals: { label: "Vitals", icon: "activity", tone: "success" },
-  prescription: { label: "Prescription", icon: "pill", tone: "primary" },
+  prescription: { label: "Prescription", icon: "pill", tone: "warning" },
   lab: { label: "Lab result", icon: "flask-conical", tone: "warning" },
   admission: { label: "Admission", icon: "bed-double", tone: "warning" },
   procedure: { label: "Procedure", icon: "scissors", tone: "danger" },
+  attachment: { label: "Attachment", icon: "paperclip", tone: "neutral" },
+  care_plan: { label: "Care plan", icon: "list-checks", tone: "info" },
+  billing: { label: "Billing", icon: "receipt-text", tone: "primary" },
 };
 
 export interface TimelineEntry {
@@ -38,6 +50,8 @@ export interface TimelineProps {
   activeFilters?: Set<string>;
   renderIcon: IconRenderer;
   emptyState?: React.ReactNode;
+  /** Per-entry action (e.g. a "View source" link), rendered under the author line. */
+  entryAction?: (entry: TimelineEntry) => React.ReactNode;
   className?: string;
 }
 
@@ -57,6 +71,7 @@ export const Timeline: React.FC<TimelineProps> = ({
   activeFilters,
   renderIcon,
   emptyState,
+  entryAction,
   className,
 }) => {
   const rows = React.useMemo(
@@ -117,6 +132,8 @@ export const Timeline: React.FC<TimelineProps> = ({
               <p className="mt-1.5 text-2xs text-subtle">
                 {e.author} · {kind.label}
               </p>
+
+              {entryAction ? <div className="mt-2">{entryAction(e)}</div> : null}
             </div>
           </li>
         );

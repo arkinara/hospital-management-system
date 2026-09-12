@@ -72,6 +72,10 @@ export interface MockConfig {
     saveMe: Scenario;
     library: Scenario;
     update: Scenario;
+    definitions: Scenario;
+    add: Scenario;
+    patchAdmin: Scenario;
+    toggleLock: Scenario;
   };
   auth: {
     login: Scenario;
@@ -79,6 +83,8 @@ export interface MockConfig {
     me: Scenario;
     users: Scenario;
     createUser: Scenario;
+    forgotPassword: Scenario;
+    resetPassword: Scenario;
   };
   audit: {
     list: Scenario;
@@ -142,8 +148,25 @@ export function createDefaultMockConfig(): MockConfig {
       claims: scenario(),
     },
     permissions: { get: scenario(), put: scenario() },
-    widgets: { me: scenario(), saveMe: scenario(), library: scenario(), update: scenario() },
-    auth: { login: scenario(), logout: scenario(), me: scenario(), users: scenario(), createUser: scenario() },
+    widgets: {
+      me: scenario(),
+      saveMe: scenario(),
+      library: scenario(),
+      update: scenario(),
+      definitions: scenario(),
+      add: scenario(),
+      patchAdmin: scenario(),
+      toggleLock: scenario(),
+    },
+    auth: {
+      login: scenario(),
+      logout: scenario(),
+      me: scenario(),
+      users: scenario(),
+      createUser: scenario(),
+      forgotPassword: scenario(),
+      resetPassword: scenario(),
+    },
     audit: { list: scenario() },
     admin: {
       departments: scenario(),

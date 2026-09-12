@@ -48,6 +48,7 @@ import type {
   Vitals,
   WeekDayData,
   Widget,
+  WidgetDefinition,
   WidgetLayout,
 } from "@/lib/fixtures";
 import {
@@ -1078,6 +1079,30 @@ export const handlers = [
     return respond(mockConfig.records.visits, { visits }, { visits: [] });
   }),
 
+  http.post("*/medical-records/visits", async ({ request }) => {
+    const body = await readBody<Partial<VisitNote> & { patient_id?: string }>(request);
+    const patientId = String(body.patient_id ?? "");
+    if (!patientId) {
+      return errorResponse("validation_error", "patient_id is required", 422);
+    }
+    const visit: VisitNote = {
+      id: `VN-${9100 + db.visitNotes.length}`,
+      appointmentId: body.appointmentId ?? null,
+      patient: patientId,
+      doctor: body.doctor ?? "D02",
+      dept: body.dept ?? "GEN",
+      chiefComplaint: body.chiefComplaint ?? "",
+      diagnosis: body.diagnosis ?? "",
+      clinicalNotes: body.clinicalNotes ?? "",
+      status: "draft",
+      signedAt: null,
+      createdAt: new Date().toISOString(),
+      prescriptions: [],
+    };
+    db.visitNotes = [visit, ...db.visitNotes];
+    return respond(mockConfig.records.createVisit, visit, visit);
+  }),
+
   http.post("*/medical-records/:patientId/visits", async ({ params, request }) => {
     const patientId = String(params.patientId);
     const body = await readBody<Partial<VisitNote>>(request);
@@ -1227,10 +1252,15 @@ export const handlers = [
     return respond(mockConfig.records.carePlan, db.carePlanItems[index], db.carePlanItems[index]);
   }),
 
-  http.post("*/medical-records/visits/:visitId/sign", async ({ params }) => {
+  http.post("*/medical-records/visits/:visitId/sign", async ({ params, request }) => {
     const visitId = String(params.visitId);
     const index = db.visitNotes.findIndex((v) => v.id === visitId);
     if (index === -1) return notFound("Visit", visitId);
+    const body = await readBody<{ password_confirmation?: string; password?: string }>(request);
+    const password = body.password_confirmation ?? body.password ?? "";
+    if (password !== DEMO_PASSWORD) {
+      return errorResponse("password_confirmation_failed", "Password confirmation failed", 401);
+    }
     if (db.visitNotes[index].signedAt) {
       return errorResponse("visit_already_signed", "Visit is already signed", 409);
     }
@@ -1483,6 +1513,135 @@ export const handlers = [
     return respond(mockConfig.widgets.saveMe, { layout }, { layout: [] });
   }),
 
+  // ---- Widget config (admin widget library, ticket #10) ------------------
+  http.get("*/widget-config/widgets", async () => {
+    const definitions: WidgetDefinition[] = db.widgets.map((w) => ({
+      key: w.key,
+      name: w.name,
+      desc: w.desc,
+      icon: w.icon,
+      size: w.size,
+      default_role: (w.roles[0]?.toLowerCase() as Role | undefined) ?? null,
+      globally_enabled: w.enabled,
+      globally_locked: w.locked,
+    }));
+    return respond(mockConfig.widgets.definitions, { widgets: definitions }, { widgets: [] });
+  }),
+
+  http.post("*/admin/widgets", async ({ request }) => {
+    const body = await readBody<Partial<WidgetDefinition>>(request);
+    if (db.widgets.some((w) => w.key === body.key)) {
+      return errorResponse("duplicate_widget", `Widget key '${body.key}' already exists`, 409);
+    }
+    if (!body.key || !body.name) {
+      return errorResponse("validation_error", "key and name are required", 422);
+    }
+    const widget: Widget = {
+      key: body.key!,
+      name: body.name!,
+      desc: body.desc ?? "",
+      size: body.size ?? "md",
+      roles: body.default_role ? [ROLE_DISPLAY[body.default_role]] : ["Admin"],
+      enabled: body.globally_enabled ?? true,
+      locked: false,
+      icon: body.icon ?? "layout-grid",
+    };
+    db.widgets = [...db.widgets, widget];
+    db.auditLog = [
+      {
+        id: `AUD-${8000 + db.auditLog.length}`,
+        actorUserId: 1,
+        action: "widget.create",
+        entityType: "widget",
+        entityId: widget.key,
+        createdAt: new Date().toISOString(),
+      },
+      ...db.auditLog,
+    ];
+    const def: WidgetDefinition = {
+      key: widget.key,
+      name: widget.name,
+      desc: widget.desc,
+      icon: widget.icon,
+      size: widget.size,
+      default_role: widget.roles[0].toLowerCase() as Role,
+      globally_enabled: widget.enabled,
+      globally_locked: widget.locked,
+    };
+    return respond(mockConfig.widgets.add, def, def);
+  }),
+
+  http.patch("*/admin/widgets/:id", async ({ params, request }) => {
+    const id = String(params.id);
+    const index = db.widgets.findIndex((w) => w.key === id);
+    if (index === -1) return notFound("Widget", id);
+    const body = await readBody<{
+      name?: string;
+      desc?: string;
+      icon?: string;
+      size?: Widget["size"];
+      default_role?: Role;
+      globally_enabled?: boolean;
+      globally_locked?: boolean;
+    }>(request);
+    const next: Widget = { ...db.widgets[index], key: id };
+    if (body.name !== undefined) next.name = body.name;
+    if (body.desc !== undefined) next.desc = body.desc;
+    if (body.icon !== undefined) next.icon = body.icon;
+    if (body.size !== undefined) next.size = body.size;
+    if (body.default_role !== undefined) {
+      next.roles = body.default_role ? [ROLE_DISPLAY[body.default_role]] : next.roles;
+    }
+    if (body.globally_enabled !== undefined) {
+      next.enabled = body.globally_enabled;
+      // Disabling a locked widget is the confirmed disable-and-unlock action.
+      if (!body.globally_enabled) next.locked = false;
+    }
+    if (body.globally_locked !== undefined) next.locked = body.globally_locked;
+    db.widgets[index] = next;
+    db.auditLog = [
+      {
+        id: `AUD-${8000 + db.auditLog.length}`,
+        actorUserId: 1,
+        action: "widget.update",
+        entityType: "widget",
+        entityId: id,
+        createdAt: new Date().toISOString(),
+      },
+      ...db.auditLog,
+    ];
+    return respond(mockConfig.widgets.patchAdmin, db.widgets[index], db.widgets[index]);
+  }),
+
+  http.patch("*/widget-config/widgets/:id/lock", async ({ params, request }) => {
+    const id = String(params.id);
+    const index = db.widgets.findIndex((w) => w.key === id);
+    if (index === -1) return notFound("Widget", id);
+    const body = await readBody<{ locked?: boolean }>(request);
+    const widget = db.widgets[index];
+    if (body.locked && !widget.enabled) {
+      return errorResponse(
+        "validation_error",
+        "Cannot lock a widget that is globally disabled",
+        422,
+      );
+    }
+    const next: Widget = { ...widget, locked: body.locked ?? !widget.locked };
+    db.widgets[index] = next;
+    db.auditLog = [
+      {
+        id: `AUD-${8000 + db.auditLog.length}`,
+        actorUserId: 1,
+        action: "widget.lock_toggle",
+        entityType: "widget",
+        entityId: id,
+        createdAt: new Date().toISOString(),
+      },
+      ...db.auditLog,
+    ];
+    return respond(mockConfig.widgets.toggleLock, db.widgets[index], db.widgets[index]);
+  }),
+
   // ---- Auth ---------------------------------------------------------------
   http.post("*/auth/login", async ({ request }) => {
     const body = await readBody<{ email?: string; password?: string }>(request);
@@ -1510,6 +1669,28 @@ export const handlers = [
 
   http.post("*/auth/logout", async () => {
     return new HttpResponse(null, { status: 204 });
+  }),
+
+  // Always 204 so account existence is never leaked (ticket #2).
+  http.post("*/auth/forgot-password", async ({ request }) => {
+    const body = await readBody<{ email?: string }>(request);
+    if (!body.email?.trim()) {
+      return errorResponse("validation_error", "Email is required", 422);
+    }
+    return respond(mockConfig.auth.forgotPassword, null as unknown as Record<string, never>, null as unknown as Record<string, never>);
+  }),
+
+  http.post("*/auth/reset-password", async ({ request }) => {
+    const body = await readBody<{ token?: string; new_password?: string }>(request);
+    const token = body.token?.trim() ?? "";
+    const password = body.new_password ?? "";
+    if (!token) {
+      return errorResponse("invalid_token", "The reset link is invalid or has expired", 400);
+    }
+    if (password.length < 8) {
+      return errorResponse("validation_error", "Password must be at least 8 characters", 422);
+    }
+    return respond(mockConfig.auth.resetPassword, null as unknown as Record<string, never>, null as unknown as Record<string, never>);
   }),
 
   http.get("*/auth/me", async ({ request }) => {
