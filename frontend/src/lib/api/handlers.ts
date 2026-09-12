@@ -12,6 +12,8 @@
 import { delay, http, HttpResponse } from "msw";
 import { fixtures } from "@/lib/fixtures";
 import type {
+  AdminUser,
+  ApiDepartment,
   ApiErrorEnvelope,
   Appointment,
   AuditLogEntry,
@@ -22,15 +24,21 @@ import type {
   BlockedDayConflict,
   CarePlanItem,
   Claim,
+  ClinicalSummary,
   Department,
+  DepartmentCapacity,
   DepartmentStaff,
+  DepartmentStaffAssignment,
   DoctorAvailability,
+  HistoryEvent,
   Invoice,
+  MyPatient,
   Patient,
   PatientAllergy,
   Payment,
   PermissionMatrixEntry,
   Prescription,
+  ReviewQueueEntry,
   Role,
   RoleDisplay,
   ScheduleSlot,
@@ -87,23 +95,44 @@ function clone<T>(value: T): T {
 }
 
 function createDb(): MockDb {
+  const base = clone({
+    patients: fixtures.patients,
+    appointments: fixtures.appointments,
+    visitNotes: fixtures.visitNotes,
+    vitals: fixtures.vitalReadings,
+    invoices: fixtures.invoices,
+    claims: fixtures.claims,
+    payments: fixtures.payments,
+    permissions: fixtures.permissionMatrix,
+    widgets: fixtures.widgets,
+    widgetLayouts: fixtures.widgetLayouts,
+    users: fixtures.users,
+    auditLog: fixtures.auditLog,
+    carePlanItems: fixtures.carePlanItems,
+    departmentStaff: fixtures.departmentStaff,
+  });
+  // Seed a few recent critical readings so the vitals review queue has data to
+  // show. The pristine fixture set is untouched — these are mock-runtime only.
+  const criticalSeeds = [
+    { patient: "P-001042", systolic: 196, diastolic: 112, heartRate: 134, spo2: 88 },
+    { patient: "P-001213", systolic: 184, diastolic: 104, heartRate: 141, spo2: 85 },
+  ];
+  const criticalReadings: Vitals[] = criticalSeeds.map((s, i) => ({
+    id: `V-CRIT-${i + 1}`,
+    patient: s.patient,
+    recordedAt: `${todayIso()}T0${7 + i}:35:00.000Z`,
+    systolic: s.systolic,
+    diastolic: s.diastolic,
+    heartRate: s.heartRate,
+    spo2: s.spo2,
+    temperatureC: 37.8,
+    respiratoryRate: 24,
+    recordedBy: "U-104",
+    overdue: false,
+  }));
   return {
-    ...clone({
-      patients: fixtures.patients,
-      appointments: fixtures.appointments,
-      visitNotes: fixtures.visitNotes,
-      vitals: fixtures.vitalReadings,
-      invoices: fixtures.invoices,
-      claims: fixtures.claims,
-      payments: fixtures.payments,
-      permissions: fixtures.permissionMatrix,
-      widgets: fixtures.widgets,
-      widgetLayouts: fixtures.widgetLayouts,
-      users: fixtures.users,
-      auditLog: fixtures.auditLog,
-      carePlanItems: fixtures.carePlanItems,
-      departmentStaff: fixtures.departmentStaff,
-    }),
+    ...base,
+    vitals: [...criticalReadings, ...base.vitals],
     availability: {},
   };
 }
@@ -170,6 +199,39 @@ function toAuthUser(user: User, index: number): AuthUser {
     is_active: user.status === "active",
     created_at: Math.floor(Date.parse("2026-01-01T00:00:00Z") / 1000) + index,
   };
+}
+
+/** Rich admin user row (`GET /admin/users`). */
+function toAdminUser(user: User, index: number): AdminUser {
+  const deptId = user.dept === "—" ? null : departmentId(user.dept);
+  return {
+    id: index + 1,
+    email: user.email,
+    full_name: user.name,
+    role: user.role.toLowerCase() as Role,
+    department_id: deptId,
+    department_name:
+      deptId == null ? null : (fixtures.allDepartments[deptId - 1]?.name ?? null),
+    specialisation:
+      user.role === "Doctor" ? (fixtures.doctors.find((d) => d.userId === user.id)?.spec ?? null) : null,
+    is_active: user.status === "active",
+    created_at: Math.floor(Date.parse("2026-01-01T00:00:00Z") / 1000) + index,
+    last_login_at: user.lastLogin === "—" ? null : Math.floor(Date.parse(`${user.lastLogin.replace(" ", "T")}:00Z`) / 1000),
+  };
+}
+
+function deptCodeForId(id: number | null): string {
+  if (id == null) return "—";
+  return fixtures.allDepartments[id - 1]?.id ?? "—";
+}
+
+function deptNameForId(id: number | null): string {
+  if (id == null) return "—";
+  return fixtures.allDepartments[id - 1]?.name ?? "Unknown";
+}
+
+function patientName(mrn: string): string {
+  return db.patients.find((p) => p.mrn === mrn)?.name ?? mrn;
 }
 
 function readBody<T>(request: Request): Promise<T> {
@@ -418,6 +480,46 @@ export const handlers = [
     return respond(mockConfig.patients.detail, patient, null as unknown as Patient);
   }),
 
+  http.get("*/patients/:id/clinical-summary", async ({ params }) => {
+    const id = String(params.id);
+    const patient = db.patients.find((p) => p.mrn === id);
+    if (!patient) return notFound("Patient", id);
+    const allergies = fixtures.patientAllergies.filter((a) => a.patient === id);
+    const activeRx = db.visitNotes
+      .filter((v) => v.patient === id)
+      .reduce((n, v) => n + v.prescriptions.length, 0);
+    const activeAppts = db.appointments.filter(
+      (a) => a.patient === id && a.status !== "cancelled" && a.status !== "no_show" && a.status !== "completed",
+    ).length;
+    const summary: ClinicalSummary = {
+      id: Number(id.replace(/\D/g, "")),
+      mrn: patient.mrn,
+      full_name: patient.name,
+      dob: patient.dob,
+      sex: patient.sex,
+      phone: patient.phone,
+      email: null,
+      acuity: patient.acuity,
+      admission_status: patient.status,
+      is_active: true,
+      primary_department_id: departmentId(patient.dept),
+      allergies,
+      active_prescriptions_count: activeRx,
+      active_appointments_count: activeAppts,
+    };
+    return respond(mockConfig.patients.clinicalSummary, summary, null as unknown as ClinicalSummary);
+  }),
+
+  http.get("*/patients/:id/prescriptions", async ({ params }) => {
+    const id = String(params.id);
+    const patient = db.patients.find((p) => p.mrn === id);
+    if (!patient) return notFound("Patient", id);
+    const prescriptions = db.visitNotes
+      .filter((v) => v.patient === id)
+      .flatMap((v) => v.prescriptions.map((rx) => ({ ...rx, visitDate: v.createdAt, status: v.status })));
+    return respond(mockConfig.patients.prescriptions, { prescriptions }, { prescriptions: [] });
+  }),
+
   http.get("*/patients", async ({ request }) => {
     const url = new URL(request.url);
     let items = db.patients;
@@ -521,22 +623,73 @@ export const handlers = [
     return respond(mockConfig.appointments.list, { appointments: items }, { appointments: [] });
   }),
 
+  http.get("*/appointments/:id", async ({ params }) => {
+    const id = String(params.id);
+    const appointment = db.appointments.find((a) => a.id === id);
+    if (!appointment) return notFound("Appointment", id);
+    return respond(mockConfig.appointments.list, { appointment }, null as unknown as { appointment: Appointment });
+  }),
+
   http.post("*/appointments", async ({ request }) => {
-    const body = await readBody<Partial<Appointment>>(request);
+    const body = await readBody<Partial<Appointment> & { doctor_id?: number; patient_id?: string }>(request);
+    // Numeric user id -> fixture doctor code (booking form sends `doctor_id`).
+    const resolved = body.doctor_id != null ? doctorCodeForId(body.doctor_id) : body.doctor;
+    const code = resolved ?? "D02";
+    const date = body.date ?? fixtures.TODAY;
+    const time = body.time ?? "09:00";
+    const slotTaken = db.appointments.some(
+      (a) =>
+        a.doctor === code &&
+        a.date === date &&
+        a.time === time &&
+        a.status !== "cancelled" &&
+        a.status !== "no_show",
+    );
+    if (slotTaken) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "slot_taken",
+            message: "Slot is taken — choose another time",
+            trace_id: `mock-${Math.random().toString(36).slice(2, 10)}`,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const patient = (body.patient ?? body.patient_id ?? "P-001108") as string;
+    const deptCode =
+      (code !== "D02" ? fixtures.doctors.find((d) => d.id === code)?.dept : undefined) ??
+      body.dept ??
+      "GEN";
     const appointment: Appointment = {
       id: `A-${9000 + db.appointments.length}`,
-      time: body.time ?? "09:00",
-      patient: body.patient ?? "P-001108",
-      doctor: body.doctor ?? "D02",
-      dept: body.dept ?? "GEN",
+      time,
+      patient,
+      doctor: code,
+      dept: deptCode,
       status: "booked",
       reason: body.reason ?? "Consultation",
       wait: 0,
-      date: body.date ?? fixtures.TODAY,
+      date,
       checkedInAt: null,
     };
     db.appointments = [appointment, ...db.appointments];
     return respond(mockConfig.appointments.create, appointment, appointment);
+  }),
+
+  http.get("*/doctors/:id/schedule", async ({ params, request }) => {
+    const id = String(params.id);
+    const state = ensureAvailability(id);
+    const url = new URL(request.url);
+    const date = url.searchParams.get("date") ?? todayIso();
+    const code = doctorCodeForId(id);
+    const day = buildMockDay(state, date, code);
+    return respond(
+      mockConfig.appointments.schedule,
+      { doctor_id: Number(id), date, slots: day.slots },
+      { doctor_id: Number(id), date, slots: [] },
+    );
   }),
 
   http.post("*/appointments/:id/check-in", async ({ params }) => {
@@ -710,14 +863,22 @@ export const handlers = [
 
   // ---- Admin reference data ----------------------------------------------
   http.get("*/admin/departments", async () => {
-    const departments = fixtures.allDepartments.map((d, i) => ({
-      id: i + 1,
-      code: d.id,
-      name: d.name,
-      type: d.type,
-      bed_capacity: d.beds,
-      active: d.active ? 1 : 0,
-    }));
+    const departments = fixtures.allDepartments.map((d, i) => {
+      const occupied = db.patients.filter((p) => p.dept === d.id && p.status === "admitted").length;
+      const capacity = d.beds;
+      return {
+        id: i + 1,
+        code: d.id,
+        name: d.name,
+        type: d.type,
+        bed_capacity: capacity,
+        occupied_beds: occupied,
+        total_beds: capacity,
+        occupancy_pct: capacity > 0 ? Math.round((occupied / capacity) * 1000) / 10 : 0,
+        min_clinicians_per_shift: d.minCliniciansPerShift,
+        active: d.active ? 1 : 0,
+      };
+    });
     return respond(mockConfig.admin.departments, { departments }, { departments: [] });
   }),
 
@@ -726,6 +887,188 @@ export const handlers = [
     const user = db.users[index];
     if (!user) return notFound("User", String(params.id));
     return respond(mockConfig.admin.user, toAuthUser(user, index), null as unknown as AuthUser);
+  }),
+
+  // ---- Admin user management (ticket #8) ---------------------------------
+  http.get("*/admin/users", async ({ request }) => {
+    const url = new URL(request.url);
+    const role = url.searchParams.get("role");
+    let users = db.users;
+    if (role) users = users.filter((u) => u.role.toLowerCase() === role);
+    const rows = users.map(toAdminUser);
+    return respond(mockConfig.admin.usersList, { users: rows }, { users: [] });
+  }),
+
+  http.patch("*/admin/users/:id", async ({ params, request }) => {
+    const id = Number(params.id);
+    const index = id - 1;
+    const user = db.users[index];
+    if (!user) return notFound("User", String(id));
+    const body = await readBody<{ role?: Role; department_id?: number; specialisation?: string; is_active?: boolean }>(request);
+    const dept =
+      body.department_id != null ? deptCodeForId(body.department_id) : user.dept;
+    db.users[index] = {
+      ...user,
+      role: body.role ? ROLE_DISPLAY[body.role] : user.role,
+      dept,
+      status: body.is_active === false ? "inactive" : body.is_active === true ? "active" : user.status,
+    };
+    db.auditLog = [
+      {
+        id: `AUD-${8000 + db.auditLog.length}`,
+        actorUserId: 1,
+        action: "admin.user_update",
+        entityType: "user",
+        entityId: String(id),
+        createdAt: new Date().toISOString(),
+      },
+      ...db.auditLog,
+    ];
+    return respond(mockConfig.admin.userPatch, toAdminUser(db.users[index], index), null as unknown as AdminUser);
+  }),
+
+  http.post("*/admin/users/:id/deactivate", async ({ params }) => {
+    const id = Number(params.id);
+    const index = id - 1;
+    const user = db.users[index];
+    if (!user) return notFound("User", String(id));
+    db.users[index] = { ...user, status: "inactive" };
+    db.auditLog = [
+      {
+        id: `AUD-${8000 + db.auditLog.length}`,
+        actorUserId: 1,
+        action: "admin.user_deactivate",
+        entityType: "user",
+        entityId: String(id),
+        createdAt: new Date().toISOString(),
+      },
+      ...db.auditLog,
+    ];
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.get("*/admin/users/:id/my-patients", async ({ params, request }) => {
+    const userId = String(params.id);
+    const url = new URL(request.url);
+    const shiftDate = url.searchParams.get("shift_date") ?? todayIso();
+    const user = db.users[Number(userId) - 1];
+    if (!user) return notFound("User", userId);
+    const depts = db.departmentStaff
+      .filter((d) => d.userId === user.id)
+      .map((d) => d.departmentId);
+    const patients: MyPatient[] = db.patients
+      .filter((p) => depts.length === 0 || depts.includes(p.dept))
+      .slice(0, 12)
+      .map((p, i) => ({
+        assignment_id: `${userId}-${p.mrn}`,
+        patient_id: p.mrn,
+        mrn: p.mrn,
+        full_name: p.name,
+        acuity: p.acuity,
+        admission_status: p.status,
+        primary_department_id: departmentId(p.dept),
+        bed_label: p.status === "admitted" ? `Ward ${p.dept} · Bed ${(i % 20) + 1}` : null,
+        allergies: fixtures.patientAllergies.filter((a) => a.patient === p.mrn),
+        vitals_due: p.mrn === "P-001213",
+      }));
+    return respond(
+      mockConfig.admin.myPatients,
+      { shift_date: shiftDate, user_id: Number(userId), patients },
+      { shift_date: shiftDate, user_id: Number(userId), patients: [] },
+    );
+  }),
+
+  // ---- Admin departments (ticket #9) -------------------------------------
+  http.get("*/admin/departments/:id", async ({ params }) => {
+    const id = Number(params.id);
+    const dept = fixtures.allDepartments[id - 1];
+    if (!dept) return notFound("Department", String(id));
+    const occ = db.patients.filter((p) => p.dept === dept.id && p.status === "admitted").length;
+    const payload = {
+      id,
+      code: dept.id,
+      name: dept.name,
+      type: dept.type,
+      bed_capacity: dept.beds,
+      active: dept.active ? 1 : 0,
+      occupied_beds: occ,
+      min_clinicians_per_shift: dept.minCliniciansPerShift,
+    };
+    return respond(mockConfig.admin.departmentDetail, { department: payload }, null as unknown as { department: ApiDepartment });
+  }),
+
+  http.get("*/admin/departments/:id/capacity", async ({ params }) => {
+    const id = Number(params.id);
+    const dept = fixtures.allDepartments[id - 1];
+    if (!dept) return notFound("Department", String(id));
+    const occ = db.patients.filter((p) => p.dept === dept.id && p.status === "admitted").length;
+    const cap = dept.beds;
+    const staffCount = db.departmentStaff.filter((d) => d.departmentId === dept.id).length;
+    const payload: DepartmentCapacity = {
+      department: { id, code: dept.id, name: dept.name, type: dept.type, bed_capacity: cap, active: dept.active ? 1 : 0 },
+      bed_capacity: cap,
+      occupied_beds: occ,
+      available_beds: Math.max(0, cap - occ),
+      min_clinicians_per_shift: dept.minCliniciansPerShift,
+      assigned_staff_count: staffCount,
+      pressure: cap > 0 ? Math.round((occ / cap) * 100) / 100 : 0,
+    };
+    return respond(mockConfig.admin.departmentCapacity, payload, null as unknown as DepartmentCapacity);
+  }),
+
+  http.post("*/admin/departments", async ({ request }) => {
+    const body = await readBody<Partial<ApiDepartment> & { min_clinicians_per_shift?: number }>(request);
+    if (body.code && fixtures.allDepartments.some((d) => d.id === body.code)) {
+      return errorResponse("duplicate_code", `Department code ${body.code} already exists`, 409);
+    }
+    const id = fixtures.allDepartments.length + 1;
+    const dept: ApiDepartment = {
+      id,
+      code: body.code ?? `D${String(id).padStart(3, "0")}`,
+      name: body.name ?? "New department",
+      type: body.type ?? "general",
+      bed_capacity: body.bed_capacity ?? 0,
+      active: body.active ?? 1,
+    };
+    db.auditLog = [
+      {
+        id: `AUD-${8000 + db.auditLog.length}`,
+        actorUserId: 1,
+        action: "admin.department_create",
+        entityType: "department",
+        entityId: String(id),
+        createdAt: new Date().toISOString(),
+      },
+      ...db.auditLog,
+    ];
+    return respond(mockConfig.admin.departmentCreate, { department: dept }, null as unknown as { department: ApiDepartment });
+  }),
+
+  http.get("*/admin/department-staff", async ({ request }) => {
+    const url = new URL(request.url);
+    const deptCode = url.searchParams.get("department_id")
+      ? deptCodeForId(Number(url.searchParams.get("department_id")))
+      : null;
+    const assignments: DepartmentStaffAssignment[] = db.departmentStaff
+      .filter((d) => !deptCode || d.departmentId === deptCode)
+      .map((d, i) => ({
+        id: i + 1,
+        department_id: d.departmentId,
+        department_name: deptNameForId(departmentId(d.departmentId)),
+        user_id: d.userId,
+        user_email: db.users.find((u) => u.id === d.userId)?.email ?? "",
+        full_name: db.users.find((u) => u.id === d.userId)?.name ?? d.userId,
+        assigned_at: d.assignedAt,
+      }));
+    return respond(mockConfig.admin.departmentStaff, { assignments }, { assignments: [] });
+  }),
+
+  http.delete("*/admin/department-staff/:id", async ({ params }) => {
+    const id = Number(params.id);
+    const index = id - 1;
+    if (index < 0 || index >= db.departmentStaff.length) return notFound("Assignment", String(id));
+    db.departmentStaff.splice(index, 1);
+    return new HttpResponse(null, { status: 204 });
   }),
 
   // ---- Medical records ----------------------------------------------------
@@ -754,6 +1097,134 @@ export const handlers = [
     };
     db.visitNotes = [visit, ...db.visitNotes];
     return respond(mockConfig.records.createVisit, visit, visit);
+  }),
+
+  // ---- Medical record timeline / per-visit / doctor worklist --------------
+  http.get("*/medical-records/patients/:id/history", async ({ params }) => {
+    const id = String(params.id);
+    const patient = db.patients.find((p) => p.mrn === id);
+    if (!patient) return notFound("Patient", id);
+    const events: HistoryEvent[] = [
+      ...db.visitNotes
+        .filter((v) => v.patient === id)
+        .map((v) => ({
+          timestamp: v.createdAt,
+          type: "visit" as const,
+          department_code: v.dept,
+          summary: v.diagnosis || "Visit note",
+          source_id: v.id,
+          signed: Boolean(v.signedAt),
+        })),
+      ...db.visitNotes
+        .filter((v) => v.patient === id)
+        .flatMap((v) =>
+          v.prescriptions.map((r) => ({
+            timestamp: v.createdAt,
+            type: "prescription" as const,
+            department_code: v.dept,
+            summary: `Rx: ${r.medication}`,
+            source_id: r.id,
+            signed: false,
+          })),
+        ),
+      ...db.vitals
+        .filter((v) => v.patient === id)
+        .map((v) => ({
+          timestamp: v.recordedAt,
+          type: "vitals" as const,
+          department_code: null,
+          summary: "Vitals reading",
+          source_id: v.id,
+          signed: false,
+        })),
+      ...db.carePlanItems
+        .filter((c) => c.patient === id)
+        .map((c) => ({
+          timestamp: c.dueAt,
+          type: "care_plan" as const,
+          department_code: null,
+          summary: c.description,
+          source_id: c.id,
+          signed: false,
+        })),
+      ...db.invoices
+        .filter((i) => i.patient === id)
+        .map((i) => ({
+          timestamp: `${i.date}T09:00:00.000Z`,
+          type: "billing" as const,
+          department_code: null,
+          summary: `Invoice ${i.id} (${i.insurer})`,
+          source_id: i.id,
+          signed: false,
+        })),
+    ].sort((a, b) => String(b.timestamp ?? "").localeCompare(String(a.timestamp ?? "")));
+    return respond(mockConfig.records.history, { patient_id: id, events }, { patient_id: id, events: [] });
+  }),
+
+  http.get("*/medical-records/visits/:id", async ({ params }) => {
+    const id = String(params.id);
+    const visit = db.visitNotes.find((v) => v.id === id);
+    if (!visit) return notFound("Visit", id);
+    return respond(mockConfig.records.visit, { visit }, null as unknown as { visit: VisitNote });
+  }),
+
+  http.get("*/medical-records/visits", async ({ request }) => {
+    const url = new URL(request.url);
+    const doctorCode = url.searchParams.get("doctor_id");
+    const state = url.searchParams.get("state");
+    let items = db.visitNotes;
+    if (doctorCode) items = items.filter((v) => v.doctor === doctorCode);
+    if (state) items = items.filter((v) => v.status === state);
+    return respond(mockConfig.records.visits, { visits: items }, { visits: [] });
+  }),
+
+  http.get("*/medical-records/vitals/review-queue", async () => {
+    const since = Date.now() - 24 * 3600 * 1000;
+    const queue: ReviewQueueEntry[] = db.vitals
+      .filter((v) => Date.parse(v.recordedAt) >= since)
+      .filter(
+        (v) =>
+          (v.systolic != null && v.systolic > 180) ||
+          (v.spo2 != null && v.spo2 < 90) ||
+          (v.heartRate != null && (v.heartRate > 130 || v.heartRate < 40)),
+      )
+      .map((v) => ({
+        id: v.id,
+        patient_id: v.patient,
+        patient_mrn: v.patient,
+        patient_name: patientName(v.patient),
+        recorded_at_iso: v.recordedAt,
+        systolic: v.systolic,
+        diastolic: v.diastolic,
+        heart_rate: v.heartRate,
+        spo2: v.spo2,
+        temperature_c: v.temperatureC,
+        respiratory_rate: v.respiratoryRate,
+        critical: true,
+      }));
+    return respond(
+      mockConfig.records.reviewQueue,
+      { queue, window_hours: 24, count: queue.length },
+      { queue: [], window_hours: 24, count: 0 },
+    );
+  }),
+
+  http.get("*/medical-records/patients/:id/care-plan", async ({ params }) => {
+    const id = String(params.id);
+    const patient = db.patients.find((p) => p.mrn === id);
+    if (!patient) return notFound("Patient", id);
+    const items = db.carePlanItems
+      .filter((c) => c.patient === id && !c.completed)
+      .sort((a, b) => String(a.dueAt).localeCompare(String(b.dueAt)));
+    return respond(mockConfig.records.carePlan, { patient_id: id, items }, { patient_id: id, items: [] });
+  }),
+
+  http.post("*/medical-records/care-plan/:itemId/complete", async ({ params }) => {
+    const itemId = String(params.itemId);
+    const index = db.carePlanItems.findIndex((c) => c.id === itemId);
+    if (index === -1) return notFound("Care plan item", itemId);
+    db.carePlanItems[index] = { ...db.carePlanItems[index], completed: true, completedBy: "U-104" };
+    return respond(mockConfig.records.carePlan, db.carePlanItems[index], db.carePlanItems[index]);
   }),
 
   http.post("*/medical-records/visits/:visitId/sign", async ({ params }) => {
@@ -919,6 +1390,27 @@ export const handlers = [
       status: paid >= invoice.total ? "paid" : paid > 0 ? "partially_paid" : "unpaid",
     };
     return respond(mockConfig.invoices.payment, payment, payment);
+  }),
+
+  http.get("*/invoices/:id", async ({ params }) => {
+    const id = String(params.id);
+    const invoice = db.invoices.find((i) => i.id === id);
+    if (!invoice) return notFound("Invoice", id);
+    const payments = db.payments.filter((p) => p.invoiceId === id);
+    const claims = db.claims.filter((c) => c.invoiceId === id);
+    return respond(
+      mockConfig.invoices.detail,
+      { invoice, line_items: invoice.lines, payments, claims },
+      { invoice: null as unknown as Invoice, line_items: [], payments: [], claims: [] },
+    );
+  }),
+
+  http.get("*/claims", async ({ request }) => {
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status");
+    let items = db.claims;
+    if (status) items = items.filter((c) => c.status === status);
+    return respond(mockConfig.invoices.claims, { claims: items }, { claims: [] });
   }),
 
   // ---- Permissions (admin) ------------------------------------------------

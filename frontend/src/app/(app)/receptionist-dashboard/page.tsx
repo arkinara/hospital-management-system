@@ -2,6 +2,6 @@
 
 import DashboardScreen from "@/components/dashboard/DashboardScreen";
 
-export default function DashboardPage() {
+export default function ReceptionistDashboardPage() {
   return <DashboardScreen />;
 }

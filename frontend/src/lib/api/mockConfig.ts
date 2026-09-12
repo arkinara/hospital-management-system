@@ -29,11 +29,14 @@ export interface MockConfig {
     update: Scenario;
     timeline: Scenario;
     dedupCheck: Scenario;
+    clinicalSummary: Scenario;
+    prescriptions: Scenario;
   };
   appointments: {
     list: Scenario;
     create: Scenario;
     checkIn: Scenario;
+    schedule: Scenario;
   };
   doctorAvailability: {
     get: Scenario;
@@ -44,6 +47,10 @@ export interface MockConfig {
   records: {
     visits: Scenario;
     createVisit: Scenario;
+    history: Scenario;
+    visit: Scenario;
+    reviewQueue: Scenario;
+    carePlan: Scenario;
   };
   vitals: {
     list: Scenario;
@@ -53,6 +60,8 @@ export interface MockConfig {
     list: Scenario;
     create: Scenario;
     payment: Scenario;
+    detail: Scenario;
+    claims: Scenario;
   };
   permissions: {
     get: Scenario;
@@ -77,6 +86,14 @@ export interface MockConfig {
   admin: {
     departments: Scenario;
     user: Scenario;
+    usersList: Scenario;
+    userPatch: Scenario;
+    deactivate: Scenario;
+    departmentCreate: Scenario;
+    departmentDetail: Scenario;
+    departmentCapacity: Scenario;
+    departmentStaff: Scenario;
+    myPatients: Scenario;
   };
 }
 
@@ -93,22 +110,53 @@ export function createDefaultMockConfig(): MockConfig {
       update: scenario(),
       timeline: scenario(),
       dedupCheck: scenario(),
+      clinicalSummary: scenario(),
+      prescriptions: scenario(),
     },
-    appointments: { list: scenario(), create: scenario(), checkIn: scenario() },
+    appointments: {
+      list: scenario(),
+      create: scenario(),
+      checkIn: scenario(),
+      schedule: scenario(),
+    },
     doctorAvailability: {
       get: scenario(),
       update: scenario(),
       block: scenario(),
       deleteBlock: scenario(),
     },
-    records: { visits: scenario(), createVisit: scenario() },
+    records: {
+      visits: scenario(),
+      createVisit: scenario(),
+      history: scenario(),
+      visit: scenario(),
+      reviewQueue: scenario(),
+      carePlan: scenario(),
+    },
     vitals: { list: scenario(), create: scenario() },
-    invoices: { list: scenario(), create: scenario(), payment: scenario() },
+    invoices: {
+      list: scenario(),
+      create: scenario(),
+      payment: scenario(),
+      detail: scenario(),
+      claims: scenario(),
+    },
     permissions: { get: scenario(), put: scenario() },
     widgets: { me: scenario(), saveMe: scenario(), library: scenario(), update: scenario() },
     auth: { login: scenario(), logout: scenario(), me: scenario(), users: scenario(), createUser: scenario() },
     audit: { list: scenario() },
-    admin: { departments: scenario(), user: scenario() },
+    admin: {
+      departments: scenario(),
+      user: scenario(),
+      usersList: scenario(),
+      userPatch: scenario(),
+      deactivate: scenario(),
+      departmentCreate: scenario(),
+      departmentDetail: scenario(),
+      departmentCapacity: scenario(),
+      departmentStaff: scenario(),
+      myPatients: scenario(),
+    },
   };
 }
 

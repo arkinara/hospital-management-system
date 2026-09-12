@@ -497,3 +497,111 @@ export interface AuditLogEntry {
   entityId: string | null;
   createdAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Clinical summary / history (tickets #3, #4, #40)
+// ---------------------------------------------------------------------------
+
+/** Matches `GET /patients/{id}/clinical-summary`. */
+export interface ClinicalSummary {
+  id: number;
+  mrn: string;
+  full_name: string;
+  dob: string;
+  sex: "M" | "F";
+  phone: string | null;
+  email: string | null;
+  acuity: Acuity;
+  admission_status: PatientStatus;
+  is_active: boolean;
+  primary_department_id: number | null;
+  allergies: PatientAllergy[];
+  active_prescriptions_count: number;
+  active_appointments_count: number;
+}
+
+/** One flattened event from `GET /medical-records/patients/{id}/history`. */
+export interface HistoryEvent {
+  timestamp: string | null;
+  type:
+    | "visit"
+    | "prescription"
+    | "attachment"
+    | "vitals"
+    | "care_plan"
+    | "billing";
+  department_code: string | null;
+  summary: string;
+  source_id: number | string;
+  signed: boolean;
+}
+
+/** Matches `GET /admin/users/{id}/my-patients` (enriched worklist). */
+export interface MyPatient {
+  assignment_id: number | string;
+  patient_id: number | string;
+  mrn: string;
+  full_name: string;
+  acuity: Acuity;
+  admission_status: PatientStatus;
+  primary_department_id: number | null;
+  bed_label: string | null;
+  allergies: PatientAllergy[];
+  vitals_due: boolean;
+}
+
+/** One entry from `GET /medical-records/vitals/review-queue`. */
+export interface ReviewQueueEntry {
+  id: number | string;
+  patient_id: number | string;
+  patient_mrn: string;
+  patient_name: string;
+  recorded_at_iso: string;
+  systolic: number | null;
+  diastolic: number | null;
+  heart_rate: number | null;
+  spo2: number | null;
+  temperature_c: number | null;
+  respiratory_rate: number | null;
+  critical: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Admin (tickets #8, #9)
+// ---------------------------------------------------------------------------
+
+/** Rich admin user row, matching `GET /admin/users`. */
+export interface AdminUser {
+  id: number;
+  email: string;
+  full_name: string;
+  role: Role;
+  department_id: number | null;
+  department_name: string | null;
+  specialisation: string | null;
+  is_active: boolean;
+  created_at: number;
+  last_login_at: number | null;
+}
+
+/** Capacity payload, matching `GET /admin/departments/{id}/capacity`. */
+export interface DepartmentCapacity {
+  department: ApiDepartment;
+  bed_capacity: number;
+  occupied_beds: number;
+  available_beds: number;
+  min_clinicians_per_shift: number;
+  assigned_staff_count: number;
+  pressure: number;
+}
+
+/** Enriched department-staff assignment with display names. */
+export interface DepartmentStaffAssignment {
+  id: number | string;
+  department_id: number | string;
+  department_name: string;
+  user_id: number | string;
+  user_email: string;
+  full_name: string;
+  assigned_at: string;
+}
