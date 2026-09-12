@@ -218,7 +218,11 @@ def test_lifecycle_chain_book_checkin_start_complete():
     assert started.status_code == 200, started.text
     assert started.json()["status"] == "in_progress"
 
-    completed = client.post(f"/appointments/{appt_id}/complete", headers=_headers(RECEPTIONIST))
+    completed = client.post(
+        f"/appointments/{appt_id}/complete",
+        json={"clinical_notes": "Consultation complete, plan shared."},
+        headers=_headers(RECEPTIONIST),
+    )
     assert completed.status_code == 200, completed.text
     assert completed.json()["status"] == "completed"
     assert completed.json()["completed_at"] is not None

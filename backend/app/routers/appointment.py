@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.audit import write_audit
 from app.db import get_db
-from app.dependencies import require_permission
+from app.dependencies import require_permission, require_role
 from app.services.availability import (
     get_doctor_slots,
     within_working_hours,
@@ -58,6 +58,11 @@ class AppointmentPatch(BaseModel):
 
 class LifecycleActionBody(BaseModel):
     reason: str | None = None
+
+
+class CompleteAppointmentBody(BaseModel):
+    clinical_notes: str | None = None
+    visit_note_id: int | None = None
 
 
 class AvailabilityWindow(BaseModel):
@@ -306,6 +311,34 @@ def _insert_lifecycle_event(
     )
 
 
+def _wait_metrics(conn, row) -> tuple[int | None, bool | None]:
+    """Wait time (minutes) and late flag for an appointment row (ticket #43).
+
+    Wait time counts from check-in until the appointment moves in-progress;
+    a still-waiting patient keeps counting against "now". `is_late` is True
+    when the patient arrived after the scheduled start. Both are None for an
+    appointment that was never checked in.
+    """
+    if row["checked_in_at"] is None:
+        return None, None
+    start = int(row["checked_in_at"])
+    scheduled = int(row["scheduled_at"])
+    end_marker = int(time.time())
+    if row["completed_at"] is not None:
+        end_marker = int(row["completed_at"])
+    if row["status"] in ("in_progress", "completed"):
+        ev = conn.execute(
+            "SELECT occurred_at FROM appointment_lifecycle_events "
+            "WHERE appointment_id = ? AND to_status = 'in_progress' "
+            "ORDER BY occurred_at LIMIT 1",
+            (row["id"],),
+        ).fetchone()
+        if ev is not None:
+            end_marker = int(ev["occurred_at"])
+    wait = max(0, end_marker - start) // 60
+    return wait, start > scheduled
+
+
 def _transition(
     conn, appointment_id: int, user: dict, action: str, from_status, to_status, reason=None
 ) -> dict:
@@ -397,6 +430,51 @@ async def list_appointments(
     }
 
 
+@router.get("/appointments/wait-time-stats", status_code=status.HTTP_200_OK)
+async def appointment_wait_time_stats(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    _user=Depends(require_role("admin")),
+) -> dict:
+    """Per-doctor-per-day wait-time aggregates for admin reporting (#43)."""
+    where = ["checked_in_at IS NOT NULL"]
+    params: list = []
+    if from_:
+        where.append("scheduled_at >= ?")
+        params.append(_to_epoch(datetime.fromisoformat(from_.replace("Z", "+00:00"))))
+    if to:
+        where.append("scheduled_at <= ?")
+        params.append(_to_epoch(datetime.fromisoformat(to.replace("Z", "+00:00"))))
+    if from_ and to and _to_epoch(datetime.fromisoformat(from_.replace("Z", "+00:00"))) > _to_epoch(
+        datetime.fromisoformat(to.replace("Z", "+00:00"))
+    ):
+        raise HTTPException(status_code=422, detail="from must be on or before to")
+    groups: dict[tuple[int, str], list[int]] = {}
+    with get_db() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM appointments WHERE {' AND '.join(where)}", params
+        ).fetchall()
+        for row in rows:
+            wait, _ = _wait_metrics(conn, row)
+            if wait is None:
+                continue
+            day = datetime.fromtimestamp(int(row["scheduled_at"]), UTC).date().isoformat()
+            groups.setdefault((row["doctor_id"], day), []).append(wait)
+    stats = []
+    for (doctor_id, day), waits in sorted(groups.items()):
+        stats.append(
+            {
+                "doctor_id": doctor_id,
+                "day": day,
+                "appointments": len(waits),
+                "avg_wait_minutes": round(sum(waits) / len(waits), 1),
+                "min_wait_minutes": min(waits),
+                "max_wait_minutes": max(waits),
+            }
+        )
+    return {"stats": stats}
+
+
 @router.get("/appointments/{appointment_id}", status_code=status.HTTP_200_OK)
 async def get_appointment(
     appointment_id: int, user: dict = Depends(require_permission("appointments"))
@@ -410,6 +488,7 @@ async def get_appointment(
             "ORDER BY occurred_at",
             (appointment_id,),
         ).fetchall()
+        wait, is_late = _wait_metrics(conn, row)
     payload = _row_to_dict(row)
     payload["lifecycle_events"] = [
         {
@@ -422,6 +501,8 @@ async def get_appointment(
         }
         for e in events
     ]
+    payload["wait_time_minutes"] = wait
+    payload["is_late"] = is_late
     return payload
 
 
@@ -570,13 +651,22 @@ async def start_appointment(
 
 @router.post("/appointments/{appointment_id}/complete", status_code=status.HTTP_200_OK)
 async def complete_appointment(
-    appointment_id: int, user: dict = Depends(require_permission("appointments"))
+    appointment_id: int,
+    body: CompleteAppointmentBody,
+    user: dict = Depends(require_permission("appointments")),
 ) -> dict:
+    if not (body.clinical_notes or "").strip() and body.visit_note_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="clinical_notes summary or an attached visit_note_id is required to complete",
+        )
     with get_db() as conn:
         row = _get_appointment(conn, appointment_id)
         _require_appointment_scope(user, row)
-        # TODO(#21): link the completed appointment to its visit note when
-        # medical-records lands — create/attach visit_notes row here.
+        if body.visit_note_id is not None and not conn.execute(
+            "SELECT 1 FROM visit_notes WHERE id = ?", (body.visit_note_id,)
+        ).fetchone():
+            raise HTTPException(status_code=404, detail="Visit note not found")
         fresh = _transition(conn, appointment_id, user, "complete", "in_progress", "completed")
     return _row_to_dict(fresh)
 

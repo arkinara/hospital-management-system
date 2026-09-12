@@ -113,6 +113,12 @@ export const patientAssignments = sqliteTable("patient_assignments", {
   nurseId: integer("nurse_id")
     .notNull()
     .references(() => users.id),
+  userId: integer("user_id").references(() => users.id),
+  role: text("role"),
+  shiftStart: integer("shift_start", { mode: "timestamp" }),
+  shiftEnd: integer("shift_end", { mode: "timestamp" }),
+  status: text("status").notNull().default("active"),
+  createdBy: integer("created_by").references(() => users.id),
   bedLabel: text("bed_label"),
   shiftDate: text("shift_date").notNull(),
   shiftWindow: text("shift_window"),

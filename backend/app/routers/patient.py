@@ -57,7 +57,7 @@ class PatientCreate(BaseModel):
     email: str | None = Field(default=None, pattern=_EMAIL_RE)
     address: str | None = None
     blood_type: str | None = None
-    acuity: Acuity = "standard"
+    acuity: Acuity = "routine"
     admission_status: AdmissionStatus = "outpatient"
     primary_department_id: int | None = None
     payer_name: str | None = None
@@ -274,6 +274,7 @@ def list_patients(
     department: str | None = Query(default=None),
     acuity: Acuity | None = Query(default=None),
     admission_status: AdmissionStatus | None = Query(default=None),
+    sort: str | None = Query(default=None, description="Optional 'acuity' for triage ordering"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1),
     user: dict[str, Any] = Depends(require_patient_read),
@@ -288,6 +289,7 @@ def list_patients(
             admission_status=admission_status,
             page=page,
             page_size=size,
+            sort=sort,
         )
     return {
         "patients": [serialize_patient(r) for r in rows],
@@ -325,6 +327,57 @@ def get_patient(
         record["allergies"] = _allergies(conn, patient_id)
         record["departments"] = _departments(conn, patient_id)
     return record
+
+
+@router.get("/{patient_id}/clinical-summary")
+def get_clinical_summary(
+    patient_id: int,
+    user: dict[str, Any] = Depends(require_patient_read),
+) -> dict[str, Any]:
+    """Safety-critical summary every clinical surface renders (ticket #40).
+
+    Patient demographics + triage attributes + allergies, plus live counts of
+    active prescriptions and active (non-terminal) appointments so the UI never
+    needs extra round trips.
+    """
+    with get_db() as conn:
+        row = _get_patient(conn, patient_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        allergies = _allergies(conn, patient_id)
+        active_rx = len(
+            _safe_rows(
+                conn,
+                "SELECT p.id FROM prescriptions p "
+                "JOIN visit_notes v ON v.id = p.visit_note_id "
+                "WHERE v.patient_id = ?",
+                (patient_id,),
+            )
+        )
+        active_appts = len(
+            _safe_rows(
+                conn,
+                "SELECT id FROM appointments WHERE patient_id = ? "
+                "AND status IN ('booked', 'checked_in', 'in_progress')",
+                (patient_id,),
+            )
+        )
+    return {
+        "id": row["id"],
+        "mrn": row["mrn"],
+        "full_name": row["full_name"],
+        "dob": _ts_to_date(row["dob"]),
+        "sex": row["sex"],
+        "phone": row["phone"],
+        "email": row["email"],
+        "acuity": row["acuity"],
+        "admission_status": row["admission_status"],
+        "is_active": bool(row["is_active"]),
+        "primary_department_id": row["primary_department_id"],
+        "allergies": allergies,
+        "active_prescriptions_count": active_rx,
+        "active_appointments_count": active_appts,
+    }
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

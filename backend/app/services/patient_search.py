@@ -57,6 +57,14 @@ def _where(
     return " AND ".join(clauses), params
 
 
+ACUITY_RANK: dict[str, int] = {
+    "critical": 0,
+    "urgent": 1,
+    "standard": 2,
+    "routine": 3,
+}
+
+
 def search_patients(
     conn: sqlite3.Connection,
     query: str | None = None,
@@ -65,8 +73,13 @@ def search_patients(
     admission_status: str | None = None,
     page: int = 1,
     page_size: int = 50,
+    sort: str | None = None,
 ) -> tuple[list[sqlite3.Row], int]:
-    """Return `(rows, total)` for the given filters, ordered by name."""
+    """Return `(rows, total)` for the given filters.
+
+    `sort="acuity"` orders by acuity rank (critical first) then name; any other
+    value falls back to the default name ordering.
+    """
     if query is not None and 0 < len(query.strip()) < MIN_QUERY_LENGTH:
         return [], 0
 
@@ -78,9 +91,15 @@ def search_patients(
     page = max(1, int(page))
     size = clamp_page_size(page_size)
     offset = (page - 1) * size
+    order = "p.full_name COLLATE NOCASE, p.id"
+    if sort == "acuity":
+        order = (
+            "CASE p.acuity WHEN 'critical' THEN 0 WHEN 'urgent' THEN 1 "
+            "WHEN 'standard' THEN 2 ELSE 3 END, p.full_name COLLATE NOCASE, p.id"
+        )
     rows = conn.execute(
         f"SELECT p.* FROM patients p WHERE {where_sql} "
-        "ORDER BY p.full_name COLLATE NOCASE, p.id LIMIT ? OFFSET ?",
+        f"ORDER BY {order} LIMIT ? OFFSET ?",
         [*params, size, offset],
     ).fetchall()
     return rows, total

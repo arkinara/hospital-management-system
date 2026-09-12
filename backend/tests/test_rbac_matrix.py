@@ -60,6 +60,9 @@ def _resolve_ids() -> dict:
             "admin_id": conn.execute(
                 "SELECT id FROM users WHERE email = ?", (ADMIN[0],)
             ).fetchone()[0],
+            "nurse_id": conn.execute(
+                "SELECT id FROM users WHERE email = ?", (NURSE[0],)
+            ).fetchone()[0],
             "patient_id": conn.execute("SELECT id FROM patients ORDER BY id LIMIT 1").fetchone()[0],
             "dept_gen": conn.execute("SELECT id FROM departments WHERE code = 'GEN'").fetchone()[0],
             "dept_car": conn.execute("SELECT id FROM departments WHERE code = 'CAR'").fetchone()[0],
@@ -187,6 +190,7 @@ CASES: list[tuple[str, str, object | None, set[str], str]] = [
     ),
     ("DELETE", "/patients/{patient_id}/allergies/{allergy_id}", None, ADMIN_ONLY, ""),
     ("GET", "/patients/{patient_id}/timeline", None, ALL, ""),
+    ("GET", "/patients/{patient_id}/clinical-summary", None, ALL, ""),
     # ---- Appointments ---------------------------------------------------
     ("GET", "/appointments", None, ALL, ""),
     ("GET", "/appointments/{appointment_id}", None, ALL, ""),
@@ -209,6 +213,7 @@ CASES: list[tuple[str, str, object | None, set[str], str]] = [
     ("POST", "/appointments/{appointment_id}/complete", None, ALL, ""),
     ("POST", "/appointments/{appointment_id}/cancel", {"reason": "RBAC"}, ALL, ""),
     ("POST", "/appointments/{appointment_id}/no-show", {"reason": "RBAC"}, ALL, ""),
+    ("GET", "/appointments/wait-time-stats", None, ADMIN_ONLY, ""),
     ("GET", "/doctors/{doctor_id}/schedule", None, ALL, ""),
     ("GET", "/doctors/{doctor_id}/availability", None, ALL, ""),
     (
@@ -254,6 +259,48 @@ CASES: list[tuple[str, str, object | None, set[str], str]] = [
     ("GET", "/medical-records/prescriptions/{rx_id}", None, RECORDS_READ, ""),
     ("DELETE", "/medical-records/prescriptions/{rx_id}", None, DOCTOR_ADMIN, ""),
     ("GET", "/medical-records/patients/{patient_id}/history", None, RECORDS_READ, ""),
+    (
+        "POST",
+        "/medical-records/patients/{patient_id}/vitals",
+        {
+            "systolic": 120,
+            "diastolic": 80,
+            "heart_rate": 72,
+            "spo2": 98,
+            "temperature_c": 36.8,
+            "respiratory_rate": 16,
+        },
+        DOCTOR_NURSE_ADMIN,
+        "",
+    ),
+    ("GET", "/medical-records/patients/{patient_id}/vitals", None, RECORDS_READ, ""),
+    ("GET", "/medical-records/patients/{patient_id}/vitals/trend", None, RECORDS_READ, ""),
+    ("GET", "/medical-records/vitals/review-queue", None, DOCTOR_ADMIN, ""),
+    ("POST", "/medical-records/vitals/{vital_id}/acknowledge", None, DOCTOR_ADMIN, ""),
+    ("GET", "/medical-records/patients/{patient_id}/care-plan", None, RECORDS_READ, ""),
+    (
+        "POST",
+        "/medical-records/patients/{patient_id}/care-plan",
+        {"description": "RBAC care item", "priority": "normal"},
+        DOCTOR_NURSE_ADMIN,
+        "",
+    ),
+    (
+        "PATCH",
+        "/medical-records/care-plan/{item_id}",
+        {"description": "RBAC updated"},
+        DOCTOR_NURSE_ADMIN,
+        "",
+    ),
+    ("POST", "/medical-records/care-plan/{item_id}/complete", None, DOCTOR_NURSE_ADMIN, ""),
+    (
+        "POST",
+        "/medical-records/care-plan/{item_id}/reassign",
+        {"assigned_to": "{nurse_id}"},
+        DOCTOR_NURSE_ADMIN,
+        "",
+    ),
+    ("GET", "/medical-records/care-plan/shift-handover", None, DOCTOR_NURSE_ADMIN, ""),
     ("GET", "/medical-records/attachments/{att_id}/download", None, RECORDS_READ, ""),
     (
         "POST",
@@ -331,6 +378,30 @@ CASES: list[tuple[str, str, object | None, set[str], str]] = [
         "",
     ),
     ("DELETE", "/admin/department-staff/{assignment_id}", None, ADMIN_ONLY, ""),
+    (
+        "POST",
+        "/admin/patient-assignments",
+        {
+            "patient_id": "{patient_id}",
+            "user_id": "{nurse_id}",
+            "role": "nurse",
+            "shift_start": "{start_iso}",
+            "shift_end": "{start_iso2}",
+        },
+        ADMIN_ONLY,
+        "",
+    ),
+    ("GET", "/admin/users/{nurse_id}/my-patients", None, {"admin", "nurse"}, ""),
+    ("DELETE", "/admin/patient-assignments/{assignment_id}", None, ADMIN_ONLY, ""),
+    ("GET", "/admin/departments/over-capacity", None, ADMIN_ONLY, ""),
+    ("GET", "/admin/departments/{dept_gen}/capacity", None, {"admin", "doctor", "nurse"}, ""),
+    (
+        "PATCH",
+        "/admin/departments/{dept_gen}/capacity",
+        {"min_clinicians_per_shift": 2},
+        ADMIN_ONLY,
+        "",
+    ),
     # ---- Widget config --------------------------------------------------
     ("GET", "/widget-config/widgets", None, ALL, ""),
     ("GET", "/widget-config/widgets/admin/library", None, ADMIN_ONLY, ""),
@@ -362,6 +433,8 @@ def _render_path(template: str, ids: dict, conn) -> str:
         "lock_widget_id": 999999,
         "att_id": 999999,
         "entry_id": 999999,
+        "vital_id": 999999,
+        "item_id": 999999,
     }
     path = template.format(**{**ids, **placeholders})
     if "{allergy_id}" in path:
@@ -392,6 +465,12 @@ def _render_path(template: str, ids: dict, conn) -> str:
     if "{entry_id}" in path:
         entry = conn.execute("SELECT id FROM audit_log ORDER BY id LIMIT 1").fetchone()
         path = path.replace("{entry_id}", str(entry["id"] if entry else 999999))
+    if "{vital_id}" in path:
+        vital = conn.execute("SELECT id FROM vitals ORDER BY id LIMIT 1").fetchone()
+        path = path.replace("{vital_id}", str(vital["id"] if vital else 999999))
+    if "{item_id}" in path:
+        item = conn.execute("SELECT id FROM care_plan_items ORDER BY id LIMIT 1").fetchone()
+        path = path.replace("{item_id}", str(item["id"] if item else 999999))
     return path
 
 
@@ -417,6 +496,12 @@ def _run_matrix():
     ids["start_iso"] = (
         (datetime.now(UTC) + timedelta(days=2))
         .replace(hour=10, minute=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    ids["start_iso2"] = (
+        (datetime.now(UTC) + timedelta(days=2))
+        .replace(hour=11, minute=0)
         .isoformat()
         .replace("+00:00", "Z")
     )

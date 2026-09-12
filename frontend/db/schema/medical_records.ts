@@ -89,6 +89,8 @@ export const vitals = sqliteTable("vitals", {
   recordedAt: integer("recorded_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
+  acknowledgedAt: integer("acknowledged_at", { mode: "timestamp" }),
+  acknowledgedBy: integer("acknowledged_by").references(() => users.id),
 });
 
 export const carePlanItems = sqliteTable("care_plan_items", {
@@ -103,6 +105,8 @@ export const carePlanItems = sqliteTable("care_plan_items", {
   completed: integer("completed", { mode: "boolean" }).notNull().default(false),
   completedBy: integer("completed_by").references(() => users.id),
   completedAt: integer("completed_at", { mode: "timestamp" }),
+  createdBy: integer("created_by").references(() => users.id),
+  assignedTo: integer("assigned_to").references(() => users.id),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
