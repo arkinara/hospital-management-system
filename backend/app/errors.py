@@ -21,7 +21,19 @@ def _envelope(code: str, message: str) -> dict:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-        message = exc.detail if isinstance(exc.detail, str) else "Request failed."
+        detail = exc.detail
+        # A dict detail carries a code/message plus optional extra payload
+        # (e.g. `conflicts` on a blocked-day 409). Top-level keys are kept out
+        # of the envelope so the `error` shape never changes.
+        if isinstance(detail, dict):
+            code = detail.get("code") or f"http_{exc.status_code}"
+            message = detail.get("message") or "Request failed."
+            body = {"error": {"code": code, "message": message, "trace_id": str(uuid4())}}
+            for key, value in detail.items():
+                if key not in ("code", "message"):
+                    body[key] = value
+            return JSONResponse(status_code=exc.status_code, content=body)
+        message = detail if isinstance(detail, str) else "Request failed."
         return JSONResponse(
             status_code=exc.status_code,
             content=_envelope(f"http_{exc.status_code}", message),

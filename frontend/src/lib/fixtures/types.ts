@@ -56,6 +56,74 @@ export type AppointmentStatus =
 
 export type SlotStatus = "open" | "booked" | "blocked" | "held";
 
+// ---------------------------------------------------------------------------
+// Doctor availability / blocked days (ticket #48)
+// ---------------------------------------------------------------------------
+
+export interface AvailabilityWindow {
+  id: number;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  department_id: number | null;
+}
+
+export interface BlockedDay {
+  id: number;
+  blocked_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  reason: string;
+}
+
+/** 15-minute grid slot for one doctor/day, matching `get_doctor_slots`. */
+export interface ScheduleSlot {
+  start: string;
+  end: string;
+  start_epoch: number;
+  end_epoch: number;
+  status: "free" | "booked" | "blocked";
+  appointment_id: number | null;
+  patient_id: number | null;
+  reason: string | null;
+}
+
+export interface WeekDayData {
+  date: string;
+  day_of_week: number;
+  blocked: boolean;
+  capacity: number;
+  booked: number;
+  slots: ScheduleSlot[];
+}
+
+/** Matches `GET /doctors/{id}/availability`. */
+export interface DoctorAvailability {
+  doctor_id: number;
+  windows: AvailabilityWindow[];
+  blocked_days: BlockedDay[];
+  week: WeekDayData[];
+}
+
+/** A blocked-period write that collides with live appointments (409 body). */
+export interface BlockedDayConflict {
+  id: number;
+  patient_id: number | string;
+  patient_name: string | null;
+  scheduled_start: string;
+  scheduled_end: string;
+}
+
+/** Backend-shaped department from `GET /admin/departments`. */
+export interface ApiDepartment {
+  id: number;
+  code: string;
+  name: string;
+  type: string;
+  bed_capacity: number;
+  active: number;
+}
+
 export type TimelineKind =
   | "vitals"
   | "prescription"

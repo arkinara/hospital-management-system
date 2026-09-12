@@ -17,20 +17,36 @@ import type {
   AuditLogEntry,
   AuthSession,
   AuthUser,
+  AvailabilityWindow,
+  BlockedDay,
+  BlockedDayConflict,
   Claim,
   Department,
+  DoctorAvailability,
   Invoice,
   Patient,
   Payment,
   PermissionMatrixEntry,
   Role,
   RoleDisplay,
+  ScheduleSlot,
   User,
   VisitNote,
   Vitals,
+  WeekDayData,
   Widget,
   WidgetLayout,
 } from "@/lib/fixtures";
+import {
+  addDays,
+  clockToMinutes,
+  dayOfWeek,
+  minutesToClock,
+  rangesOverlap,
+  validateBlock,
+  validateWindow,
+  type WindowCandidate,
+} from "@/lib/schedule";
 import { mockConfig, type Scenario } from "./mockConfig";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +66,13 @@ interface MockDb {
   widgetLayouts: WidgetLayout[];
   users: User[];
   auditLog: AuditLogEntry[];
+  availability: Record<string, MockAvailabilityState>;
+}
+
+interface MockAvailabilityState {
+  windows: AvailabilityWindow[];
+  blockedDays: BlockedDay[];
+  seq: number;
 }
 
 function clone<T>(value: T): T {
@@ -57,20 +80,23 @@ function clone<T>(value: T): T {
 }
 
 function createDb(): MockDb {
-  return clone({
-    patients: fixtures.patients,
-    appointments: fixtures.appointments,
-    visitNotes: fixtures.visitNotes,
-    vitals: fixtures.vitalReadings,
-    invoices: fixtures.invoices,
-    claims: fixtures.claims,
-    payments: fixtures.payments,
-    permissions: fixtures.permissionMatrix,
-    widgets: fixtures.widgets,
-    widgetLayouts: fixtures.widgetLayouts,
-    users: fixtures.users,
-    auditLog: fixtures.auditLog,
-  });
+  return {
+    ...clone({
+      patients: fixtures.patients,
+      appointments: fixtures.appointments,
+      visitNotes: fixtures.visitNotes,
+      vitals: fixtures.vitalReadings,
+      invoices: fixtures.invoices,
+      claims: fixtures.claims,
+      payments: fixtures.payments,
+      permissions: fixtures.permissionMatrix,
+      widgets: fixtures.widgets,
+      widgetLayouts: fixtures.widgetLayouts,
+      users: fixtures.users,
+      auditLog: fixtures.auditLog,
+    }),
+    availability: {},
+  };
 }
 
 let db: MockDb = createDb();
@@ -139,6 +165,142 @@ function toAuthUser(user: User, index: number): AuthUser {
 
 function readBody<T>(request: Request): Promise<T> {
   return request.json() as Promise<T>;
+}
+
+// ---------------------------------------------------------------------------
+// Doctor availability mock state (ticket #48)
+// ---------------------------------------------------------------------------
+
+const SLOT_MINUTES = 15;
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Numeric backend doctor id -> fixture doctor code (e.g. 2 -> "D01"). */
+function doctorCodeForId(id: string | number): string | undefined {
+  const index = Number(id) - 1;
+  const user = db.users[index];
+  if (!user) return undefined;
+  return fixtures.doctors.find((d) => d.userId === user.id)?.id;
+}
+
+function ensureAvailability(id: string): MockAvailabilityState {
+  let state = db.availability[id];
+  if (!state) {
+    state = {
+      windows: Array.from({ length: 7 }, (_, dow) => ({
+        id: dow + 1,
+        day_of_week: dow,
+        start_time: "08:00",
+        end_time: "17:00",
+        department_id: null,
+      })),
+      blockedDays: [],
+      seq: 100,
+    };
+    db.availability[id] = state;
+  }
+  return state;
+}
+
+function epochFor(date: string, clock: string): number {
+  return Math.floor(Date.parse(`${date}T${clock}:00Z`) / 1000);
+}
+
+function buildMockDay(
+  state: MockAvailabilityState,
+  date: string,
+  doctorCode: string | undefined,
+): WeekDayData {
+  const dow = dayOfWeek(date);
+  const fullDayBlock = state.blockedDays.find(
+    (b) => b.blocked_date === date && !b.start_time,
+  );
+  if (fullDayBlock) {
+    return { date, day_of_week: dow, blocked: true, capacity: 0, booked: 0, slots: [] };
+  }
+  const windows = state.windows.filter((w) => w.day_of_week === dow);
+  const partialBlocks = state.blockedDays.filter((b) => b.blocked_date === date && b.start_time);
+  const appointments = doctorCode
+    ? db.appointments.filter(
+        (a) =>
+          a.doctor === doctorCode &&
+          a.date === date &&
+          a.status !== "cancelled" &&
+          a.status !== "no_show",
+      )
+    : [];
+
+  const slots: ScheduleSlot[] = [];
+  for (const window of windows) {
+    let cursor = clockToMinutes(window.start_time);
+    const end = clockToMinutes(window.end_time);
+    while (cursor + SLOT_MINUTES <= end) {
+      const slotEnd = cursor + SLOT_MINUTES;
+      let status: ScheduleSlot["status"] = "free";
+      let appointment_id: number | null = null;
+      let reason: string | null = null;
+      const block = partialBlocks.find(
+        (b) =>
+          rangesOverlap(
+            cursor,
+            slotEnd,
+            clockToMinutes(b.start_time ?? ""),
+            clockToMinutes(b.end_time ?? ""),
+          ),
+      );
+      if (block) {
+        status = "blocked";
+        reason = block.reason;
+      } else {
+        const appt = appointments.find((a) => {
+          const aStart = clockToMinutes(a.time);
+          return rangesOverlap(cursor, slotEnd, aStart, aStart + 30);
+        });
+        if (appt) {
+          status = "booked";
+          appointment_id = Number(appt.id.replace(/\D/g, ""));
+          reason = appt.reason;
+        }
+      }
+      slots.push({
+        start: `${date}T${minutesToClock(cursor)}:00Z`,
+        end: `${date}T${minutesToClock(slotEnd)}:00Z`,
+        start_epoch: epochFor(date, minutesToClock(cursor)),
+        end_epoch: epochFor(date, minutesToClock(slotEnd)),
+        status,
+        appointment_id,
+        patient_id: null,
+        reason,
+      });
+      cursor = slotEnd;
+    }
+  }
+  return {
+    date,
+    day_of_week: dow,
+    blocked: false,
+    capacity: slots.length,
+    booked: slots.filter((s) => s.status === "booked").length,
+    slots,
+  };
+}
+
+function buildMockWeek(
+  state: MockAvailabilityState,
+  id: string,
+  from: string,
+  to: string,
+): WeekDayData[] {
+  const code = doctorCodeForId(id);
+  const week: WeekDayData[] = [];
+  let cursor = from;
+  while (cursor <= to) {
+    week.push(buildMockDay(state, cursor, code));
+    cursor = addDays(cursor, 1);
+  }
+  return week;
 }
 
 function levenshtein(a: string, b: string): number {
@@ -341,6 +503,182 @@ export const handlers = [
     };
     db.appointments[index] = updated;
     return respond(mockConfig.appointments.checkIn, updated, updated);
+  }),
+
+  // ---- Doctor availability & blocked days (ticket #48) --------------------
+  http.get("*/doctors/:id/availability", async ({ params, request }) => {
+    const id = String(params.id);
+    const state = ensureAvailability(id);
+    const url = new URL(request.url);
+    const from = url.searchParams.get("from") ?? todayIso();
+    const to = url.searchParams.get("to") ?? addDays(from, 6);
+    const payload: DoctorAvailability = {
+      doctor_id: Number(id),
+      windows: state.windows,
+      blocked_days: state.blockedDays,
+      week: buildMockWeek(state, id, from, to),
+    };
+    const emptyPayload: DoctorAvailability = {
+      doctor_id: Number(id),
+      windows: [],
+      blocked_days: [],
+      week: [],
+    };
+    return respond(mockConfig.doctorAvailability.get, payload, emptyPayload);
+  }),
+
+  http.put("*/doctors/:id/availability", async ({ params, request }) => {
+    const id = String(params.id);
+    const state = ensureAvailability(id);
+    const body = await readBody<{ windows?: WindowCandidate[] }>(request);
+    const windows = body.windows ?? [];
+    for (const w of windows) {
+      const err = validateWindow(
+        { day_of_week: w.day_of_week, start_time: w.start_time, end_time: w.end_time },
+        [],
+      );
+      if (err) return errorResponse("validation_error", err, 422);
+      if (
+        w.department_id != null &&
+        (w.department_id < 1 || w.department_id > fixtures.allDepartments.length)
+      ) {
+        return errorResponse("validation_error", `Unknown department_id ${w.department_id}`, 422);
+      }
+    }
+    for (let i = 0; i < windows.length; i++) {
+      for (let j = i + 1; j < windows.length; j++) {
+        const a = windows[i];
+        const b = windows[j];
+        if (
+          a.day_of_week === b.day_of_week &&
+          rangesOverlap(
+            clockToMinutes(a.start_time),
+            clockToMinutes(a.end_time),
+            clockToMinutes(b.start_time),
+            clockToMinutes(b.end_time),
+          )
+        ) {
+          return errorResponse(
+            "validation_error",
+            `Overlapping windows on weekday ${a.day_of_week} (window ${i + 1} and ${j + 1})`,
+            422,
+          );
+        }
+      }
+    }
+    state.windows = windows.map((w, index) => ({
+      id: state.seq + index,
+      day_of_week: w.day_of_week,
+      start_time: w.start_time,
+      end_time: w.end_time,
+      department_id: w.department_id ?? null,
+    }));
+    state.seq += windows.length;
+    return respond(
+      mockConfig.doctorAvailability.update,
+      { doctor_id: Number(id), windows: state.windows },
+      { doctor_id: Number(id), windows: [] },
+    );
+  }),
+
+  http.post("*/doctors/:id/blocked-days", async ({ params, request }) => {
+    const id = String(params.id);
+    const state = ensureAvailability(id);
+    const body = await readBody<{
+      blocked_date?: string;
+      start_time?: string;
+      end_time?: string;
+      reason?: string;
+    }>(request);
+    const blockErr = validateBlock({
+      blocked_date: body.blocked_date ?? "",
+      start_time: body.start_time ?? "",
+      end_time: body.end_time ?? "",
+      reason: body.reason ?? "",
+    });
+    if (blockErr) return errorResponse("validation_error", blockErr, 422);
+    const date = body.blocked_date ?? todayIso();
+    const code = doctorCodeForId(id);
+    const appts = code
+      ? db.appointments.filter(
+          (a) =>
+            a.doctor === code &&
+            a.date === date &&
+            a.status !== "cancelled" &&
+            a.status !== "no_show",
+        )
+      : [];
+    const hasStart = Boolean(body.start_time);
+    const conflicts = hasStart
+      ? appts.filter((a) => {
+          const aStart = clockToMinutes(a.time);
+          return rangesOverlap(
+            clockToMinutes(body.start_time ?? ""),
+            clockToMinutes(body.end_time ?? ""),
+            aStart,
+            aStart + 30,
+          );
+        })
+      : appts;
+    if (conflicts.length) {
+      const conflictsPayload: BlockedDayConflict[] = conflicts.map((a) => ({
+        id: Number(a.id.replace(/\D/g, "")),
+        patient_id: a.patient,
+        patient_name: db.patients.find((p) => p.mrn === a.patient)?.name ?? null,
+        scheduled_start: `${a.date}T${a.time}:00Z`,
+        scheduled_end: `${a.date}T${minutesToClock(clockToMinutes(a.time) + 30)}:00Z`,
+      }));
+      return HttpResponse.json(
+        {
+          error: {
+            code: "blocked_day_conflicts",
+            message: `Block conflicts with ${conflicts.length} appointment(s)`,
+            trace_id: `mock-${Math.random().toString(36).slice(2, 10)}`,
+          },
+          conflicts: conflictsPayload,
+        },
+        { status: 409 },
+      );
+    }
+    const block: BlockedDay = {
+      id: state.seq++,
+      blocked_date: date,
+      start_time: body.start_time ?? null,
+      end_time: body.end_time ?? null,
+      reason: body.reason ?? "",
+    };
+    state.blockedDays.push(block);
+    return respond(mockConfig.doctorAvailability.block, block, block);
+  }),
+
+  http.delete("*/doctors/:id/blocked-days/:blockedId", async ({ params }) => {
+    const id = String(params.id);
+    const blockedId = Number(params.blockedId);
+    const state = ensureAvailability(id);
+    const index = state.blockedDays.findIndex((b) => b.id === blockedId);
+    if (index === -1) return notFound("Blocked period", String(blockedId));
+    state.blockedDays.splice(index, 1);
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  // ---- Admin reference data ----------------------------------------------
+  http.get("*/admin/departments", async () => {
+    const departments = fixtures.allDepartments.map((d, i) => ({
+      id: i + 1,
+      code: d.id,
+      name: d.name,
+      type: d.type,
+      bed_capacity: d.beds,
+      active: d.active ? 1 : 0,
+    }));
+    return respond(mockConfig.admin.departments, { departments }, { departments: [] });
+  }),
+
+  http.get("*/admin/users/:id", async ({ params }) => {
+    const index = Number(params.id) - 1;
+    const user = db.users[index];
+    if (!user) return notFound("User", String(params.id));
+    return respond(mockConfig.admin.user, toAuthUser(user, index), null as unknown as AuthUser);
   }),
 
   // ---- Medical records ----------------------------------------------------
@@ -596,12 +934,14 @@ export const handlers = [
 const API_ROOTS = [
   "patients",
   "appointments",
+  "doctors",
   "medical-records",
   "vitals",
   "invoices",
   "permissions",
   "widgets",
   "auth",
+  "admin",
   "audit-log",
 ];
 

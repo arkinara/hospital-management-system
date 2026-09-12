@@ -52,7 +52,6 @@ function destinationToPath(id: string): string {
 
 export default function GlobalCommandPalette(): JSX.Element {
   const router = useRouter();
-  const palette = useCommandPalette();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {

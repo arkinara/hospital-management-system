@@ -40,8 +40,10 @@ export const queryKeys = {
   myLayout: () => ["widgets", "me"] as const,
   permissions: () => ["auth", "permissions"] as const,
   auditLog: (q?: Record<string, unknown>) => ["audit", q ?? {}] as const,
-  doctorAvailability: (doctorId: number | string) =>
-    ["appointments", "availability", doctorId] as const,
+  doctorAvailability: (
+    doctorId: number | string,
+    range?: { from: string; to: string },
+  ) => ["appointments", "availability", doctorId, range ?? {}] as const,
 };
 
 // ---------------------------------------------------------------------------

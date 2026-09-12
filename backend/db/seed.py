@@ -314,13 +314,14 @@ def run_seed(db_path: Path) -> int:
         )
 
     # ---- Doctor availability (default weekly hours, idempotent) -----------
-    # Doctors with no configured windows default to Mon-Fri 08:00-17:00 so the
-    # slot grid is useful straight after seeding.
+    # Doctors with no configured windows default to 08:00-17:00 every day so
+    # the slot grid is useful straight after seeding regardless of the day the
+    # suite or a fresh deployment runs on.
     for doc in fx["doctors"]:
         doctor_user_id = doctor_user_by_id.get(doc["id"])
         if doctor_user_id is None:
             continue
-        for weekday in range(6):  # Mon–Sat
+        for weekday in range(7):  # Mon–Sun
             inserted += _insert_if_absent(
                 conn,
                 "INSERT INTO doctor_availability "

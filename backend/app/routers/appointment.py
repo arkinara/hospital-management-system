@@ -12,7 +12,7 @@ Availability/blocked-day writes are admin-only or doctor-self.
 from __future__ import annotations
 
 import time
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -61,9 +61,10 @@ class LifecycleActionBody(BaseModel):
 
 
 class AvailabilityWindow(BaseModel):
-    weekday: int = Field(ge=0, le=6)
+    day_of_week: int = Field(ge=0, le=6)
     start_time: str
     end_time: str
+    department_id: int | None = None
 
 
 class AvailabilityPut(BaseModel):
@@ -71,8 +72,8 @@ class AvailabilityPut(BaseModel):
 
 
 class BlockedDayCreate(BaseModel):
-    date: date
-    reason: str | None = None
+    blocked_date: date
+    reason: str = Field(min_length=1)
     start_time: str | None = None
     end_time: str | None = None
 
@@ -142,6 +143,113 @@ def _require_admin_or_self(user: dict, doctor_id: int) -> None:
     if user["role"] == "doctor" and user["id"] == doctor_id:
         return
     raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _clock_minutes(value: str) -> int:
+    """Parse an HH:MM clock string into minutes since midnight, or 422."""
+    try:
+        hour, minute = (int(p) for p in value.split(":"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail=f"Invalid time '{value}'; expected HH:MM") from None
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        raise HTTPException(status_code=422, detail=f"Invalid time '{value}'; expected HH:MM")
+    return hour * 60 + minute
+
+
+def _validate_windows(
+    conn, doctor_id: int, windows: list[AvailabilityWindow]
+) -> list[dict]:
+    """Validate a PUT windows payload and return normalized dicts (raises 422).
+
+    Rules: every window ends after it starts; department_id must exist; no two
+    windows on the same weekday may overlap.
+    """
+    out: list[dict] = []
+    for index, window in enumerate(windows, start=1):
+        start = _clock_minutes(window.start_time)
+        end = _clock_minutes(window.end_time)
+        if end <= start:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Window {index}: end_time must be after start_time",
+            )
+        if window.department_id is not None and not conn.execute(
+            "SELECT 1 FROM departments WHERE id = ?", (window.department_id,)
+        ).fetchone():
+            raise HTTPException(
+                status_code=422,
+                detail=f"Window {index}: unknown department_id {window.department_id}",
+            )
+        out.append(
+            {
+                "day_of_week": window.day_of_week,
+                "start_time": window.start_time,
+                "end_time": window.end_time,
+                "start_min": start,
+                "end_min": end,
+                "department_id": window.department_id,
+            }
+        )
+    for i in range(len(out)):
+        for j in range(i + 1, len(out)):
+            a, b = out[i], out[j]
+            if a["day_of_week"] == b["day_of_week"] and a["start_min"] < b["end_min"] and b["start_min"] < a["end_min"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Overlapping windows on weekday {a['day_of_week']} "
+                        f"(window {i + 1} and window {j + 1})"
+                    ),
+                )
+    return out
+
+
+def _blocked_conflicts(
+    conn, doctor_id: int, day: date, start_min: int | None, end_min: int | None
+) -> list[dict]:
+    """Appointments on `day` overlapping the block range, excluding terminal ones.
+
+    A full-day block (start_min is None) conflicts with every non-terminal
+    appointment that day. Partial blocks only conflict with appointments that
+    intersect [start_min, end_min).
+    """
+    day_start = int(datetime(day.year, day.month, day.day, tzinfo=UTC).timestamp())
+    day_end = day_start + 86400
+    rows = conn.execute(
+        "SELECT a.id, a.patient_id, a.scheduled_at, a.scheduled_end, a.duration_minutes, "
+        "       p.full_name "
+        "FROM appointments a LEFT JOIN patients p ON p.id = a.patient_id "
+        "WHERE a.doctor_id = ? AND a.status NOT IN ('cancelled', 'no_show') "
+        "  AND a.scheduled_at >= ? AND a.scheduled_at < ? "
+        "ORDER BY a.scheduled_at",
+        (doctor_id, day_start, day_end),
+    ).fetchall()
+    conflicts: list[dict] = []
+    for row in rows:
+        a_start = int(row["scheduled_at"])
+        raw_end = row["scheduled_end"]
+        a_end = (
+            int(raw_end)
+            if raw_end is not None
+            else a_start + int(row["duration_minutes"] or 30) * 60
+        )
+        if start_min is None:
+            overlaps = True
+        else:
+            block_start = day_start + start_min * 60
+            block_end = day_start + end_min * 60
+            overlaps = a_start < block_end and block_start < a_end
+        if overlaps:
+            conflicts.append(
+                {
+                    "id": row["id"],
+                    "patient_id": row["patient_id"],
+                    "patient_name": row["full_name"],
+                    "scheduled_start": _iso(a_start),
+                    "scheduled_end": _iso(a_end),
+                }
+            )
+    return conflicts
 
 
 def _resolve_existence(conn, body: dict) -> None:
@@ -532,38 +640,84 @@ async def doctor_schedule(
 
 @router.get("/doctors/{doctor_id}/availability", status_code=status.HTTP_200_OK)
 async def get_doctor_availability(
-    doctor_id: int, user: dict = Depends(require_permission("appointments"))
+    doctor_id: int,
+    from_date: str | None = Query(default=None, alias="from"),
+    to_date: str | None = Query(default=None, alias="to"),
+    user: dict = Depends(require_permission("appointments")),
 ) -> dict:
+    if user["role"] == "doctor" and user["id"] != doctor_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    today = datetime.now(UTC).date()
+    try:
+        start_day = (
+            datetime.strptime(from_date, "%Y-%m-%d").date() if from_date else today
+        )
+        end_day = (
+            datetime.strptime(to_date, "%Y-%m-%d").date()
+            if to_date
+            else start_day + timedelta(days=6)
+        )
+    except ValueError:
+        raise HTTPException(status_code=422, detail="from/to must be YYYY-MM-DD") from None
+    if end_day < start_day:
+        raise HTTPException(status_code=422, detail="to must be on or after from")
+
     with get_db() as conn:
         if not conn.execute(
             "SELECT 1 FROM users WHERE id = ? AND role = 'doctor'", (doctor_id,)
         ).fetchone():
             raise HTTPException(status_code=404, detail="Doctor not found")
         windows = conn.execute(
-            "SELECT day_of_week, start_time, end_time FROM doctor_availability "
-            "WHERE doctor_id = ? ORDER BY day_of_week, start_time",
+            "SELECT id, day_of_week, start_time, end_time, department_id "
+            "FROM doctor_availability WHERE doctor_id = ? ORDER BY day_of_week, start_time",
             (doctor_id,),
         ).fetchall()
         blocked = conn.execute(
-            "SELECT blocked_date, start_time, end_time, reason FROM doctor_blocked_days "
+            "SELECT id, blocked_date, start_time, end_time, reason FROM doctor_blocked_days "
             "WHERE doctor_id = ? ORDER BY blocked_date",
             (doctor_id,),
         ).fetchall()
+        blocked_by_date = {b["blocked_date"]: b for b in blocked}
+
+        week: list[dict] = []
+        cursor = start_day
+        while cursor <= end_day:
+            slots = get_doctor_slots(conn, doctor_id, cursor)
+            week.append(
+                {
+                    "date": cursor.isoformat(),
+                    "day_of_week": cursor.weekday(),
+                    "blocked": blocked_by_date.get(cursor.isoformat()) is not None,
+                    "capacity": len(slots),
+                    "booked": sum(1 for s in slots if s["status"] == "booked"),
+                    "slots": slots,
+                }
+            )
+            cursor += timedelta(days=1)
+
     return {
         "doctor_id": doctor_id,
         "windows": [
-            {"weekday": w["day_of_week"], "start_time": w["start_time"], "end_time": w["end_time"]}
+            {
+                "id": w["id"],
+                "day_of_week": w["day_of_week"],
+                "start_time": w["start_time"],
+                "end_time": w["end_time"],
+                "department_id": w["department_id"],
+            }
             for w in windows
         ],
         "blocked_days": [
             {
-                "date": b["blocked_date"],
+                "id": b["id"],
+                "blocked_date": b["blocked_date"],
                 "start_time": b["start_time"],
                 "end_time": b["end_time"],
                 "reason": b["reason"],
             }
             for b in blocked
         ],
+        "week": week,
     }
 
 
@@ -579,19 +733,37 @@ async def put_doctor_availability(
             "SELECT 1 FROM users WHERE id = ? AND role = 'doctor'", (doctor_id,)
         ).fetchone():
             raise HTTPException(status_code=404, detail="Doctor not found")
+        validated = _validate_windows(conn, doctor_id, body.windows)
         conn.execute("DELETE FROM doctor_availability WHERE doctor_id = ?", (doctor_id,))
-        for window in body.windows:
-            conn.execute(
-                "INSERT INTO doctor_availability (doctor_id, day_of_week, start_time, end_time) "
-                "VALUES (?, ?, ?, ?)",
-                (doctor_id, window.weekday, window.start_time, window.end_time),
+        saved: list[dict] = []
+        for window in validated:
+            cursor = conn.execute(
+                "INSERT INTO doctor_availability "
+                "(doctor_id, day_of_week, start_time, end_time, department_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    doctor_id,
+                    window["day_of_week"],
+                    window["start_time"],
+                    window["end_time"],
+                    window["department_id"],
+                ),
+            )
+            saved.append(
+                {
+                    "id": cursor.lastrowid,
+                    "day_of_week": window["day_of_week"],
+                    "start_time": window["start_time"],
+                    "end_time": window["end_time"],
+                    "department_id": window["department_id"],
+                }
             )
         write_audit(
-            user["id"], "appointment.availability_update", "doctor", doctor_id,
-            {"windows": [w.model_dump() for w in body.windows]},
+            user["id"], "availability.update", "doctor", doctor_id,
+            {"windows": saved},
             conn=conn,
         )
-    return {"doctor_id": doctor_id, "windows": [w.model_dump() for w in body.windows]}
+    return {"doctor_id": doctor_id, "windows": saved}
 
 
 @router.post("/doctors/{doctor_id}/blocked-days", status_code=status.HTTP_201_CREATED)
@@ -601,31 +773,104 @@ async def add_blocked_day(
     user: dict = Depends(require_permission("appointments")),
 ) -> dict:
     _require_admin_or_self(user, doctor_id)
+    if (body.start_time is None) != (body.end_time is None):
+        raise HTTPException(
+            status_code=422,
+            detail="start_time and end_time must be provided together (or both omitted for a full day)",
+        )
+    start_min = end_min = None
+    if body.start_time is not None:
+        start_min = _clock_minutes(body.start_time)
+        end_min = _clock_minutes(body.end_time)
+        if end_min <= start_min:
+            raise HTTPException(status_code=422, detail="end_time must be after start_time")
+
     with get_db() as conn:
         if not conn.execute(
             "SELECT 1 FROM users WHERE id = ? AND role = 'doctor'", (doctor_id,)
         ).fetchone():
             raise HTTPException(status_code=404, detail="Doctor not found")
-        exists = conn.execute(
-            "SELECT id FROM doctor_blocked_days WHERE doctor_id = ? AND blocked_date = ?",
-            (doctor_id, body.date.isoformat()),
-        ).fetchone()
-        if exists is not None:
-            raise HTTPException(status_code=409, detail="That date is already blocked")
+        conflicts = _blocked_conflicts(conn, doctor_id, body.blocked_date, start_min, end_min)
+        if conflicts:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "blocked_day_conflicts",
+                    "message": f"Block conflicts with {len(conflicts)} appointment(s)",
+                    "conflicts": conflicts,
+                },
+            )
+        existing = conn.execute(
+            "SELECT start_time, end_time FROM doctor_blocked_days "
+            "WHERE doctor_id = ? AND blocked_date = ?",
+            (doctor_id, body.blocked_date.isoformat()),
+        ).fetchall()
+        for row in existing:
+            existing_start = (
+                _clock_minutes(row["start_time"]) if row["start_time"] else None
+            )
+            existing_end = _clock_minutes(row["end_time"]) if row["end_time"] else None
+            if start_min is None or existing_start is None:
+                raise HTTPException(status_code=409, detail="That date is already blocked")
+            if start_min < existing_end and existing_start < end_min:
+                raise HTTPException(status_code=409, detail="That period is already blocked")
+
         cursor = conn.execute(
             "INSERT INTO doctor_blocked_days "
             "(doctor_id, blocked_date, start_time, end_time, reason) "
             "VALUES (?, ?, ?, ?, ?)",
-            (doctor_id, body.date.isoformat(), body.start_time, body.end_time, body.reason),
+            (
+                doctor_id,
+                body.blocked_date.isoformat(),
+                body.start_time,
+                body.end_time,
+                body.reason,
+            ),
         )
         write_audit(
-            user["id"], "appointment.blocked_day_add", "doctor", doctor_id,
-            {"date": body.date.isoformat(), "reason": body.reason},
+            user["id"], "availability.blocked_add", "doctor", doctor_id,
+            {
+                "date": body.blocked_date.isoformat(),
+                "start_time": body.start_time,
+                "end_time": body.end_time,
+                "reason": body.reason,
+            },
             conn=conn,
         )
     return {
-        "doctor_id": doctor_id,
-        "date": body.date.isoformat(),
-        "reason": body.reason,
         "id": cursor.lastrowid,
+        "doctor_id": doctor_id,
+        "blocked_date": body.blocked_date.isoformat(),
+        "start_time": body.start_time,
+        "end_time": body.end_time,
+        "reason": body.reason,
     }
+
+
+@router.delete(
+    "/doctors/{doctor_id}/blocked-days/{blocked_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_blocked_day(
+    doctor_id: int,
+    blocked_id: int,
+    user: dict = Depends(require_permission("appointments")),
+) -> None:
+    _require_admin_or_self(user, doctor_id)
+    with get_db() as conn:
+        if not conn.execute(
+            "SELECT 1 FROM users WHERE id = ? AND role = 'doctor'", (doctor_id,)
+        ).fetchone():
+            raise HTTPException(status_code=404, detail="Doctor not found")
+        row = conn.execute(
+            "SELECT id, blocked_date FROM doctor_blocked_days WHERE id = ? AND doctor_id = ?",
+            (blocked_id, doctor_id),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Blocked period not found")
+        conn.execute("DELETE FROM doctor_blocked_days WHERE id = ?", (blocked_id,))
+        write_audit(
+            user["id"], "availability.blocked_delete", "doctor", doctor_id,
+            {"id": blocked_id, "date": row["blocked_date"]},
+            conn=conn,
+        )

@@ -18,6 +18,7 @@ from app.services.availability import is_doctor_available  # noqa: E402
 RECEPTIONIST = ("receptionist@hospital.test", "Hospital2025!")
 DOCTOR = ("doctor@hospital.test", "Hospital2025!")
 NURSE = ("nurse@hospital.test", "Hospital2025!")
+ADMIN = ("admin@hospital.test", "Hospital2025!")
 
 
 def _headers(creds: tuple[str, str]) -> dict:
@@ -157,7 +158,7 @@ def test_booking_outside_working_hours_is_409():
 def test_booking_on_blocked_day_is_409():
     doctor_id, patient_id, dept_id = _ids()
     avail = client.get(f"/doctors/{doctor_id}/availability", headers=_headers(RECEPTIONIST))
-    blocked_dates = [b["date"] for b in avail.json()["blocked_days"]]
+    blocked_dates = [b["blocked_date"] for b in avail.json()["blocked_days"]]
     assert blocked_dates, "seed should provide a blocked day for D01"
     resp = _book(f"{blocked_dates[0]}T10:00:00Z", doctor_id, patient_id, dept_id)
     assert resp.status_code == 409, resp.text
@@ -182,7 +183,7 @@ def test_doctor_schedule_returns_slot_grid():
 def test_blocked_day_has_no_slots_in_schedule():
     doctor_id, _, _ = _ids()
     avail = client.get(f"/doctors/{doctor_id}/availability", headers=_headers(RECEPTIONIST))
-    blocked = avail.json()["blocked_days"][0]["date"]
+    blocked = avail.json()["blocked_days"][0]["blocked_date"]
     resp = client.get(
         f"/doctors/{doctor_id}/schedule",
         params={"date": blocked},
@@ -319,7 +320,7 @@ def test_doctor_cannot_edit_others_schedule():
     doctor_id, _, _ = _ids()
     resp = client.put(
         f"/doctors/{doctor_id}/availability",
-        json={"windows": [{"weekday": 0, "start_time": "09:00", "end_time": "15:00"}]},
+        json={"windows": [{"day_of_week": 0, "start_time": "09:00", "end_time": "15:00"}]},
         headers=_headers(DOCTOR),
     )
     assert resp.status_code == 403
@@ -330,7 +331,7 @@ def test_availability_update_admin_or_self_only():
     # Receptionist (not admin, not the doctor) is denied.
     resp = client.put(
         f"/doctors/{doctor_id}/availability",
-        json={"windows": [{"weekday": 0, "start_time": "09:00", "end_time": "15:00"}]},
+        json={"windows": [{"day_of_week": 0, "start_time": "09:00", "end_time": "15:00"}]},
         headers=_headers(RECEPTIONIST),
     )
     assert resp.status_code == 403
@@ -342,7 +343,7 @@ def test_availability_update_admin_or_self_only():
         ).fetchone()[0]
     resp = client.put(
         f"/doctors/{own_doctor}/availability",
-        json={"windows": [{"weekday": 1, "start_time": "09:00", "end_time": "15:00"}]},
+        json={"windows": [{"day_of_week": 1, "start_time": "09:00", "end_time": "15:00"}]},
         headers=_headers(DOCTOR),
     )
     assert resp.status_code == 200, resp.text
@@ -354,7 +355,7 @@ def test_availability_update_admin_or_self_only():
         ).fetchone()[0]
     resp = client.put(
         f"/doctors/{other_doctor}/availability",
-        json={"windows": [{"weekday": 0, "start_time": "09:00", "end_time": "15:00"}]},
+        json={"windows": [{"day_of_week": 0, "start_time": "09:00", "end_time": "15:00"}]},
         headers=_headers(("admin@hospital.test", "Hospital2025!")),
     )
     assert resp.status_code == 200, resp.text
@@ -380,3 +381,204 @@ def test_booking_and_transitions_write_audit_rows():
         ]
     assert "appointment.create" in actions
     assert "appointment.check_in" in actions
+
+
+# ---- Availability & blocked days (ticket #48) -------------------------------
+
+
+def _put_availability(doctor_id, windows, headers=None):
+    return client.put(
+        f"/doctors/{doctor_id}/availability",
+        json={"windows": windows},
+        headers=headers or _headers(ADMIN),
+    )
+
+
+def test_availability_overlapping_windows_same_day_is_422():
+    doctor_id, _, _ = _ids()
+    resp = _put_availability(
+        doctor_id,
+        [
+            {"day_of_week": 1, "start_time": "08:00", "end_time": "15:00"},
+            {"day_of_week": 1, "start_time": "12:00", "end_time": "17:00"},
+        ],
+    )
+    assert resp.status_code == 422, resp.text
+    assert "overlap" in resp.json()["error"]["message"].lower()
+
+
+def test_availability_adjacent_windows_same_day_are_allowed():
+    doctor_id, _, _ = _ids()
+    resp = _put_availability(
+        doctor_id,
+        [
+            {"day_of_week": 1, "start_time": "08:00", "end_time": "12:00"},
+            {"day_of_week": 1, "start_time": "12:00", "end_time": "17:00"},
+        ],
+    )
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()["windows"]) == 2
+
+
+def test_availability_end_before_start_is_422():
+    doctor_id, _, _ = _ids()
+    resp = _put_availability(
+        doctor_id,
+        [{"day_of_week": 1, "start_time": "15:00", "end_time": "08:00"}],
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_availability_unknown_department_is_422():
+    doctor_id, _, _ = _ids()
+    resp = _put_availability(
+        doctor_id,
+        [{"day_of_week": 1, "start_time": "08:00", "end_time": "15:00", "department_id": 999999}],
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_availability_wipe_and_replace_removes_old_windows():
+    doctor_id, _, _ = _ids()
+    assert _put_availability(
+        doctor_id, [{"day_of_week": 1, "start_time": "08:00", "end_time": "12:00"}]
+    ).status_code == 200
+    resp = _put_availability(
+        doctor_id, [{"day_of_week": 2, "start_time": "09:00", "end_time": "13:00"}]
+    )
+    assert resp.status_code == 200, resp.text
+    assert [w["day_of_week"] for w in resp.json()["windows"]] == [2]
+
+
+def test_get_availability_returns_weekly_schedule():
+    doctor_id, _, _ = _ids()
+    resp = client.get(
+        f"/doctors/{doctor_id}/availability",
+        params={"from": _day(0), "to": _day(0)},
+        headers=_headers(RECEPTIONIST),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["week"]) == 1
+    day = body["week"][0]
+    assert day["date"] == _day(0)
+    assert "capacity" in day and "booked" in day and "slots" in day
+    assert body["windows"][0]["day_of_week"] == 0  # seed defaults to Mon
+    assert "department_id" in body["windows"][0]
+
+
+def test_blocked_day_conflict_with_appointment_is_409():
+    doctor_id, patient_id, dept_id = _ids()
+    booked = _book(f"{_day(3)}T09:00:00Z", doctor_id, patient_id, dept_id)
+    appt_id = booked.json()["id"]
+    resp = client.post(
+        f"/doctors/{doctor_id}/blocked-days",
+        json={
+            "blocked_date": _day(3),
+            "start_time": "08:30",
+            "end_time": "10:00",
+            "reason": "cath lab",
+        },
+        headers=_headers(ADMIN),
+    )
+    assert resp.status_code == 409, resp.text
+    body = resp.json()
+    assert body["error"]["code"] == "blocked_day_conflicts"
+    conflicts = body["conflicts"]
+    assert [c["id"] for c in conflicts] == [appt_id]
+
+
+def test_cancelled_appointment_does_not_block_blocking_day():
+    doctor_id, patient_id, dept_id = _ids()
+    booked = _book(f"{_day(3)}T09:00:00Z", doctor_id, patient_id, dept_id)
+    client.post(
+        f"/appointments/{booked.json()['id']}/cancel",
+        json={"reason": "moved"},
+        headers=_headers(RECEPTIONIST),
+    )
+    resp = client.post(
+        f"/doctors/{doctor_id}/blocked-days",
+        json={"blocked_date": _day(3), "start_time": "09:00", "end_time": "10:00", "reason": "lunch"},
+        headers=_headers(ADMIN),
+    )
+    assert resp.status_code == 201, resp.text
+
+
+def test_block_without_reason_is_422():
+    doctor_id, _, _ = _ids()
+    resp = client.post(
+        f"/doctors/{doctor_id}/blocked-days",
+        json={"blocked_date": _day(10), "reason": ""},
+        headers=_headers(ADMIN),
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_block_partial_missing_pair_is_422():
+    doctor_id, _, _ = _ids()
+    resp = client.post(
+        f"/doctors/{doctor_id}/blocked-days",
+        json={"blocked_date": _day(10), "start_time": "09:00", "reason": "lunch"},
+        headers=_headers(ADMIN),
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_delete_blocked_day_requires_admin_or_self():
+    doctor_id, _, _ = _ids()
+    created = client.post(
+        f"/doctors/{doctor_id}/blocked-days",
+        json={"blocked_date": _day(12), "reason": "away"},
+        headers=_headers(ADMIN),
+    ).json()
+    blocked_id = created["id"]
+
+    denied = client.delete(
+        f"/doctors/{doctor_id}/blocked-days/{blocked_id}",
+        headers=_headers(RECEPTIONIST),
+    )
+    assert denied.status_code == 403
+
+    deleted = client.delete(
+        f"/doctors/{doctor_id}/blocked-days/{blocked_id}",
+        headers=_headers(ADMIN),
+    )
+    assert deleted.status_code == 204
+
+    missing = client.delete(
+        f"/doctors/{doctor_id}/blocked-days/{blocked_id}",
+        headers=_headers(ADMIN),
+    )
+    assert missing.status_code == 404
+
+
+def test_availability_writes_append_audit_rows():
+    with _db_conn() as conn:
+        before = conn.execute("SELECT COALESCE(MAX(id), 0) FROM audit_log").fetchone()[0]
+    doctor_id, _, _ = _ids()
+
+    assert _put_availability(
+        doctor_id, [{"day_of_week": 3, "start_time": "08:00", "end_time": "12:00"}]
+    ).status_code == 200
+    created = client.post(
+        f"/doctors/{doctor_id}/blocked-days",
+        json={"blocked_date": _day(12), "reason": "training"},
+        headers=_headers(ADMIN),
+    ).json()
+    client.delete(
+        f"/doctors/{doctor_id}/blocked-days/{created['id']}",
+        headers=_headers(ADMIN),
+    )
+
+    with _db_conn() as conn:
+        actions = [
+            r["action"]
+            for r in conn.execute(
+                "SELECT action FROM audit_log WHERE id > ? AND entity_type = 'doctor' "
+                "AND entity_id = ?",
+                (before, str(doctor_id)),
+            )
+        ]
+    assert "availability.update" in actions
+    assert "availability.blocked_add" in actions
+    assert "availability.blocked_delete" in actions

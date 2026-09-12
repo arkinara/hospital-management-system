@@ -18,13 +18,25 @@ export class ApiError extends Error {
   readonly traceId: string;
   readonly status: number;
   readonly normalised: NormalisedError;
+  /**
+   * The raw parsed response body. Keeps envelope siblings (e.g. the
+   * `conflicts` list on a blocked-day 409) reachable by callers.
+   */
+  readonly payload: Record<string, unknown> | null;
 
-  constructor(code: string, message: string, status: number, traceId = "") {
+  constructor(
+    code: string,
+    message: string,
+    status: number,
+    traceId = "",
+    payload: Record<string, unknown> | null = null,
+  ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
     this.traceId = traceId;
+    this.payload = payload;
     this.normalised = normaliseError(status, {
       error: { code, message, trace_id: traceId },
     });
@@ -120,6 +132,7 @@ async function request<T>(
       envelope?.error?.message ?? response.statusText,
       response.status,
       envelope?.error?.trace_id ?? "",
+      (data as Record<string, unknown> | null) ?? null,
     );
   }
 

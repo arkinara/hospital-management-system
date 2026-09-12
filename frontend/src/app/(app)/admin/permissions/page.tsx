@@ -9,7 +9,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Field, Button, StatusChip } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries, setOptimistic } from "@/lib/api/queryCache";
 
@@ -218,7 +218,7 @@ export default function PermissionMatrixScreen(): JSX.Element {
     setErrorMsg(null);
     try {
       const key = queryKeys.permissions();
-      const rollback = setOptimistic(key, draftFlat(draft));
+      const rollback = setOptimistic(key, draftFlat());
       try {
         // Best-effort: persist every cell that changed. Backend will accept
         // any subset; failures are non-fatal and reported as a toast.
@@ -414,6 +414,6 @@ export default function PermissionMatrixScreen(): JSX.Element {
 
 // Helper used during optimistic save to snapshot a flat list (matrix doesn't
 // match the API response shape, but stale-while-revalidate is fine here).
-function draftFlat(_m: Matrix): unknown[] {
+function draftFlat(): unknown[] {
   return [];
 }

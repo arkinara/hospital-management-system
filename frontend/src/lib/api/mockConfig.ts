@@ -35,6 +35,12 @@ export interface MockConfig {
     create: Scenario;
     checkIn: Scenario;
   };
+  doctorAvailability: {
+    get: Scenario;
+    update: Scenario;
+    block: Scenario;
+    deleteBlock: Scenario;
+  };
   records: {
     visits: Scenario;
     createVisit: Scenario;
@@ -68,6 +74,10 @@ export interface MockConfig {
   audit: {
     list: Scenario;
   };
+  admin: {
+    departments: Scenario;
+    user: Scenario;
+  };
 }
 
 function scenario(): Scenario {
@@ -85,6 +95,12 @@ export function createDefaultMockConfig(): MockConfig {
       dedupCheck: scenario(),
     },
     appointments: { list: scenario(), create: scenario(), checkIn: scenario() },
+    doctorAvailability: {
+      get: scenario(),
+      update: scenario(),
+      block: scenario(),
+      deleteBlock: scenario(),
+    },
     records: { visits: scenario(), createVisit: scenario() },
     vitals: { list: scenario(), create: scenario() },
     invoices: { list: scenario(), create: scenario(), payment: scenario() },
@@ -92,6 +108,7 @@ export function createDefaultMockConfig(): MockConfig {
     widgets: { me: scenario(), saveMe: scenario(), library: scenario(), update: scenario() },
     auth: { login: scenario(), logout: scenario(), me: scenario(), users: scenario(), createUser: scenario() },
     audit: { list: scenario() },
+    admin: { departments: scenario(), user: scenario() },
   };
 }
 
