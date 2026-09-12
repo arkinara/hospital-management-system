@@ -144,7 +144,7 @@ export default function PatientDetailPage({ params }: { params: { mrn: string } 
     : patientQuery.loading && !patient
       ? "loading"
       : !patient
-        ? "loading"
+        ? "empty"
         : "ready";
 
   const openBilling = useCallback(() => setTab("billing"), []);
@@ -173,6 +173,7 @@ export default function PatientDetailPage({ params }: { params: { mrn: string } 
         ready={
           patient ? (
             <>
+              <h1 className="sr-only">Patient record — {patient.name}</h1>
               <PatientHeader
                 patient={{
                   mrn: patient.mrn,

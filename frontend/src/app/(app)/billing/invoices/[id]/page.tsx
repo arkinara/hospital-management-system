@@ -17,7 +17,7 @@ import {
 } from "@/components/ui";
 import { renderIcon } from "@/lib/iconRenderer";
 import { api } from "@/lib/api/client";
-import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
+import { useQuery, queryKeys, invalidateQueries, setOptimistic, queryCache } from "@/lib/api/queryCache";
 import { rp } from "@/lib/fixtures";
 import { claimStatusMeta, invoiceStatusMeta } from "@/lib/statusHelpers";
 import type { Claim, Invoice, InvoiceLine, Payment } from "@/lib/fixtures";
@@ -58,10 +58,12 @@ function InvoiceDetailBody({ id }: { id: string }) {
 
   const onPaymentRecorded = useCallback(() => {
     setPayOpen(false);
-    invalidateQueries(queryKeys.invoices() as unknown as unknown[]);
-    detail.refetch();
+    invalidateQueries(
+      queryKeys.invoices() as unknown as unknown[],
+      queryKeys.invoice(id) as unknown as unknown[],
+    );
     toast({ tone: "success", message: "Payment recorded", detail: `Payment added to ${id}` });
-  }, [detail, id, toast]);
+  }, [id, toast]);
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-4 p-4 lg:p-6" data-testid="invoice-detail">
@@ -137,6 +139,7 @@ function InvoiceDetailBody({ id }: { id: string }) {
                 <p className="text-base text-muted">No line items on this invoice.</p>
               ) : (
                 <table className="dt">
+                  <caption className="sr-only">Line items on invoice {invoice.id}</caption>
                   <thead>
                     <tr>
                       <th scope="col" className="text-left">Code</th>
@@ -219,6 +222,7 @@ function InvoiceDetailBody({ id }: { id: string }) {
       <PaymentDialog
         open={payOpen}
         invoiceId={id}
+        current={invoice}
         onClose={() => setPayOpen(false)}
         onRecorded={onPaymentRecorded}
       />
@@ -229,11 +233,13 @@ function InvoiceDetailBody({ id }: { id: string }) {
 function PaymentDialog({
   open,
   invoiceId,
+  current,
   onClose,
   onRecorded,
 }: {
   open: boolean;
   invoiceId: string;
+  current?: Invoice;
   onClose: () => void;
   onRecorded: () => void;
 }) {
@@ -248,17 +254,45 @@ function PaymentDialog({
       setError("Enter a payment amount greater than zero.");
       return;
     }
+    if (current && value > Math.max(0, current.total - current.paid)) {
+      setError("Payment exceeds the outstanding balance on this invoice.");
+      return;
+    }
     setSaving(true);
     setError(null);
+    // Optimistic update: reflect the new paid/status before the server confirms,
+    // roll back if the request fails.
+    const cached = queryCache.get<InvoiceDetail>(queryKeys.invoice(invoiceId));
+    const prevInvoice = cached?.invoice ?? current;
+    const nextInvoice: Invoice | undefined = prevInvoice
+      ? {
+          ...prevInvoice,
+          paid: prevInvoice.paid + value,
+          status:
+            prevInvoice.paid + value >= prevInvoice.total
+              ? "paid"
+              : prevInvoice.paid + value > 0
+                ? "partially_paid"
+                : "unpaid",
+        }
+      : undefined;
+    const rollback =
+      nextInvoice && cached
+        ? setOptimistic(
+            queryKeys.invoice(invoiceId) as unknown as unknown[],
+            { ...cached, invoice: nextInvoice },
+          )
+        : undefined;
     try {
       await api.post(`/invoices/${invoiceId}/payments`, { amount: value, method });
       setAmount("");
       onRecorded();
     } catch (e) {
+      rollback?.();
       setError(e instanceof Error ? e.message : "Could not record the payment.");
       setSaving(false);
     }
-  }, [amount, invoiceId, method, onRecorded]);
+  }, [amount, invoiceId, method, current, onRecorded]);
 
   return (
     <Dialog

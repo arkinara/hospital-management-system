@@ -172,34 +172,31 @@ export function DataTable<T>({
                     key={c.key}
                     scope="col"
                     aria-sort={sortable ? ariaSort(c.key) : undefined}
-                    tabIndex={sortable ? 0 : undefined}
-                    onClick={sortable ? () => toggleSort(c.key) : undefined}
-                    onKeyDown={
-                      sortable
-                        ? (e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              toggleSort(c.key);
-                            }
-                          }
-                        : undefined
-                    }
                     style={c.width ? { width: c.width } : undefined}
                     className={cn("group", c.align === "right" && "text-right")}
                   >
-                    <span
+                    <button
+                      type="button"
+                      disabled={!sortable}
+                      onClick={sortable ? () => toggleSort(c.key) : undefined}
                       className={cn(
-                        "inline-flex items-center gap-1",
-                        c.align === "right" && "flex-row-reverse",
+                        "press inline-flex min-h-9 w-full items-center gap-1 text-left font-semibold",
+                        c.align === "right" && "flex-row-reverse text-right",
+                        sortable ? "cursor-pointer" : "cursor-default",
                       )}
+                      aria-label={sortable ? `Sort by ${c.label}` : undefined}
                     >
                       {c.label}
-                      {sortable
-                        ? sort?.key === c.key
-                          ? renderIcon(sort.dir === "asc" ? "arrow-up" : "arrow-down", "h-3 w-3")
-                          : renderIcon("arrow-up-down", "h-3 w-3 opacity-0 group-hover:opacity-50")
-                        : null}
-                    </span>
+                      {sortable ? (
+                        sort?.key === c.key ? (
+                          renderIcon(sort.dir === "asc" ? "arrow-up" : "arrow-down", "h-3 w-3")
+                        ) : (
+                          <span className="opacity-0 transition group-hover:opacity-50">
+                            {renderIcon("arrow-up-down", "h-3 w-3")}
+                          </span>
+                        )
+                      ) : null}
+                    </button>
                   </th>
                 );
               })}

@@ -31,15 +31,18 @@ export class ApiError extends Error {
     traceId = "",
     payload: Record<string, unknown> | null = null,
   ) {
-    super(message);
+    // The backend may return a structured validation array; normalise it so
+    // `error.message` is always a readable string, never "[object Object]".
+    const norm = normaliseError(status, {
+      error: { code, message, trace_id: traceId },
+    });
+    super(norm.message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
     this.traceId = traceId;
     this.payload = payload;
-    this.normalised = normaliseError(status, {
-      error: { code, message, trace_id: traceId },
-    });
+    this.normalised = norm;
   }
 }
 

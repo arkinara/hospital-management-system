@@ -19,7 +19,7 @@ import {
 } from "@/components/ui";
 import { renderIcon } from "@/lib/iconRenderer";
 import { api, ApiError } from "@/lib/api/client";
-import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
+import { useQuery, queryKeys, invalidateQueries, setOptimistic } from "@/lib/api/queryCache";
 import type { Role, WidgetDefinition, WidgetSize } from "@/lib/fixtures";
 
 const ROLE_OPTIONS: Array<{ label: string; value: Role }> = [
@@ -66,7 +66,14 @@ function WidgetLibraryScreen() {
         : "ready";
 
   const refresh = useCallback(() => {
-    invalidateQueries(queryKeys.widgetLibrary() as unknown as unknown[]);
+    // Governance changes affect the admin dialog and every user's dashboard
+    // layout (`/widgets/me` resolves locked/enabled state). The library list
+    // itself is refetched directly below, so only the other views are
+    // invalidated.
+    invalidateQueries(
+      queryKeys.widgetLibrary() as unknown as unknown[],
+      queryKeys.myLayout() as unknown as unknown[],
+    );
     library.refetch();
   }, [library.refetch]);
 
@@ -114,7 +121,20 @@ function WidgetLibraryScreen() {
         return;
       }
       try {
-        await api.patch(`/widget-config/widgets/${w.key}/lock`, { locked: true });
+        const rollback = setOptimistic(
+          queryKeys.widgetDefinitions() as unknown as unknown[],
+          {
+            widgets: (library.data?.widgets ?? []).map((x) =>
+              x.key === w.key ? { ...x, globally_locked: true } : x,
+            ),
+          },
+        );
+        try {
+          await api.patch(`/widget-config/widgets/${w.key}/lock`, { locked: true });
+        } catch (e) {
+          rollback();
+          throw e;
+        }
         refresh();
         toast({ tone: "success", message: `${w.name} locked`, detail: "Users can no longer remove it from their dashboards." });
       } catch (e) {

@@ -230,6 +230,7 @@ function RecordEntryScreen() {
   if (missingPatient) {
     return (
       <div className="mx-auto max-w-3xl p-4 lg:p-6" data-testid="record-entry">
+        <h1 className="sr-only">New visit note</h1>
         <div className="card">
           <EmptyState
             icon="file-x"

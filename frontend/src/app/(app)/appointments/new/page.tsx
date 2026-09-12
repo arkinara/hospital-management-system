@@ -18,7 +18,7 @@ import {
 } from "@/components/ui";
 import { renderIcon } from "@/lib/iconRenderer";
 import { api, ApiError } from "@/lib/api/client";
-import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
+import { useQuery, queryKeys, invalidateQueries, setOptimistic } from "@/lib/api/queryCache";
 import { byDoctor, deptName, doctors as fixtureDoctors, TODAY } from "@/lib/fixtures";
 import type { AdminUser, ApiDepartment, Appointment, Patient, ScheduleSlot } from "@/lib/fixtures";
 
@@ -177,6 +177,20 @@ function BookingForm() {
     setConflictWarning(null);
   }, []);
 
+  const invalidateAppointmentViews = useCallback(
+    (createdId?: string) => {
+      invalidateQueries(
+        queryKeys.appointments() as unknown as unknown[],
+        queryKeys.doctorSchedule(doctorId, date) as unknown as unknown[],
+        ["appointments", "today"] as unknown as unknown[],
+      );
+      if (createdId) {
+        invalidateQueries(["appointments", createdId] as unknown as unknown[]);
+      }
+    },
+    [doctorId, date],
+  );
+
   const onSubmit = useCallback(
     async (mode: BookingMode) => {
       if (!selectedPatient || !doctorId || !date || !time) {
@@ -198,25 +212,39 @@ function BookingForm() {
           time,
           reason: reason || "Consultation",
         });
-        invalidateQueries(queryKeys.appointments() as unknown as unknown[]);
         const detail = `${selectedPatient.name} · ${doctor?.full_name ?? "Doctor"} · ${date} ${time}`;
-        if (mode === "sms") {
-          toast({
-            tone: "success",
-            message: `Appointment ${created.id} booked`,
-            detail: `${detail} — SMS confirmation sent to ${selectedPatient.phone}`,
-          });
-        } else if (mode === "checkin") {
-          await api.post(`/appointments/${created.id}/check-in`);
-          invalidateQueries(queryKeys.appointments() as unknown as unknown[]);
+        if (mode === "checkin") {
+          // Optimistic check-in: flip the queue row to checked_in immediately,
+          // roll back if the server rejects the transition.
+          const rollback = setOptimistic(
+            ["appointments", "today"] as unknown as unknown[],
+            {
+              appointments: ((queue.data?.appointments ?? []) as Appointment[]).map((a) =>
+                a.id === created.id ? { ...a, status: "checked_in" as const } : a,
+              ),
+            },
+          );
+          try {
+            await api.post(`/appointments/${created.id}/check-in`);
+          } catch (e) {
+            rollback();
+            throw e;
+          }
           toast({
             tone: "success",
             message: `Appointment ${created.id} booked and checked in`,
             detail: `${selectedPatient.name} is now checked in.`,
           });
+        } else if (mode === "sms") {
+          toast({
+            tone: "success",
+            message: `Appointment ${created.id} booked`,
+            detail: `${detail} — SMS confirmation sent to ${selectedPatient.phone}`,
+          });
         } else {
           toast({ tone: "success", message: `Appointment ${created.id} booked`, detail });
         }
+        invalidateAppointmentViews(created.id);
         router.push("/appointments");
       } catch (e) {
         if (e instanceof ApiError && e.status === 409) {
@@ -229,7 +257,7 @@ function BookingForm() {
         setSubmitting(null);
       }
     },
-    [selectedPatient, doctorId, date, time, dept, reason, doctor, router, toast, conflictWarning],
+    [selectedPatient, doctorId, date, time, dept, reason, doctor, router, toast, conflictWarning, queue.data, invalidateAppointmentViews],
   );
 
   const scheduleState: DataState = schedule.error

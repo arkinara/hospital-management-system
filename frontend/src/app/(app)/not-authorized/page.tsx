@@ -10,6 +10,7 @@ export default function NotAuthorizedPage() {
 
   return (
     <div className="mx-auto flex min-h-[60vh] w-full max-w-3xl items-center justify-center p-4 lg:p-6">
+      <h1 className="sr-only">Not authorized</h1>
       <EmptyState
         icon="shield-x"
         title="You don't have access to this module"

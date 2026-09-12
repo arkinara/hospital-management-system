@@ -18,7 +18,7 @@ import {
 } from "@/components/ui";
 import { renderIcon } from "@/lib/iconRenderer";
 import { api } from "@/lib/api/client";
-import { useQuery, queryKeys } from "@/lib/api/queryCache";
+import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
 import { useCurrentSession } from "@/lib/auth/currentUserContext";
 import { TODAY, byDoctor, deptName, doctors as fixtureDoctors, rp, users as fixtureUsers } from "@/lib/fixtures";
 import type {
@@ -763,7 +763,17 @@ export function DashboardScreen() {
       ];
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(() => {
-        void api.put("/widgets/me", { role: role.toLowerCase(), layout });
+        // Local `order`/`hidden` state is the optimistic UI. A failed write
+        // invalidates the layout so the authoritative server state re-renders
+        // instead of leaving a mismatched grid.
+        void api
+          .put("/widgets/me", { role: role.toLowerCase(), layout })
+          .then(() => {
+            invalidateQueries(queryKeys.myLayout() as unknown as unknown[]);
+          })
+          .catch(() => {
+            invalidateQueries(queryKeys.myLayout() as unknown as unknown[]);
+          });
       }, 400);
     },
     [myWidgets.data, library.data, me.data, role],

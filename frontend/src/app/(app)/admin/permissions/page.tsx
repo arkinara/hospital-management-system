@@ -8,10 +8,12 @@
 
 "use client";
 
+import React from "react";
 import { useCallback, useMemo, useState } from "react";
-import { Button } from "@/components/ui";
+import { Button, EmptyState, ErrorState, SkeletonRows, StateRegion, type DataState } from "@/components/ui";
 import { api } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries, setOptimistic } from "@/lib/api/queryCache";
+import { renderIcon } from "@/lib/iconRenderer";
 
 const ROLES = ["admin", "doctor", "nurse", "receptionist"] as const;
 type Role = (typeof ROLES)[number];
@@ -179,11 +181,19 @@ function isImmutableRole(role: Role): boolean {
 }
 
 export default function PermissionMatrixScreen(): JSX.Element {
-  const { data: rows, loading, error, refetch } = useQuery<PermissionRow[]>(
+  const {
+    data: rows,
+    loading,
+    error,
+    refetch,
+  } = useQuery<{ permissions: PermissionRow[] }>(
     queryKeys.permissions() as unknown as unknown[],
-    { fetcher: () => api.get<PermissionRow[]>("/auth/permissions") },
+    { fetcher: () => api.get<{ permissions: PermissionRow[] }>("/permissions") },
   );
-  const baseline = useMemo(() => (rows ? buildMatrix(rows) : null), [rows]);
+  const baseline = useMemo(
+    () => (rows?.permissions ? buildMatrix(rows.permissions) : null),
+    [rows],
+  );
   const [draft, setDraft] = useState<Matrix | null>(null);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -216,51 +226,67 @@ export default function PermissionMatrixScreen(): JSX.Element {
     }
     setSaving(true);
     setErrorMsg(null);
+    const key = queryKeys.permissions();
+    const rollback = setOptimistic(key, draftFlat(draft, baseline));
     try {
-      const key = queryKeys.permissions();
-      const rollback = setOptimistic(key, draftFlat());
-      try {
-        // Best-effort: persist every cell that changed. Backend will accept
-        // any subset; failures are non-fatal and reported as a toast.
-        const promises = all.map((c) =>
-          api
-            .put(`/auth/permissions/${c.role}/${c.module}`, {
-              allowed: c.toValue,
-              ...cellToFlags(draft[c.role][c.module]),
-            })
-            .catch(() => null),
-        );
-        await Promise.all(promises);
-        setDraft(null);
-        invalidateQueries(queryKeys.permissions() as unknown as unknown[]);
-        refetch();
-      } catch (e) {
-        rollback();
-        setErrorMsg(e instanceof Error ? e.message : "Save failed");
-      }
+      // Persist every changed cell. A failure (403, 409, network) is reported
+      // and the pending draft stays on screen — nothing is silently lost.
+      await Promise.all(
+        all.map((c) =>
+          api.put(`/permissions/${c.role}/${c.module}`, {
+            allowed: c.toValue,
+            ...cellToFlags(draft[c.role][c.module]),
+          }),
+        ),
+      );
+      setDraft(null);
+      invalidateQueries(queryKeys.permissions() as unknown as unknown[]);
+      refetch();
+    } catch (e) {
+      rollback();
+      setErrorMsg(e instanceof Error ? e.message : "Save failed — your changes are still on screen.");
     } finally {
       setSaving(false);
     }
   }, [baseline, draft, refetch]);
 
-  if (loading && !rows) {
-    return (
-      <div className="p-6" data-testid="permissions-loading">
-        Loading permission matrix…
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div className="p-6" data-testid="permissions-error">
-        Failed to load permissions: {error.message}
-        <Button onClick={refetch}>Retry</Button>
-      </div>
-    );
-  }
-  if (!current) return <div className="p-6">No data</div>;
+  const state: DataState = error
+    ? "error"
+    : loading && !rows
+      ? "loading"
+      : !rows?.permissions || rows.permissions.length === 0
+        ? "empty"
+        : "ready";
 
-  const pending = draft ? diffMatrices(baseline!, draft) : [];
+  if (!current) {
+    return (
+      <div className="p-6">
+        <StateRegion
+          state={state}
+          loading={<SkeletonRows rows={8} columns={7} />}
+          empty={
+            <EmptyState
+              icon="shield-x"
+              title="No permission matrix"
+              body="The permission matrix could not be loaded."
+              renderIcon={renderIcon}
+            />
+          }
+          error={
+            <ErrorState
+              title="Could not load the permission matrix"
+              body={error?.message ?? "The auth service did not respond."}
+              onRetry={refetch}
+              renderIcon={renderIcon}
+            />
+          }
+          ready={null}
+        />
+      </div>
+    );
+  }
+
+  const pending = draft && baseline ? diffMatrices(baseline, draft) : [];
   const allChanges = changesAfterDependency(pending);
 
   return (
@@ -283,7 +309,11 @@ export default function PermissionMatrixScreen(): JSX.Element {
       </header>
 
       {errorMsg && (
-        <div className="rounded-md border border-error bg-error/10 p-3 text-sm" data-testid="error-toast">
+        <div
+          role="alert"
+          className="rounded-md border border-error bg-error/10 p-3 text-sm"
+          data-testid="error-toast"
+        >
           {errorMsg}
         </div>
       )}
@@ -292,9 +322,9 @@ export default function PermissionMatrixScreen(): JSX.Element {
         <table className="w-full text-sm">
           <thead className="bg-surface-1">
             <tr>
-              <th className="text-left p-3 sticky left-0 bg-surface-1 z-10">Role / Module</th>
+              <th scope="col" className="text-left p-3 sticky left-0 bg-surface-1 z-10">Role / Module</th>
               {MODULES.map((m) => (
-                <th key={m} className="text-left p-3 capitalize">
+                <th key={m} scope="col" className="text-left p-3 capitalize">
                   {m.replace("-", " ")}
                 </th>
               ))}
@@ -412,8 +442,27 @@ export default function PermissionMatrixScreen(): JSX.Element {
   );
 }
 
-// Helper used during optimistic save to snapshot a flat list (matrix doesn't
-// match the API response shape, but stale-while-revalidate is fine here).
-function draftFlat(): unknown[] {
-  return [];
+// Helper used during optimistic save: snapshot the pending draft as the flat
+// row shape the cache/API uses, so the UI shows what the server will accept.
+function draftFlat(draft: Matrix, baseline: Matrix): PermissionRow[] {
+  const rows: PermissionRow[] = [];
+  for (const role of ROLES) {
+    for (const mod of MODULES) {
+      const c = draft[role][mod];
+      const b = baseline[role][mod];
+      const changed =
+        c.view !== b.view || c.create !== b.create || c.edit !== b.edit || c.delete !== b.delete;
+      if (!changed) continue;
+      rows.push({
+        role,
+        module: mod,
+        allowed: c.view,
+        canView: c.view,
+        canCreate: c.create,
+        canEdit: c.edit,
+        canDelete: c.delete,
+      });
+    }
+  }
+  return rows;
 }

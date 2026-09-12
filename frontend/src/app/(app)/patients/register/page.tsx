@@ -4,6 +4,7 @@ import React, { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Button,
+  Dialog,
   Field,
   ToastProvider,
   useToast,
@@ -12,6 +13,15 @@ import { renderIcon } from "@/lib/iconRenderer";
 import { api } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
 import type { ApiDepartment, Patient } from "@/lib/fixtures";
+
+interface DedupSuspect {
+  mrn: string;
+  full_name: string;
+  dob: string;
+  national_id: string | null;
+  match_type: string;
+  similarity: number;
+}
 
 export default function RegisterPatientPage() {
   return (
@@ -34,18 +44,15 @@ function RegisterPatientForm() {
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [dedupOpen, setDedupOpen] = useState(false);
+  const [dedupSuspects, setDedupSuspects] = useState<DedupSuspect[]>([]);
 
   const depts = useQuery<{ departments: ApiDepartment[] }>(queryKeys.departments(), {
     fetcher: () => api.get<{ departments: ApiDepartment[] }>("/admin/departments"),
   });
 
-  const onSubmit = useCallback(async () => {
-    if (!form.name.trim() || !form.dept) {
-      setFormError("Full name and department are required.");
-      return;
-    }
+  const createPatient = useCallback(async () => {
     setSubmitting(true);
-    setFormError(null);
     try {
       const created = await api.post<Patient>("/patients", {
         name: form.name.trim(),
@@ -55,7 +62,7 @@ function RegisterPatientForm() {
         phone: form.phone || undefined,
         insurer: form.insurer,
       });
-      invalidateQueries(queryKeys.patients() as unknown as unknown[]);
+      invalidateQueries(queryKeys.patients() as unknown as unknown[], ["patients", "search"]);
       toast({ tone: "success", message: `Patient ${created.name} registered`, detail: created.mrn });
       router.push(`/patients/${created.mrn}`);
     } catch (e) {
@@ -64,6 +71,43 @@ function RegisterPatientForm() {
       setSubmitting(false);
     }
   }, [form, router, toast]);
+
+  const onSubmit = useCallback(async () => {
+    if (!form.name.trim() || !form.dept) {
+      setFormError("Full name and department are required.");
+      return;
+    }
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      // Live duplicate check before commit (#26): a name+dob match surfaces the
+      // real record for review; the override flow persists the new record.
+      const dedup = await api.post<{ suspects: DedupSuspect[] }>("/patients/dedup-check", {
+        full_name: form.name.trim(),
+        dob: form.dob,
+      });
+      if (dedup.suspects.length > 0) {
+        setDedupSuspects(dedup.suspects);
+        setDedupOpen(true);
+        setSubmitting(false);
+        return;
+      }
+      await createPatient();
+    } catch (e) {
+      setFormError(
+        e instanceof Error
+          ? e.message
+          : "Duplicate check failed — the patient was not created.",
+      );
+      setSubmitting(false);
+    }
+  }, [form, createPatient]);
+
+  const confirmOverride = useCallback(() => {
+    setDedupOpen(false);
+    setDedupSuspects([]);
+    void createPatient();
+  }, [createPatient]);
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4 p-4 lg:p-6" data-testid="register-patient-page">
@@ -161,6 +205,53 @@ function RegisterPatientForm() {
           </Button>
         </div>
       </div>
+
+      <Dialog
+        open={dedupOpen}
+        title="Possible duplicate record"
+        tone="warning"
+        size="md"
+        onClose={() => setDedupOpen(false)}
+        renderIcon={renderIcon}
+        actions={[
+          {
+            label: "Review record",
+            variant: "ghost",
+            icon: "user",
+            onAction: () => {
+              setDedupOpen(false);
+              setDedupSuspects([]);
+              router.push(`/patients/${dedupSuspects[0]?.mrn ?? ""}`);
+            },
+          },
+          {
+            label: "Register anyway",
+            variant: "primary",
+            icon: "user-plus",
+            onAction: () => {
+              confirmOverride();
+            },
+          },
+        ]}
+      >
+        <p className="text-base leading-relaxed text-muted" data-testid="dedup-warning">
+          The duplicate check found {dedupSuspects.length} record
+          {dedupSuspects.length === 1 ? "" : "s"} that may already be this patient.
+          Review the match before creating a new record.
+        </p>
+        <ul className="mt-3 divide-y divide-outline rounded-lg border border-outline">
+          {dedupSuspects.map((s) => (
+            <li key={s.mrn} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+              <span className="num font-semibold">{s.mrn}</span>
+              <span className="min-w-0 flex-1 truncate">{s.full_name}</span>
+              <span className="num text-2xs text-muted">{s.dob}</span>
+              <span className="rounded-full bg-surface-3 px-2 py-0.5 text-2xs font-semibold text-muted">
+                {s.match_type.replace("_", " ")} · {Math.round(s.similarity * 100)}%
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Dialog>
     </div>
   );
 }

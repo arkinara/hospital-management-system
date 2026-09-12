@@ -1052,8 +1052,8 @@ export const handlers = [
       : null;
     const assignments: DepartmentStaffAssignment[] = db.departmentStaff
       .filter((d) => !deptCode || d.departmentId === deptCode)
-      .map((d, i) => ({
-        id: i + 1,
+      .map((d) => ({
+        id: db.departmentStaff.indexOf(d) + 1,
         department_id: d.departmentId,
         department_name: deptNameForId(departmentId(d.departmentId)),
         user_id: d.userId,
@@ -1455,10 +1455,32 @@ export const handlers = [
   http.put("*/permissions/:role/:module", async ({ params, request }) => {
     const role = String(params.role) as Role;
     const moduleName = String(params.module);
-    const body = await readBody<{ allowed: boolean }>(request);
+    const body = await readBody<{
+      allowed?: boolean;
+      canView?: boolean;
+      canCreate?: boolean;
+      canEdit?: boolean;
+      canDelete?: boolean;
+    }>(request);
     const index = db.permissions.findIndex((p) => p.role === role && p.module === moduleName);
     if (index === -1) return notFound("Permission", `${role}/${moduleName}`);
-    db.permissions[index] = { ...db.permissions[index], allowed: body.allowed, canView: body.allowed };
+    const next = { ...db.permissions[index] };
+    if (body.allowed !== undefined) {
+      next.allowed = body.allowed;
+      next.canView = body.allowed;
+    }
+    if (body.canView !== undefined) next.canView = body.canView;
+    if (body.canCreate !== undefined) next.canCreate = body.canCreate;
+    if (body.canEdit !== undefined) next.canEdit = body.canEdit;
+    if (body.canDelete !== undefined) next.canDelete = body.canDelete;
+    // View is implied by any create/edit/delete grant; revoking view revokes all.
+    if (next.canCreate || next.canEdit || next.canDelete) next.canView = true;
+    if (!next.canView) {
+      next.canCreate = false;
+      next.canEdit = false;
+      next.canDelete = false;
+    }
+    db.permissions[index] = next;
     return respond(mockConfig.permissions.put, db.permissions[index], db.permissions[index]);
   }),
 
