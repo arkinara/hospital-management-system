@@ -81,5 +81,5 @@ Closing it means an adapter layer per domain (or re-typing the frontend to the b
 Smaller leftovers:
 
 - `environmentMatchGlobs` in `vitest.config.ts` is deprecated in Vitest 3 and removed in 4; migrate to `test.projects` before upgrading.
-- CI pins Node 20. The `localStorage` shim in `vitest.setup.ts` is what lets the suite also run on Node ≥24 locally.
+- CI ran on Node 20, where jsdom 30 cannot load at all (`TypeError: webidl.util.markAsUncloneable is not a function` out of undici). That is why the pre-existing state-coverage job had never passed. CI now pins Node 22; the `localStorage` shim in `vitest.setup.ts` is what lets the same suite run on Node ≥24 locally.
 - No CI job runs the e2e journeys against a live backend — they run entirely against MSW, so they cannot catch the drift in this section.
