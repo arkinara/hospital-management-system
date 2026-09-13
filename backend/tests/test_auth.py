@@ -395,3 +395,79 @@ def _db_conn():
         conn.commit()
     finally:
         conn.close()
+
+
+def test_password_reset_revokes_live_sessions():
+    """A reset is the moment a stolen refresh token must stop working."""
+    import time as _time
+
+    from app.db import get_db
+    from app.security import hash_refresh_token
+
+    email = "nurse@hospital.test"
+    original = "Hospital2025!"
+    session = login(email, original)
+    refresh_token = session["refresh_token"]
+
+    client.post("/auth/forgot-password", json={"email": email})
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT pr.id FROM password_resets pr JOIN users u ON u.id = pr.user_id "
+            "WHERE u.email = ? AND pr.used_at IS NULL ORDER BY pr.id DESC",
+            (email,),
+        ).fetchone()
+        assert row is not None
+        # The emailed token is not recoverable from its hash, so mint a known one.
+        token = "reset-token-probe"
+        conn.execute(
+            "UPDATE password_resets SET token_hash = ? WHERE id = ?",
+            (hash_refresh_token(token), row["id"]),
+        )
+
+    new_password = "Hospital2026!"
+    reset = client.post("/auth/reset-password", json={"token": token, "new_password": new_password})
+    assert reset.status_code == 204, reset.text
+
+    # The pre-reset refresh token must no longer rotate.
+    assert client.post("/auth/refresh", json={"refresh_token": refresh_token}).status_code == 401
+    assert login(email, new_password)["access_token"]
+
+    # Leave the seeded password as the rest of the suite expects it.
+    restored = client.post("/auth/forgot-password", json={"email": email})
+    assert restored.status_code == 204
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT pr.id FROM password_resets pr JOIN users u ON u.id = pr.user_id "
+            "WHERE u.email = ? AND pr.used_at IS NULL ORDER BY pr.id DESC",
+            (email,),
+        ).fetchone()
+        conn.execute(
+            "UPDATE password_resets SET token_hash = ? WHERE id = ?",
+            (hash_refresh_token("restore-token-probe"), row["id"]),
+        )
+    assert (
+        client.post(
+            "/auth/reset-password",
+            json={"token": "restore-token-probe", "new_password": original},
+        ).status_code
+        == 204
+    )
+    assert _time.time() > 0
+
+
+def test_production_requires_an_explicit_jwt_secret():
+    """A random per-restart secret in production is an outage, not a default."""
+    import pytest
+
+    from app.config import Settings, get_settings
+
+    get_settings.cache_clear()
+    try:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setenv("ENVIRONMENT", "production")
+            mp.delenv("JWT_SECRET", raising=False)
+            mp.setattr(Settings, "model_config", {**Settings.model_config, "env_file": None})
+            with pytest.raises(RuntimeError, match="JWT_SECRET"):
+                get_settings()
+    finally:
+        get_settings.cache_clear()

@@ -70,6 +70,14 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     settings = Settings()
     if not settings.jwt_secret:
+        # In production a random secret is not a convenience, it is an outage:
+        # every restart invalidates all sessions, and two workers sign tokens
+        # the other rejects. Refuse to boot instead.
+        if settings.is_production:
+            raise RuntimeError(
+                "JWT_SECRET must be set when ENVIRONMENT=production. Generate one with "
+                "`python -c 'import secrets; print(secrets.token_urlsafe(48))'`."
+            )
         settings.jwt_secret = _secrets.token_urlsafe(48)
         warnings.warn(
             "JWT_SECRET is not set. Using a random per-startup secret — sessions will "

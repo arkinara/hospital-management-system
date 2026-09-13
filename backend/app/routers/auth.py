@@ -273,6 +273,10 @@ async def reset_password(body: ResetPasswordRequest) -> None:
             (hash_password(body.new_password), reset["user_id"]),
         )
         conn.execute("UPDATE password_resets SET used_at = ? WHERE id = ?", (now, reset["id"]))
+        conn.execute(
+            "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+            (now, reset["user_id"]),
+        )
     write_audit(reset["user_id"], "password.reset", "user", reset["user_id"])
     return None
 
@@ -289,6 +293,10 @@ async def change_password(
         conn.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
             (hash_password(body.new_password), user["id"]),
+        )
+        conn.execute(
+            "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+            (int(time.time()), user["id"]),
         )
     write_audit(user["id"], "password.change", "user", user["id"])
     return None
