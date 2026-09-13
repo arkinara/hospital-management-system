@@ -16,7 +16,8 @@ import {
 import { renderIcon } from "@/lib/iconRenderer";
 import { api } from "@/lib/api/client";
 import { useQuery } from "@/lib/api/queryCache";
-import type { VisitNote } from "@/lib/fixtures";
+import { toFrontendVisitNote } from "@/lib/api/serialize/records";
+import type { BackendVisitNote, VisitNote } from "@/lib/fixtures";
 
 type Filter = "unsigned" | "all";
 
@@ -32,10 +33,12 @@ export default function MedicalRecordsPage() {
   const [filter, setFilter] = useState<Filter>("unsigned");
 
   const visits = useQuery<{ visits: VisitNote[] }>(["visits", "worklist", filter], {
-    fetcher: () =>
-      api.get<{ visits: VisitNote[] }>("/medical-records/visits", {
+    fetcher: async () => {
+      const res = await api.get<{ visits: BackendVisitNote[] }>("/medical-records/visits", {
         query: filter === "unsigned" ? { signed: false } : {},
-      }),
+      });
+      return { visits: (res.visits ?? []).map((v) => toFrontendVisitNote(v)) };
+    },
   });
 
   const rows = visits.data?.visits ?? [];

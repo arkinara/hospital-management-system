@@ -413,6 +413,22 @@ function bePayment(p: Payment): Record<string, unknown> {
   };
 }
 
+function beCarePlanItem(c: CarePlanItem): Record<string, unknown> {
+  return {
+    id: Number(String(c.id).replace(/\D/g, "")) || c.id,
+    patient_id: patientIdFor(db.patients.find((p) => p.mrn === c.patient)),
+    source_visit_note_id: c.sourceVisitNoteId
+      ? Number(String(c.sourceVisitNoteId).replace(/\D/g, ""))
+      : null,
+    description: c.description,
+    due_at: Math.floor(Date.parse(c.dueAt) / 1000) || FIXED_EPOCH,
+    priority: c.priority,
+    completed: c.completed,
+    completed_by: c.completedBy,
+    created_at: FIXED_EPOCH,
+  };
+}
+
 function readBody<T>(request: Request): Promise<T> {
   return request.json() as Promise<T>;
 }
@@ -608,7 +624,7 @@ export const handlers = [
   // ---- Patients -----------------------------------------------------------
   http.get("*/patients/:id/timeline", async ({ params }) => {
     const id = String(params.id);
-    const patient = db.patients.find((p) => p.mrn === id);
+    const patient = findPatient(id);
     if (!patient) return notFound("Patient", id);
 
     const visits: TimelineEntry[] = db.visitNotes
@@ -1439,12 +1455,16 @@ export const handlers = [
 
   http.get("*/medical-records/visits", async ({ request }) => {
     const url = new URL(request.url);
-    const doctorCode = url.searchParams.get("doctor_id");
-    const state = url.searchParams.get("state");
+    const doctorId = url.searchParams.get("doctor_id");
+    const signed = url.searchParams.get("signed");
     let items = db.visitNotes;
-    if (doctorCode) items = items.filter((v) => v.doctor === doctorCode);
-    if (state) items = items.filter((v) => v.status === state);
-    return respond(mockConfig.records.visits, { visits: items }, { visits: [] });
+    if (doctorId) items = items.filter((v) => String(beVisitNote(v).doctor_id) === doctorId);
+    if (signed !== null) items = items.filter((v) => Boolean(v.signedAt) === (signed === "true"));
+    return respond(
+      mockConfig.records.visits,
+      { visits: items.map(beVisitNote) },
+      { visits: [] },
+    );
   }),
 
   http.get("*/medical-records/vitals/review-queue", async () => {
@@ -1459,7 +1479,7 @@ export const handlers = [
       )
       .map((v) => ({
         id: v.id,
-        patient_id: v.patient,
+        patient_id: patientIdFor(findPatient(v.patient)),
         patient_mrn: v.patient,
         patient_name: patientName(v.patient),
         recorded_at_iso: v.recordedAt,
@@ -1480,12 +1500,13 @@ export const handlers = [
 
   http.get("*/medical-records/patients/:id/care-plan", async ({ params }) => {
     const id = String(params.id);
-    const patient = db.patients.find((p) => p.mrn === id);
+    const patient = findPatient(id);
     if (!patient) return notFound("Patient", id);
     const items = db.carePlanItems
-      .filter((c) => c.patient === id && !c.completed)
+      .filter((c) => c.patient === patient.mrn && !c.completed)
       .sort((a, b) => String(a.dueAt).localeCompare(String(b.dueAt)));
-    return respond(mockConfig.records.carePlan, { patient_id: id, items }, { patient_id: id, items: [] });
+    const payload = { patient_id: patientIdFor(patient), items: items.map(beCarePlanItem) };
+    return respond(mockConfig.records.carePlan, payload, { patient_id: patientIdFor(patient), items: [] });
   }),
 
   http.post("*/medical-records/care-plan/:itemId/complete", async ({ params }) => {
@@ -1493,7 +1514,11 @@ export const handlers = [
     const index = db.carePlanItems.findIndex((c) => c.id === itemId);
     if (index === -1) return notFound("Care plan item", itemId);
     db.carePlanItems[index] = { ...db.carePlanItems[index], completed: true, completedBy: "U-104" };
-    return respond(mockConfig.records.carePlan, db.carePlanItems[index], db.carePlanItems[index]);
+    return respond(
+      mockConfig.records.carePlan,
+      beCarePlanItem(db.carePlanItems[index]),
+      beCarePlanItem(db.carePlanItems[index]),
+    );
   }),
 
   http.post("*/medical-records/visits/:visitId/sign", async ({ params, request }) => {
@@ -1609,8 +1634,8 @@ export const handlers = [
     };
     return respond(
       mockConfig.vitals.create,
-      db.carePlanItems[index],
-      db.carePlanItems[index],
+      beCarePlanItem(db.carePlanItems[index]),
+      beCarePlanItem(db.carePlanItems[index]),
     );
   }),
 

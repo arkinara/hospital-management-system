@@ -11,16 +11,19 @@ import type {
   BackendClinicalSummary,
   BackendHistoryEvent,
   BackendPatient,
-  BackendPrescription,
-  BackendVisitNote,
   ClinicalSummary,
   HistoryEvent,
   Patient,
   PatientAllergy,
-  Prescription,
-  VisitNote,
 } from "@/lib/fixtures";
 import { toDateOnly, toIso } from "./coerce";
+
+// Visit-note / prescription adapters live in the records serializer; re-export
+// so existing patient-screen imports keep working.
+export {
+  toFrontendPrescription,
+  toFrontendVisitNote,
+} from "./records";
 
 type Loose = Record<string, unknown>;
 
@@ -103,36 +106,4 @@ export function toFrontendHistoryEvent(row: BackendHistoryEvent | Loose): Histor
   };
 }
 
-export function toFrontendPrescription(row: BackendPrescription | Loose): Prescription {
-  const r = row as Loose;
-  return {
-    id: String(r.id ?? ""),
-    visitNoteId: String(r.visit_note_id ?? ""),
-    medication: String(r.medication ?? ""),
-    dosage: String(r.dosage ?? ""),
-    frequency: String(r.frequency ?? ""),
-    durationDays: Number(r.duration_days ?? r.durationDays ?? 0),
-  };
-}
 
-/** `BackendVisitNote` -> render `VisitNote`. Prescriptions are a separate call. */
-export function toFrontendVisitNote(
-  row: BackendVisitNote | Loose,
-  prescriptions: Array<BackendPrescription | Loose> = [],
-): VisitNote {
-  const r = row as Loose;
-  return {
-    id: String(r.id ?? ""),
-    appointmentId: r.appointment_id != null ? String(r.appointment_id) : null,
-    patient: String(r.patient_id ?? r.patient ?? ""),
-    doctor: String(r.doctor ?? r.doctor_id ?? "—"),
-    dept: String(r.dept ?? r.department_id ?? "—"),
-    chiefComplaint: String(r.chief_complaint ?? ""),
-    diagnosis: String(r.diagnosis ?? ""),
-    clinicalNotes: String(r.clinical_notes ?? ""),
-    status: (r.status as VisitNote["status"]) ?? "draft",
-    signedAt: toIso(r.signed_at),
-    createdAt: toIso(r.created_at) ?? String(r.created_at ?? ""),
-    prescriptions: prescriptions.map(toFrontendPrescription),
-  };
-}

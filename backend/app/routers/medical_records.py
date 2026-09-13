@@ -804,7 +804,8 @@ def vitals_review_queue(
         cols = _table_columns(conn, "vitals")
         unacked = "v.acknowledged_at IS NULL" if "acknowledged_at" in cols else "1=1"
         sql = (
-            "SELECT v.* FROM vitals v JOIN patients p ON p.id = v.patient_id "
+            "SELECT v.*, p.mrn AS patient_mrn, p.full_name AS patient_name "
+            "FROM vitals v JOIN patients p ON p.id = v.patient_id "
             "WHERE v.recorded_at >= ? AND " + unacked + " "
             "AND (v.systolic > 180 OR v.spo2 < 90 OR v.heart_rate > 130 OR v.heart_rate < 40)"
         )

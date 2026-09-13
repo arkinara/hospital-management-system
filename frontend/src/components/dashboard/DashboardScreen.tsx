@@ -21,13 +21,16 @@ import { api } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
 import { useCurrentSession } from "@/lib/auth/currentUserContext";
 import { toFrontendPatient } from "@/lib/api/serialize/patients";
-import { TODAY, byDoctor, deptName, doctors as fixtureDoctors, rp, users as fixtureUsers } from "@/lib/fixtures";
+import { toFrontendCarePlanItem, toFrontendVisitNote } from "@/lib/api/serialize/records";
+import { TODAY, byDoctor, deptName, rp } from "@/lib/fixtures";
 import type {
   AdminUser,
   ApiDepartment,
   Appointment,
   AuthSession,
+  BackendCarePlanItem,
   BackendPatient,
+  BackendVisitNote,
   CarePlanItem,
   Invoice,
   MyPatient,
@@ -273,12 +276,13 @@ function RevenueMonthWidget() {
 }
 
 function PendingRecordsWidget({ doctorId, role }: WidgetProps) {
-  const doctorCode = doctorId ? fixturesDoctorCode(doctorId) : undefined;
   const q = useQuery<{ visits: VisitNote[] }>(["visits", "worklist", String(doctorId ?? "all")], {
-    fetcher: () =>
-      api.get<{ visits: VisitNote[] }>("/medical-records/visits", {
-        query: role === "Doctor" && doctorCode ? { doctor_id: doctorCode } : {},
-      }),
+    fetcher: async () => {
+      const res = await api.get<{ visits: BackendVisitNote[] }>("/medical-records/visits", {
+        query: role === "Doctor" && doctorId ? { doctor_id: doctorId } : {},
+      });
+      return { visits: (res.visits ?? []).map((v) => toFrontendVisitNote(v)) };
+    },
   });
   const pending = (q.data?.visits ?? []).filter((v) => v.status === "draft" || v.status === "submitted");
   const state = widgetState(q, (d) => d.visits.length === 0);
@@ -618,11 +622,13 @@ function CarePlanWidget({ userId }: WidgetProps) {
       const assigned = await api.get<{ patients: MyPatient[] }>(`/admin/users/${userId}/my-patients`, { query: { shift_date: TODAY } });
       const plans = await Promise.all(
         assigned.patients.slice(0, 8).map((p) =>
-          api.get<{ patient_id: string; items: CarePlanItem[] }>(`/medical-records/patients/${p.mrn}/care-plan`),
+          api.get<{ patient_id: number; items: BackendCarePlanItem[] }>(
+            `/medical-records/patients/${p.patient_id}/care-plan`,
+          ),
         ),
       );
       const items = plans
-        .flatMap((pl) => pl.items)
+        .flatMap((pl) => (pl.items ?? []).map(toFrontendCarePlanItem))
         .filter((it) => !it.completed)
         .sort((a, b) => (a.priority === "high" ? -1 : b.priority === "high" ? 1 : 0))
         .slice(0, 8);
@@ -668,12 +674,6 @@ function CarePlanWidget({ userId }: WidgetProps) {
 // ---------------------------------------------------------------------------
 // Widget factory
 // ---------------------------------------------------------------------------
-
-function fixturesDoctorCode(userId: number): string | undefined {
-  const staff = fixtureUsers[userId - 1];
-  if (!staff) return undefined;
-  return fixtureDoctors.find((d) => d.userId === staff.id)?.id;
-}
 
 function buildDefinitions(props: WidgetProps, widgets: Widget[]): WidgetDefinition[] {
   const renderers: Record<string, () => React.ReactNode> = {

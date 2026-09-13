@@ -23,9 +23,9 @@ import { byDoctor, deptName } from "@/lib/fixtures";
 import type {
   BackendClinicalSummary,
   BackendPatient,
+  BackendVisitNote,
   ClinicalSummary,
   Patient,
-  VisitNote,
 } from "@/lib/fixtures";
 
 interface PendingPrescription {
@@ -158,9 +158,9 @@ function RecordEntryScreen() {
   );
 
   const createVisitWithRx = useCallback(
-    async (body: NewVisitBody): Promise<VisitNote> => {
+    async (body: NewVisitBody): Promise<BackendVisitNote> => {
       const resolved_id = await resolvePatientId(String(body.patient_id));
-      const visit = await api.post<VisitNote>("/medical-records/visits", {
+      const visit = await api.post<BackendVisitNote>("/medical-records/visits", {
         ...body,
         patient_id: resolved_id,
       });
