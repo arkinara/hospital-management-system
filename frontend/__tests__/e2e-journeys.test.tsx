@@ -108,7 +108,7 @@ async function receptionistJourney(): Promise<JourneyStep[]> {
   await signIn("receptionist@hospital.test");
   steps.push({ route: "/dashboard", note: "Signed in as receptionist" });
 
-  const patient = await api.post<{ mrn: string }>("/patients", {
+  const patient = await api.post<{ id: number; mrn: string }>("/patients", {
     full_name: "E2E Receptionist Patient",
     dob: "1990-01-01",
     phone: "081234567890",
@@ -130,16 +130,18 @@ async function receptionistJourney(): Promise<JourneyStep[]> {
   const checked = await api.post<{ status: string }>(`/appointments/${appt.id}/check-in`);
   steps.push({ route: "/appointments", note: `Checked in — status ${checked.status}` });
 
-  const invoice = await api.post<{ id: string }>("/billing/invoices", {
-    patient: patient.mrn,
-    total: 150000,
+  const invoice = await api.post<{ id: number; total_amount: number }>("/billing/invoices", {
+    patient_id: patient.id,
+    line_items: [
+      { code: "CONS-GEN", description: "E2E consultation", quantity: 1, unit_amount: 150000 },
+    ],
   });
   steps.push({ route: "/billing", note: `Invoice ${invoice.id} created` });
 
   await api.post(`/billing/invoices/${invoice.id}/payments`, { amount: 150000, method: "cash" });
-  const list = await api.get<{ invoices: Array<{ id: string; status: string }> }>(
+  const list = await api.get<{ invoices: Array<{ id: number; status: string }> }>(
     "/billing/invoices",
-    { query: { patient: patient.mrn } },
+    { query: { patient_id: patient.id } },
   );
   const paid = list.invoices.find((i) => i.id === invoice.id);
   steps.push({

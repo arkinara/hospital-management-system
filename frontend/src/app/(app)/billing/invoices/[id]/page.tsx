@@ -20,14 +20,10 @@ import { api } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries, setOptimistic, queryCache } from "@/lib/api/queryCache";
 import { rp } from "@/lib/fixtures";
 import { claimStatusMeta, invoiceStatusMeta } from "@/lib/statusHelpers";
-import type { Claim, Invoice, InvoiceLine, Payment } from "@/lib/fixtures";
+import { toFrontendInvoiceDetail } from "@/lib/api/serialize/billing";
+import type { Invoice } from "@/lib/fixtures";
 
-interface InvoiceDetail {
-  invoice: Invoice;
-  line_items: InvoiceLine[];
-  payments: Payment[];
-  claims: Claim[];
-}
+type InvoiceDetail = ReturnType<typeof toFrontendInvoiceDetail>;
 
 export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
   return (
@@ -43,7 +39,12 @@ function InvoiceDetailBody({ id }: { id: string }) {
   const [payOpen, setPayOpen] = useState(false);
 
   const detail = useQuery<InvoiceDetail>(queryKeys.invoice(id), {
-    fetcher: () => api.get<InvoiceDetail>(`/billing/invoices/${id}`),
+    fetcher: async () => {
+      const res = await api.get<Parameters<typeof toFrontendInvoiceDetail>[0]>(
+        `/billing/invoices/${id}`,
+      );
+      return toFrontendInvoiceDetail(res);
+    },
   });
 
   const invoice = detail.data?.invoice;

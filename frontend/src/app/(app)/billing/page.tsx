@@ -18,7 +18,8 @@ import { useQuery, queryKeys } from "@/lib/api/queryCache";
 import { api } from "@/lib/api/client";
 import { rp } from "@/lib/fixtures";
 import { claimStatusMeta, invoiceStatusMeta } from "@/lib/statusHelpers";
-import type { Claim, Invoice } from "@/lib/fixtures";
+import { toFrontendClaim, toFrontendInvoice } from "@/lib/api/serialize/billing";
+import type { BackendClaim, BackendInvoice, Claim, Invoice } from "@/lib/fixtures";
 
 type TabId = "invoices" | "claims";
 
@@ -27,10 +28,16 @@ export default function BillingPage() {
   const [tab, setTab] = useState<TabId>("invoices");
 
   const invoices = useQuery<{ invoices: Invoice[] }>(queryKeys.invoices(), {
-    fetcher: () => api.get<{ invoices: Invoice[] }>("/billing/invoices"),
+    fetcher: async () => {
+      const res = await api.get<{ invoices: BackendInvoice[] }>("/billing/invoices");
+      return { invoices: (res.invoices ?? []).map((i) => toFrontendInvoice(i)) };
+    },
   });
   const claims = useQuery<{ claims: Claim[] }>(queryKeys.claims(), {
-    fetcher: () => api.get<{ claims: Claim[] }>("/billing/claims"),
+    fetcher: async () => {
+      const res = await api.get<{ claims: BackendClaim[] }>("/billing/claims");
+      return { claims: (res.claims ?? []).map(toFrontendClaim) };
+    },
     enabled: tab === "claims",
   });
 

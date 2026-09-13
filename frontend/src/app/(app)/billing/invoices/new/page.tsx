@@ -13,7 +13,7 @@ import { api } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
 import { toFrontendPatient } from "@/lib/api/serialize/patients";
 import { deptName, rp } from "@/lib/fixtures";
-import type { BackendPatient, Invoice, InvoiceLine, Patient } from "@/lib/fixtures";
+import type { BackendInvoice, BackendPatient } from "@/lib/fixtures";
 
 interface LineDraft {
   key: number;
@@ -35,24 +35,25 @@ function NewInvoiceForm() {
   const router = useRouter();
   const { toast } = useToast();
   const [patientQ, setPatientQ] = useState("");
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<BackendPatient | null>(null);
   const [insurer, setInsurer] = useState("Self-pay");
   const [lines, setLines] = useState<LineDraft[]>([{ key: 1, code: "", desc: "", qty: "1", unit: "" }]);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const patientSearch = useQuery<{ patients: Patient[] }>(
+  const patientSearch = useQuery<{ patients: BackendPatient[] }>(
     queryKeys.patients({ q: patientQ, page: 1, page_size: 6 }),
     {
       fetcher: async () => {
         const res = await api.get<{ patients: BackendPatient[] }>("/patients", {
           query: { query: patientQ || undefined, page: 1, page_size: 6 },
         });
-        return { patients: (res.patients ?? []).map(toFrontendPatient) };
+        return { patients: res.patients ?? [] };
       },
     },
   );
 
+  const selected = selectedPatient ? toFrontendPatient(selectedPatient) : null;
   const total = lines.reduce((sum, l) => sum + (Number(l.qty) || 0) * (Number(l.unit) || 0), 0);
 
   const updateLine = useCallback((key: number, patch: Partial<LineDraft>) => {
@@ -69,24 +70,22 @@ function NewInvoiceForm() {
       setFormError("Add at least one line item with a description and a unit amount.");
       return;
     }
-    const lineItems: InvoiceLine[] = validLines.map((l) => ({
+    const lineItems = validLines.map((l) => ({
       code: l.code.trim() || `ITEM-${l.key}`,
-      desc: l.desc.trim(),
-      qty: Number(l.qty) || 1,
-      unit: Number(l.unit),
-      dept: selectedPatient.dept,
+      description: l.desc.trim(),
+      quantity: Number(l.qty) || 1,
+      unit_amount: Number(l.unit),
     }));
     setSubmitting(true);
     setFormError(null);
     try {
-      const created = await api.post<Invoice & { id: string }>("/billing/invoices", {
-        patient: selectedPatient.mrn,
-        insurer,
-        total: lineItems.reduce((s, l) => s + l.qty * l.unit, 0),
-        lines: lineItems,
+      const created = await api.post<BackendInvoice>("/billing/invoices", {
+        patient_id: selectedPatient.id,
+        payer_name: insurer,
+        line_items: lineItems,
       });
       invalidateQueries(queryKeys.invoices() as unknown as unknown[]);
-      toast({ tone: "success", message: `Invoice ${created.id} created`, detail: `${selectedPatient.name} · ${rp(created.total)}` });
+      toast({ tone: "success", message: `Invoice ${created.id} created`, detail: `${selectedPatient.full_name} · ${rp(created.total_amount)}` });
       router.push(`/billing/invoices/${created.id}`);
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Could not create the invoice.");
@@ -111,15 +110,15 @@ function NewInvoiceForm() {
       <div className="card space-y-5 !p-4">
         <section aria-label="Patient">
           <h2 className="mb-2 text-base font-semibold">Patient</h2>
-          {selectedPatient ? (
+          {selected ? (
             <div className="flex items-center gap-2 rounded-lg border border-outline bg-surface-1 p-3">
               <span className="grid h-9 w-9 place-items-center rounded-full bg-primary-container text-primary-container-foreground">
-                {selectedPatient.name.slice(0, 1).toUpperCase()}
+                {selected.name.slice(0, 1).toUpperCase()}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-base font-medium">{selectedPatient.name}</p>
+                <p className="text-base font-medium">{selected.name}</p>
                 <p className="num text-2xs text-muted">
-                  {selectedPatient.mrn} · {deptName(selectedPatient.dept)} · {selectedPatient.insurer}
+                  {selected.mrn} · {deptName(selected.dept)} · {selected.insurer}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSelectedPatient(null)}>
@@ -147,13 +146,13 @@ function NewInvoiceForm() {
                         onClick={() => {
                           setSelectedPatient(p);
                           setPatientQ("");
-                          setInsurer(p.insurer);
+                          setInsurer(p.payer_name ?? "Self-pay");
                         }}
                         className="press flex min-h-12 w-full items-center gap-2 px-3 text-left hover:bg-surface-2"
                       >
                         <span className="num font-semibold">{p.mrn}</span>
-                        <span className="flex-1">{p.name}</span>
-                        <span className="text-2xs text-muted">{p.insurer}</span>
+                        <span className="flex-1">{p.full_name}</span>
+                        <span className="text-2xs text-muted">{p.payer_name ?? "Self-pay"}</span>
                       </button>
                     </li>
                   ))}

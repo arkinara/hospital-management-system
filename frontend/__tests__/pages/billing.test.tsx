@@ -34,7 +34,7 @@ afterAll(() => server.close());
 describe("BillingPage (#7)", () => {
   it("lists invoices and claims across the two tabs", async () => {
     render(<BillingPage />);
-    expect((await screen.findAllByText("INV-2026-0918")).length).toBeGreaterThan(0);
+    expect(await screen.findByText(/newest first/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Rp/i).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("tab", { name: /claims/i }));
@@ -57,15 +57,14 @@ describe("BillingPage (#7)", () => {
 
 describe("InvoiceDetailPage (#7)", () => {
   it("renders line items, payments and claims", async () => {
-    render(<InvoiceDetailPage params={{ id: "INV-2026-0918" }} />);
-    expect(await screen.findByText("INV-2026-0918")).toBeInTheDocument();
-    expect(screen.getByText(/cardiology consultation/i)).toBeInTheDocument();
+    render(<InvoiceDetailPage params={{ id: "1" }} />);
+    expect(await screen.findByText(/cardiology consultation/i)).toBeInTheDocument();
     expect(screen.getByText(/record payment/i)).toBeInTheDocument();
   });
 
   it("records a payment through the dialog", async () => {
     const user = userEvent.setup();
-    render(<InvoiceDetailPage params={{ id: "INV-2026-0918" }} />);
+    render(<InvoiceDetailPage params={{ id: "1" }} />);
     await screen.findByText(/cardiology consultation/i);
     await user.click(screen.getByRole("button", { name: /record payment/i }));
     const amount = screen.getByLabelText("Amount");

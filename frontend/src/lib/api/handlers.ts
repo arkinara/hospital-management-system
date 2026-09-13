@@ -32,6 +32,7 @@ import type {
   DoctorAvailability,
   HistoryEvent,
   Invoice,
+  InvoiceLine,
   MyPatient,
   Patient,
   PatientAllergy,
@@ -347,6 +348,68 @@ function beHistoryEvent(e: {
     summary: e.summary,
     source_id: e.source_id,
     signed: e.signed,
+  };
+}
+
+/** Fixture invoice (string id) -> the integer id the backend addresses. */
+function fixtureInvoiceId(ref: string): number {
+  const index = db.invoices.findIndex((i) => i.id === ref);
+  return index === -1 ? 0 : index + 1;
+}
+
+function beInvoice(inv: Invoice): Record<string, unknown> {
+  return {
+    id: fixtureInvoiceId(inv.id),
+    patient_id: patientIdFor(db.patients.find((p) => p.mrn === inv.patient)),
+    visit_note_id: null,
+    payer_name: inv.insurer,
+    total_amount: inv.total,
+    amount_paid: inv.paid,
+    status: inv.status,
+    created_at: Math.floor(Date.parse(`${inv.date}T09:00:00Z`) / 1000) || FIXED_EPOCH,
+  };
+}
+
+function beInvoiceLine(li: InvoiceLine, invoiceId: number): Record<string, unknown> {
+  return {
+    id: 0,
+    invoice_id: invoiceId,
+    code: li.code,
+    description: li.desc,
+    quantity: li.qty,
+    unit_amount: li.unit,
+    item_type: li.code.startsWith("PHARM")
+      ? "medication"
+      : li.code.startsWith("ROOM")
+        ? "room"
+        : li.code.startsWith("PROC")
+          ? "procedure"
+          : "consultation",
+    department_id: departmentId(li.dept),
+  };
+}
+
+function beClaim(c: Claim): Record<string, unknown> {
+  return {
+    id: Number(String(c.id).replace(/\D/g, "")) || c.id,
+    invoice_id: fixtureInvoiceId(c.invoiceId),
+    payer_name: c.payerName,
+    claim_number: c.claimNumber,
+    status: c.status,
+    denial_reason: c.denialReason,
+    appeal_deadline: c.appealDeadline ? Math.floor(Date.parse(c.appealDeadline) / 1000) : null,
+    submitted_at: c.submittedAt ? Math.floor(Date.parse(c.submittedAt) / 1000) : null,
+  };
+}
+
+function bePayment(p: Payment): Record<string, unknown> {
+  return {
+    id: Number(String(p.id).replace(/\D/g, "")) || p.id,
+    invoice_id: fixtureInvoiceId(p.invoiceId),
+    amount: p.amount,
+    method: p.method,
+    reference: p.reference,
+    paid_at: Math.floor(Date.parse(p.paidAt) / 1000) || FIXED_EPOCH,
   };
 }
 
@@ -1554,66 +1617,101 @@ export const handlers = [
   // ---- Billing ------------------------------------------------------------
   http.get("*/billing/invoices", async ({ request }) => {
     const url = new URL(request.url);
-    const patient = url.searchParams.get("patient");
+    const patient = url.searchParams.get("patient_id") ?? url.searchParams.get("patient");
     const status = url.searchParams.get("status");
     let items = db.invoices;
-    if (patient) items = items.filter((i) => i.patient === patient);
+    if (patient) {
+      items = items.filter(
+        (i) =>
+          i.patient === patient ||
+          String(patientIdFor(db.patients.find((p) => p.mrn === i.patient))) === patient,
+      );
+    }
     if (status) items = items.filter((i) => i.status === status);
-    return respond(mockConfig.invoices.list, { invoices: items }, { invoices: [] });
+    return respond(
+      mockConfig.invoices.list,
+      { invoices: items.map((i) => beInvoice(i)) },
+      { invoices: [] },
+    );
   }),
 
   http.post("*/billing/invoices", async ({ request }) => {
-    const body = await readBody<Partial<Invoice>>(request);
+    const body = await readBody<{
+      patient_id?: number | string;
+      payer_name?: string;
+      line_items?: Array<{
+        code?: string;
+        description?: string;
+        quantity?: number;
+        unit_amount?: number;
+      }>;
+    }>(request);
+    const patient = findPatient(String(body.patient_id ?? ""));
+    const lines: InvoiceLine[] = (body.line_items ?? []).map((li) => ({
+      code: String(li.code ?? ""),
+      desc: String(li.description ?? ""),
+      qty: Number(li.quantity ?? 1),
+      unit: Number(li.unit_amount ?? 0),
+      dept: patient?.dept ?? "—",
+    }));
     const invoice: Invoice = {
       id: `INV-2026-${String(1000 + db.invoices.length).slice(-4)}`,
-      patient: body.patient ?? "P-001042",
-      date: body.date ?? fixtures.TODAY,
-      total: body.total ?? 0,
+      patient: patient?.mrn ?? String(body.patient_id ?? ""),
+      date: fixtures.TODAY,
+      total: lines.reduce((s, l) => s + l.qty * l.unit, 0),
       paid: 0,
       status: "unpaid",
-      insurer: body.insurer ?? "Self-pay",
+      insurer: body.payer_name ?? "Self-pay",
       claim: "none",
-      lines: body.lines ?? [],
+      lines,
     };
     db.invoices = [invoice, ...db.invoices];
-    return respond(mockConfig.invoices.create, invoice, invoice);
+    const row = beInvoice(invoice);
+    return respond(mockConfig.invoices.create, row, row);
   }),
 
   http.post("*/billing/invoices/:id/payments", async ({ params, request }) => {
-    const id = String(params.id);
-    const index = db.invoices.findIndex((i) => i.id === id);
-    if (index === -1) return notFound("Invoice", id);
-    const body = await readBody<Partial<Payment>>(request);
-    const amount = body.amount ?? 0;
+    const id = Number(params.id);
+    const invoice = db.invoices[id - 1];
+    if (!invoice) return notFound("Invoice", String(params.id));
+    const body = await readBody<{ amount?: number; method?: Payment["method"]; reference?: string }>(
+      request,
+    );
+    const amount = Number(body.amount ?? 0);
     const payment: Payment = {
       id: `PAY-${3000 + db.payments.length}`,
-      invoiceId: id,
+      invoiceId: invoice.id,
       amount,
       method: body.method ?? "cash",
       reference: body.reference ?? null,
       paidAt: new Date().toISOString(),
     };
     db.payments = [payment, ...db.payments];
-    const invoice = db.invoices[index];
     const paid = invoice.paid + amount;
-    db.invoices[index] = {
+    db.invoices[id - 1] = {
       ...invoice,
       paid,
       status: paid >= invoice.total ? "paid" : paid > 0 ? "partially_paid" : "unpaid",
     };
-    return respond(mockConfig.invoices.payment, payment, payment);
+    const row = bePayment(payment);
+    return respond(mockConfig.invoices.payment, row, row);
   }),
 
   http.get("*/billing/invoices/:id", async ({ params }) => {
-    const id = String(params.id);
-    const invoice = db.invoices.find((i) => i.id === id);
-    if (!invoice) return notFound("Invoice", id);
-    const payments = db.payments.filter((p) => p.invoiceId === id);
-    const claims = db.claims.filter((c) => c.invoiceId === id);
+    const id = Number(params.id);
+    const invoice = db.invoices[id - 1];
+    if (!invoice) return notFound("Invoice", String(params.id));
+    const payments = db.payments.filter((p) => fixtureInvoiceId(p.invoiceId) === id).map(bePayment);
+    const claims = db.claims.filter((c) => fixtureInvoiceId(c.invoiceId) === id).map(beClaim);
     return respond(
       mockConfig.invoices.detail,
-      { invoice, line_items: invoice.lines, payments, claims },
-      { invoice: null as unknown as Invoice, line_items: [], payments: [], claims: [] },
+      {
+        invoice: beInvoice(invoice),
+        line_items: invoice.lines.map((li) => beInvoiceLine(li, id)),
+        payments,
+        claims,
+      },
+      { invoice: null as unknown as Record<string, never>, line_items: [], payments: [], claims: [] },
     );
   }),
 
@@ -1622,7 +1720,11 @@ export const handlers = [
     const status = url.searchParams.get("status");
     let items = db.claims;
     if (status) items = items.filter((c) => c.status === status);
-    return respond(mockConfig.invoices.claims, { claims: items }, { claims: [] });
+    return respond(
+      mockConfig.invoices.claims,
+      { claims: items.map((c) => beClaim(c)) },
+      { claims: [] },
+    );
   }),
 
   // ---- Permissions (admin) ------------------------------------------------

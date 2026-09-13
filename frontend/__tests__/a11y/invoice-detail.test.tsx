@@ -10,7 +10,7 @@ import { axeScan, renderPageAxe, assertNoViolations } from "./helpers";
 const push = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
-  usePathname: () => "/billing/invoices/INV-2026-0918",
+  usePathname: () => "/billing/invoices/1",
 }));
 
 import InvoiceDetailPage from "@/app/(app)/billing/invoices/[id]/page";
@@ -31,7 +31,7 @@ afterAll(() => server.close());
 describe("InvoiceDetailPage a11y (#54)", () => {
   it("has no serious or critical axe violations in the ready state", async () => {
     const container = await renderPageAxe(
-      <InvoiceDetailPage params={{ id: "INV-2026-0918" }} />,
+      <InvoiceDetailPage params={{ id: "1" }} />,
       () => screen.queryAllByText(/record payment/i).length > 0,
     );
     const result = await axeScan(container);
@@ -41,7 +41,7 @@ describe("InvoiceDetailPage a11y (#54)", () => {
   it("has no serious or critical axe violations in the error state", async () => {
     mockConfig.invoices.detail.errorRate = 1;
     const container = await renderPageAxe(
-      <InvoiceDetailPage params={{ id: "INV-2026-0918" }} />,
+      <InvoiceDetailPage params={{ id: "1" }} />,
       () => screen.getAllByRole("alert").length > 0,
     );
     const result = await axeScan(container);
@@ -51,7 +51,7 @@ describe("InvoiceDetailPage a11y (#54)", () => {
   it("announces payment errors in an alert region inside the dialog", async () => {
     const { fireEvent } = await import("@testing-library/react");
     await renderPageAxe(
-      <InvoiceDetailPage params={{ id: "INV-2026-0918" }} />,
+      <InvoiceDetailPage params={{ id: "1" }} />,
       () => screen.queryAllByText(/record payment/i).length > 0,
     );
     fireEvent.click(screen.getByRole("button", { name: /record payment/i }));

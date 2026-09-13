@@ -10,7 +10,7 @@ import { queryCache, queryKeys } from "@/lib/api/queryCache";
 const push = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
-  usePathname: () => "/billing/invoices/INV-2026-0918",
+  usePathname: () => "/billing/invoices/1",
 }));
 
 import InvoiceDetailPage from "@/app/(app)/billing/invoices/[id]/page";
@@ -39,9 +39,9 @@ describe("Billing wiring (#30)", () => {
   });
 
   it("invalidates the invoice detail cache after recording a payment", async () => {
-    const key = queryKeys.invoice("INV-2026-0918");
+    const key = queryKeys.invoice("1");
     queryCache.set(key, { invoice: null, line_items: [], payments: [], claims: [] });
-    render(<InvoiceDetailPage params={{ id: "INV-2026-0918" }} />);
+    render(<InvoiceDetailPage params={{ id: "1" }} />);
     await screen.findByRole("button", { name: /record payment/i });
     fireEvent.click(screen.getByRole("button", { name: /record payment/i }));
     const dialog = await screen.findByRole("dialog");
@@ -52,7 +52,7 @@ describe("Billing wiring (#30)", () => {
   });
 
   it("rejects a payment exceeding the outstanding balance", async () => {
-    render(<InvoiceDetailPage params={{ id: "INV-2026-0918" }} />);
+    render(<InvoiceDetailPage params={{ id: "1" }} />);
     await screen.findByRole("button", { name: /record payment/i });
     fireEvent.click(screen.getByRole("button", { name: /record payment/i }));
     const dialog = await screen.findByRole("dialog");
@@ -90,7 +90,7 @@ describe("Billing wiring (#30)", () => {
         ),
       ),
     );
-    render(<InvoiceDetailPage params={{ id: "INV-2026-0918" }} />);
+    render(<InvoiceDetailPage params={{ id: "1" }} />);
     await screen.findByRole("button", { name: /record payment/i });
     fireEvent.click(screen.getByRole("button", { name: /record payment/i }));
     const dialog = await screen.findByRole("dialog");
