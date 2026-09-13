@@ -3,7 +3,7 @@ import { api, ApiError } from "@/lib/api/client";
 import { resetMockDb } from "@/lib/api/handlers";
 import { mockConfig, resetMockConfig } from "@/lib/api/mockConfig";
 import { server } from "@/lib/api/server";
-import type { Appointment, AuthUser, Patient, Vitals, Widget } from "@/lib/fixtures";
+import type { Appointment, AuthUser, BackendPatient, Vitals, Widget } from "@/lib/fixtures";
 
 process.env.NEXT_PUBLIC_API_URL = "http://localhost:3000";
 
@@ -22,17 +22,19 @@ afterAll(() => {
 
 describe("api client with MSW: happy path", () => {
   it("GET /patients returns typed fixture data", async () => {
-    const res = await api.get<{ patients: Patient[]; total: number }>("/patients");
+    const res = await api.get<{ patients: BackendPatient[]; total: number }>("/patients");
     expect(res.total).toBe(100);
     expect(res.patients[0].mrn).toBe("P-001042");
-    expectTypeOf(res.patients[0]).toEqualTypeOf<Patient>();
+    expectTypeOf(res.patients[0]).toEqualTypeOf<BackendPatient>();
   });
 
   it("GET /patients honours query filters", async () => {
-    const res = await api.get<{ patients: Patient[] }>("/patients", {
+    const res = await api.get<{ patients: BackendPatient[] }>("/patients", {
       query: { dept: "CAR", acuity: "critical" },
     });
-    expect(res.patients.every((p) => p.dept === "CAR" && p.acuity === "critical")).toBe(true);
+    expect(
+      res.patients.every((p) => p.primary_department_id != null && p.acuity === "critical"),
+    ).toBe(true);
   });
 
   it("GET /appointments filters by doctor_id and date", async () => {
@@ -69,7 +71,7 @@ describe("api client with MSW: scenario switches", () => {
   it("forcing the error scenario throws a typed ApiError", async () => {
     mockConfig.patients.list.errorRate = 1;
     const err = await api
-      .get<{ patients: Patient[] }>("/patients")
+      .get<{ patients: BackendPatient[] }>("/patients")
       .then(() => null)
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
@@ -81,7 +83,7 @@ describe("api client with MSW: scenario switches", () => {
 
   it("empty-result scenario returns an empty list", async () => {
     mockConfig.patients.list.emptyResult = true;
-    const res = await api.get<{ patients: Patient[]; total: number }>("/patients");
+    const res = await api.get<{ patients: BackendPatient[]; total: number }>("/patients");
     expect(res.total).toBe(0);
     expect(res.patients).toHaveLength(0);
   });
@@ -89,7 +91,7 @@ describe("api client with MSW: scenario switches", () => {
   it("latency scenario delays the response", async () => {
     mockConfig.patients.list.latency = 150;
     const started = performance.now();
-    await api.get<{ patients: Patient[] }>("/patients");
+    await api.get<{ patients: BackendPatient[] }>("/patients");
     expect(performance.now() - started).toBeGreaterThanOrEqual(120);
   });
 
@@ -104,7 +106,7 @@ describe("api client with MSW: scenario switches", () => {
 describe("api client with MSW: errors", () => {
   it("404 from the mock returns a typed ApiError with envelope fields", async () => {
     const err = await api
-      .get<{ patients: Patient[] }>("/patients/P-DOES-NOT-EXIST")
+      .get<{ patients: BackendPatient[] }>("/patients/P-DOES-NOT-EXIST")
       .then(() => null)
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
@@ -129,17 +131,17 @@ describe("api client with MSW: errors", () => {
 
 describe("api client with MSW: no leakage between tests", () => {
   it("POST /patients creates a row visible to the next read", async () => {
-    const created = await api.post<Patient>("/patients", { name: "Leak Probe" });
+    const created = await api.post<BackendPatient>("/patients", { full_name: "Leak Probe" });
     expect(created.mrn).toMatch(/^P-\d{6}$/);
-    const res = await api.get<{ patients: Patient[]; total: number }>("/patients", {
+    const res = await api.get<{ patients: BackendPatient[]; total: number }>("/patients", {
       query: { q: "Leak Probe" },
     });
     expect(res.patients.length).toBe(1);
   });
 
   it("resetMockDb restores the pristine fixture set", async () => {
-    const res = await api.get<{ patients: Patient[]; total: number }>("/patients");
+    const res = await api.get<{ patients: BackendPatient[]; total: number }>("/patients");
     expect(res.total).toBe(100);
-    expect(res.patients.some((p) => p.name === "Leak Probe")).toBe(false);
+    expect(res.patients.some((p) => p.full_name === "Leak Probe")).toBe(false);
   });
 });

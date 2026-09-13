@@ -11,8 +11,9 @@ import {
 import { renderIcon } from "@/lib/iconRenderer";
 import { api } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
+import { toFrontendPatient } from "@/lib/api/serialize/patients";
 import { deptName, rp } from "@/lib/fixtures";
-import type { Invoice, InvoiceLine, Patient } from "@/lib/fixtures";
+import type { BackendPatient, Invoice, InvoiceLine, Patient } from "@/lib/fixtures";
 
 interface LineDraft {
   key: number;
@@ -43,8 +44,12 @@ function NewInvoiceForm() {
   const patientSearch = useQuery<{ patients: Patient[] }>(
     queryKeys.patients({ q: patientQ, page: 1, page_size: 6 }),
     {
-      fetcher: () =>
-        api.get<{ patients: Patient[] }>("/patients", { query: { q: patientQ || undefined, page: 1, page_size: 6 } }),
+      fetcher: async () => {
+        const res = await api.get<{ patients: BackendPatient[] }>("/patients", {
+          query: { query: patientQ || undefined, page: 1, page_size: 6 },
+        });
+        return { patients: (res.patients ?? []).map(toFrontendPatient) };
+      },
     },
   );
 

@@ -20,12 +20,14 @@ import { renderIcon } from "@/lib/iconRenderer";
 import { api } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
 import { useCurrentSession } from "@/lib/auth/currentUserContext";
+import { toFrontendPatient } from "@/lib/api/serialize/patients";
 import { TODAY, byDoctor, deptName, doctors as fixtureDoctors, rp, users as fixtureUsers } from "@/lib/fixtures";
 import type {
   AdminUser,
   ApiDepartment,
   Appointment,
   AuthSession,
+  BackendPatient,
   CarePlanItem,
   Invoice,
   MyPatient,
@@ -169,7 +171,10 @@ function TodayAppointmentsWidget({ role, navigate }: WidgetProps) {
 
 function RecentPatientsWidget({ navigate }: WidgetProps) {
   const q = useQuery<{ patients: Patient[]; total: number }>(queryKeys.patients({ page: 1, page_size: 5 }), {
-    fetcher: () => api.get<{ patients: Patient[]; total: number }>("/patients", { query: { page: 1, page_size: 5 } }),
+    fetcher: async () => {
+      const res = await api.get<{ patients: BackendPatient[]; total: number }>("/patients", { query: { page: 1, page_size: 5 } });
+      return { total: res.total, patients: (res.patients ?? []).map(toFrontendPatient) };
+    },
   });
   const state = widgetState(q, (d) => d.patients.length === 0);
   return (
@@ -338,7 +343,10 @@ function StaffOnDutyWidget() {
 
 function RegistrationQueueWidget({ navigate }: WidgetProps) {
   const q = useQuery<{ patients: Patient[]; total: number }>(queryKeys.patients({ admission_status: "admitted", page: 1, page_size: 6 }), {
-    fetcher: () => api.get<{ patients: Patient[]; total: number }>("/patients", { query: { admission_status: "admitted", page: 1, page_size: 6 } }),
+    fetcher: async () => {
+      const res = await api.get<{ patients: BackendPatient[]; total: number }>("/patients", { query: { admission_status: "admitted", page: 1, page_size: 6 } });
+      return { total: res.total, patients: (res.patients ?? []).map(toFrontendPatient) };
+    },
   });
   const state = widgetState(q, (d) => d.patients.length === 0);
   return (

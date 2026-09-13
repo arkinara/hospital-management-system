@@ -17,8 +17,16 @@ import {
 import { renderIcon } from "@/lib/iconRenderer";
 import { api, ApiError } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
+import { resolvePatientId } from "@/lib/api/resolvePatientId";
+import { toFrontendClinicalSummary, toFrontendPatient } from "@/lib/api/serialize/patients";
 import { byDoctor, deptName } from "@/lib/fixtures";
-import type { ClinicalSummary, Patient, VisitNote } from "@/lib/fixtures";
+import type {
+  BackendClinicalSummary,
+  BackendPatient,
+  ClinicalSummary,
+  Patient,
+  VisitNote,
+} from "@/lib/fixtures";
 
 interface PendingPrescription {
   medication: string;
@@ -29,12 +37,10 @@ interface PendingPrescription {
 }
 
 interface NewVisitBody {
-  patient_id: string;
-  doctor: string;
-  dept: string;
-  chiefComplaint: string;
+  patient_id: string | number;
+  chief_complaint: string;
   diagnosis: string;
-  clinicalNotes: string;
+  clinical_notes: string;
   [key: string]: unknown;
 }
 
@@ -65,11 +71,19 @@ function RecordEntryScreen() {
   const [signError, setSignError] = useState<string | null>(null);
 
   const patientQuery = useQuery<Patient>(queryKeys.patient(patientId), {
-    fetcher: () => api.get<Patient>(`/patients/${patientId}`),
+    fetcher: async () => {
+      const id = await resolvePatientId(patientId);
+      const row = await api.get<BackendPatient>(`/patients/${id}`);
+      return toFrontendPatient(row);
+    },
     enabled: Boolean(patientId),
   });
   const summaryQuery = useQuery<ClinicalSummary>(["patients", patientId, "clinical-summary"], {
-    fetcher: () => api.get<ClinicalSummary>(`/patients/${patientId}/clinical-summary`),
+    fetcher: async () => {
+      const id = await resolvePatientId(patientId);
+      const row = await api.get<BackendClinicalSummary>(`/patients/${id}/clinical-summary`);
+      return toFrontendClinicalSummary(row);
+    },
     enabled: Boolean(patientId),
   });
 
@@ -136,24 +150,26 @@ function RecordEntryScreen() {
   const buildVisitBody = useCallback(
     (): NewVisitBody => ({
       patient_id: patientId,
-      doctor: patient?.doctor ?? "D02",
-      dept: patient?.dept ?? "GEN",
-      chiefComplaint,
+      chief_complaint: chiefComplaint,
       diagnosis,
-      clinicalNotes,
+      clinical_notes: clinicalNotes,
     }),
-    [patientId, patient, chiefComplaint, diagnosis, clinicalNotes],
+    [patientId, chiefComplaint, diagnosis, clinicalNotes],
   );
 
   const createVisitWithRx = useCallback(
     async (body: NewVisitBody): Promise<VisitNote> => {
-      const visit = await api.post<VisitNote>("/medical-records/visits", body);
+      const resolved_id = await resolvePatientId(String(body.patient_id));
+      const visit = await api.post<VisitNote>("/medical-records/visits", {
+        ...body,
+        patient_id: resolved_id,
+      });
       for (const rx of prescriptions) {
         await api.post(`/medical-records/visits/${visit.id}/prescriptions`, {
           medication: rx.medication,
           dosage: rx.dosage,
           frequency: rx.frequency,
-          durationDays: Number(rx.durationDays),
+          duration_days: Number(rx.durationDays),
           notes: rx.notes || undefined,
         });
       }

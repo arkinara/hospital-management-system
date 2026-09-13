@@ -20,8 +20,19 @@ import {
 import { renderIcon } from "@/lib/iconRenderer";
 import { api } from "@/lib/api/client";
 import { useQuery, queryKeys } from "@/lib/api/queryCache";
+import { resolvePatientId } from "@/lib/api/resolvePatientId";
+import {
+  toFrontendHistoryEvent,
+  toFrontendVisitNote,
+} from "@/lib/api/serialize/patients";
 import { byDoctor, deptName } from "@/lib/fixtures";
-import type { HistoryEvent, VisitNote } from "@/lib/fixtures";
+import type {
+  BackendHistoryEvent,
+  BackendPrescription,
+  BackendVisitNote,
+  HistoryEvent,
+  VisitNote,
+} from "@/lib/fixtures";
 
 const KIND_MAP: Record<HistoryEvent["type"], EntryKind> = {
   visit: "note",
@@ -106,10 +117,16 @@ export default function PatientTimelinePage({ params }: { params: { mrn: string 
   const [toDate, setToDate] = useState("");
   const [source, setSource] = useState<HistoryEvent | null>(null);
 
-  const history = useQuery<{ patient_id: string; events: HistoryEvent[] }>(
+  const history = useQuery<{ patient_id: number | string; events: HistoryEvent[] }>(
     queryKeys.patientTimeline(mrn),
     {
-      fetcher: () => api.get<{ patient_id: string; events: HistoryEvent[] }>(`/medical-records/patients/${mrn}/history`),
+      fetcher: async () => {
+        const id = await resolvePatientId(mrn);
+        const res = await api.get<{ patient_id: number | string; events: BackendHistoryEvent[] }>(
+          `/medical-records/patients/${id}/history`,
+        );
+        return { patient_id: res.patient_id, events: (res.events ?? []).map(toFrontendHistoryEvent) };
+      },
     },
   );
 
@@ -164,7 +181,12 @@ export default function PatientTimelinePage({ params }: { params: { mrn: string 
         : "ready";
 
   const visitQuery = useQuery<{ visit: VisitNote }>(queryKeys.visit(String(source?.source_id ?? "")), {
-    fetcher: () => api.get<{ visit: VisitNote }>(`/medical-records/visits/${String(source?.source_id ?? "")}`),
+    fetcher: async () => {
+      const res = await api.get<{ visit: BackendVisitNote; prescriptions?: BackendPrescription[] }>(
+        `/medical-records/visits/${String(source?.source_id ?? "")}`,
+      );
+      return { visit: toFrontendVisitNote(res.visit, res.prescriptions ?? []) };
+    },
     enabled: source?.type === "visit" && Boolean(source?.source_id),
   });
 

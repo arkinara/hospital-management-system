@@ -235,6 +235,121 @@ function patientName(mrn: string): string {
   return db.patients.find((p) => p.mrn === mrn)?.name ?? mrn;
 }
 
+// ---- Backend row mappers (#57) -------------------------------------------
+//
+// MSW emits the same flat snake_case rows the FastAPI serialisers do, so a
+// green suite exercises the real contract. The pages adapt them back with
+// `lib/api/serialize/*`.
+
+const FIXED_EPOCH = Math.floor(Date.parse("2026-09-09T09:00:00Z") / 1000);
+
+function findPatient(ref: string): Patient | undefined {
+  if (/^\d+$/.test(ref)) return db.patients[Number(ref) - 1];
+  return db.patients.find((p) => p.mrn === ref);
+}
+
+function findVisit(ref: string): VisitNote | undefined {
+  return db.visitNotes.find(
+    (v) =>
+      String(v.id) === ref ||
+      String(Number(String(v.id).replace(/\D/g, ""))) === ref,
+  );
+}
+
+function patientIdFor(p: Patient | undefined): number {
+  const index = p ? db.patients.indexOf(p) : -1;
+  return index === -1 ? 0 : index + 1;
+}
+
+function bePatient(p: Patient): Record<string, unknown> {
+  return {
+    id: patientIdFor(p),
+    mrn: p.mrn,
+    full_name: p.name,
+    dob: p.dob,
+    sex: p.sex.toLowerCase(),
+    national_id: p.nid,
+    phone: p.phone,
+    email: null,
+    address: null,
+    blood_type: null,
+    emergency_contact_name: null,
+    emergency_contact_phone: null,
+    acuity: p.acuity,
+    admission_status: p.status,
+    is_active: true,
+    primary_department_id: departmentId(p.dept),
+    payer_name: p.insurer,
+    created_by: null,
+    created_at: FIXED_EPOCH,
+    updated_at: null,
+  };
+}
+
+function beAllergy(a: PatientAllergy): Record<string, unknown> {
+  return {
+    id: `${a.patient}-${a.substance}`,
+    patient_id: patientIdFor(db.patients.find((p) => p.mrn === a.patient)),
+    allergen: a.substance,
+    severity: a.severity,
+    reaction: null,
+    noted_by: a.notedBy,
+    noted_at: FIXED_EPOCH,
+  };
+}
+
+function patientAllergiesFor(mrn: string): PatientAllergy[] {
+  return fixtures.patientAllergies.filter((a) => a.patient === mrn);
+}
+
+function beVisitNote(v: VisitNote): Record<string, unknown> {
+  return {
+    id: Number(String(v.id).replace(/\D/g, "")) || v.id,
+    appointment_id: v.appointmentId ? Number(String(v.appointmentId).replace(/\D/g, "")) : null,
+    patient_id: patientIdFor(db.patients.find((p) => p.mrn === v.patient)),
+    doctor_id: Number(String(v.doctor).replace(/\D/g, "")) || 0,
+    chief_complaint: v.chiefComplaint,
+    diagnosis: v.diagnosis,
+    clinical_notes: v.clinicalNotes,
+    department_id: departmentId(v.dept),
+    status: v.status,
+    signed_at: v.signedAt ? Math.floor(Date.parse(v.signedAt) / 1000) : null,
+    created_at: Math.floor(Date.parse(v.createdAt) / 1000) || FIXED_EPOCH,
+  };
+}
+
+function bePrescription(rx: Prescription, visit: VisitNote): Record<string, unknown> {
+  return {
+    id: Number(String(rx.id).replace(/\D/g, "")) || rx.id,
+    visit_note_id: Number(String(visit.id).replace(/\D/g, "")) || visit.id,
+    medication: rx.medication,
+    dosage: rx.dosage,
+    frequency: rx.frequency,
+    duration_days: rx.durationDays,
+    created_at: Math.floor(Date.parse(visit.createdAt) / 1000) || FIXED_EPOCH,
+    visit_date: Math.floor(Date.parse(visit.createdAt) / 1000) || FIXED_EPOCH,
+    visit_signed_at: visit.signedAt ? Math.floor(Date.parse(visit.signedAt) / 1000) : null,
+  };
+}
+
+function beHistoryEvent(e: {
+  timestamp: string | null;
+  type: HistoryEvent["type"];
+  department_code: string | null;
+  summary: string;
+  source_id: number | string;
+  signed: boolean;
+}): Record<string, unknown> {
+  return {
+    timestamp: e.timestamp ? Math.floor(Date.parse(e.timestamp) / 1000) : null,
+    type: e.type,
+    department_code: e.department_code,
+    summary: e.summary,
+    source_id: e.source_id,
+    signed: e.signed,
+  };
+}
+
 function readBody<T>(request: Request): Promise<T> {
   return request.json() as Promise<T>;
 }
@@ -476,24 +591,27 @@ export const handlers = [
 
   http.get("*/patients/:id", async ({ params }) => {
     const id = String(params.id);
-    const patient = db.patients.find((p) => p.mrn === id);
+    const patient = findPatient(id);
     if (!patient) return notFound("Patient", id);
-    return respond(mockConfig.patients.detail, patient, null as unknown as Patient);
+    const record = bePatient(patient);
+    record.allergies = patientAllergiesFor(patient.mrn).map(beAllergy);
+    record.departments = [];
+    return respond(mockConfig.patients.detail, record, null as unknown as Record<string, unknown>);
   }),
 
   http.get("*/patients/:id/clinical-summary", async ({ params }) => {
     const id = String(params.id);
-    const patient = db.patients.find((p) => p.mrn === id);
+    const patient = findPatient(id);
     if (!patient) return notFound("Patient", id);
-    const allergies = fixtures.patientAllergies.filter((a) => a.patient === id);
+    const allergies = patientAllergiesFor(patient.mrn);
     const activeRx = db.visitNotes
-      .filter((v) => v.patient === id)
+      .filter((v) => v.patient === patient.mrn)
       .reduce((n, v) => n + v.prescriptions.length, 0);
     const activeAppts = db.appointments.filter(
-      (a) => a.patient === id && a.status !== "cancelled" && a.status !== "no_show" && a.status !== "completed",
+      (a) => a.patient === patient.mrn && a.status !== "cancelled" && a.status !== "no_show" && a.status !== "completed",
     ).length;
     const summary: ClinicalSummary = {
-      id: Number(id.replace(/\D/g, "")),
+      id: patientIdFor(patient),
       mrn: patient.mrn,
       full_name: patient.name,
       dob: patient.dob,
@@ -513,11 +631,23 @@ export const handlers = [
 
   http.get("*/patients/:id/prescriptions", async ({ params }) => {
     const id = String(params.id);
-    const patient = db.patients.find((p) => p.mrn === id);
+    const patient = findPatient(id);
     if (!patient) return notFound("Patient", id);
     const prescriptions = db.visitNotes
-      .filter((v) => v.patient === id)
-      .flatMap((v) => v.prescriptions.map((rx) => ({ ...rx, visitDate: v.createdAt, status: v.status })));
+      .filter((v) => v.patient === patient.mrn)
+      .flatMap((v) =>
+        v.prescriptions.map((rx) => ({
+          id: Number(String(rx.id).replace(/\D/g, "")) || rx.id,
+          visit_note_id: Number(String(v.id).replace(/\D/g, "")) || v.id,
+          medication: rx.medication,
+          dosage: rx.dosage,
+          frequency: rx.frequency,
+          duration_days: rx.durationDays,
+          created_at: FIXED_EPOCH,
+          visit_date: v.createdAt,
+          visit_signed_at: v.signedAt,
+        })),
+      );
     return respond(mockConfig.patients.prescriptions, { prescriptions }, { prescriptions: [] });
   }),
 
@@ -547,7 +677,7 @@ export const handlers = [
     const paged = items.slice((page - 1) * pageSize, page * pageSize);
     return respond(
       mockConfig.patients.list,
-      { patients: paged, total, page, page_size: pageSize },
+      { patients: paged.map(bePatient), total, page, page_size: pageSize },
       { patients: [], total: 0, page, page_size: pageSize },
     );
   }),
@@ -567,8 +697,8 @@ export const handlers = [
       return false;
     });
     const suspects = candidates.slice(0, 5).map((p) => ({
-      patient_id: p.mrn,
-      id: p.mrn,
+      patient_id: patientIdFor(p),
+      id: patientIdFor(p),
       mrn: p.mrn,
       full_name: p.name,
       dob: p.dob,
@@ -580,35 +710,60 @@ export const handlers = [
   }),
 
   http.post("*/patients", async ({ request }) => {
-    const body = await readBody<Partial<Patient>>(request);
+    const body = await readBody<{
+      full_name?: string;
+      name?: string;
+      dob?: string;
+      sex?: string;
+      national_id?: string;
+      nid?: string;
+      phone?: string;
+      primary_department_id?: number | null;
+      dept?: string;
+      payer_name?: string;
+      insurer?: string;
+      acuity?: Patient["acuity"];
+      admission_status?: Patient["status"];
+    }>(request);
+    const deptCode =
+      body.dept ??
+      (body.primary_department_id != null ? deptCodeForId(body.primary_department_id) : "GEN");
     const patient: Patient = {
       mrn: `P-${String(900000 + db.patients.length).padStart(6, "0")}`,
-      name: body.name ?? "Unnamed Patient",
+      name: body.full_name ?? body.name ?? "Unnamed Patient",
       dob: body.dob ?? "1990-01-01",
-      sex: body.sex ?? "M",
-      nid: body.nid ?? `3174${String(Date.now()).slice(-12)}`,
-      dept: body.dept ?? "GEN",
-      doctor: body.doctor ?? "D02",
+      sex: (String(body.sex ?? "M").toUpperCase() === "F" ? "F" : "M") as Patient["sex"],
+      nid: body.national_id ?? body.nid ?? `3174${String(Date.now()).slice(-12)}`,
+      dept: deptCode,
+      doctor: "—",
       acuity: body.acuity ?? "routine",
-      status: body.status ?? "outpatient",
-      allergies: body.allergies ?? [],
+      status: body.admission_status ?? "outpatient",
+      allergies: [],
       phone: body.phone ?? "+62 800 0000 000",
       lastVisit: fixtures.TODAY,
-      balance: body.balance ?? 0,
-      insurer: body.insurer ?? "Self-pay",
+      balance: 0,
+      insurer: body.payer_name ?? body.insurer ?? "Self-pay",
     };
-    db.patients = [patient, ...db.patients];
-    return respond(mockConfig.patients.create, patient, patient);
+    db.patients = [...db.patients, patient];
+    return respond(mockConfig.patients.create, bePatient(patient), bePatient(patient));
   }),
 
   http.patch("*/patients/:id", async ({ params, request }) => {
     const id = String(params.id);
-    const index = db.patients.findIndex((p) => p.mrn === id);
-    if (index === -1) return notFound("Patient", id);
-    const body = await readBody<Partial<Patient>>(request);
-    const updated = { ...db.patients[index], ...body, mrn: id };
-    db.patients[index] = updated;
-    return respond(mockConfig.patients.update, updated, updated);
+    const patient = findPatient(id);
+    if (!patient) return notFound("Patient", id);
+    const index = db.patients.indexOf(patient);
+    const body = await readBody<Record<string, unknown>>(request);
+    const merged: Patient = {
+      ...patient,
+      name: (body.full_name as string) ?? (body.name as string) ?? patient.name,
+      acuity: (body.acuity as Patient["acuity"]) ?? patient.acuity,
+      status: (body.admission_status as Patient["status"]) ?? patient.status,
+      phone: (body.phone as string) ?? patient.phone,
+      insurer: (body.payer_name as string) ?? patient.insurer,
+    };
+    db.patients[index] = merged;
+    return respond(mockConfig.patients.update, bePatient(merged), bePatient(merged));
   }),
 
   // ---- Appointments -------------------------------------------------------
@@ -1080,58 +1235,72 @@ export const handlers = [
   }),
 
   http.post("*/medical-records/visits", async ({ request }) => {
-    const body = await readBody<Partial<VisitNote> & { patient_id?: string }>(request);
-    const patientId = String(body.patient_id ?? "");
-    if (!patientId) {
+    const body = await readBody<Record<string, unknown>>(request);
+    const patientRef = String(body.patient_id ?? "");
+    if (!patientRef) {
       return errorResponse("validation_error", "patient_id is required", 422);
     }
+    const patient = findPatient(patientRef);
     const visit: VisitNote = {
       id: `VN-${9100 + db.visitNotes.length}`,
-      appointmentId: body.appointmentId ?? null,
-      patient: patientId,
-      doctor: body.doctor ?? "D02",
-      dept: body.dept ?? "GEN",
-      chiefComplaint: body.chiefComplaint ?? "",
-      diagnosis: body.diagnosis ?? "",
-      clinicalNotes: body.clinicalNotes ?? "",
+      appointmentId: (body.appointment_id as string) ?? null,
+      patient: patient?.mrn ?? patientRef,
+      doctor: "—",
+      dept: "—",
+      chiefComplaint: String(body.chief_complaint ?? body.chiefComplaint ?? ""),
+      diagnosis: String(body.diagnosis ?? ""),
+      clinicalNotes: String(body.clinical_notes ?? body.clinicalNotes ?? ""),
       status: "draft",
       signedAt: null,
       createdAt: new Date().toISOString(),
       prescriptions: [],
     };
     db.visitNotes = [visit, ...db.visitNotes];
-    return respond(mockConfig.records.createVisit, visit, visit);
+    return respond(mockConfig.records.createVisit, beVisitNote(visit), beVisitNote(visit));
   }),
 
   http.post("*/medical-records/:patientId/visits", async ({ params, request }) => {
-    const patientId = String(params.patientId);
-    const body = await readBody<Partial<VisitNote>>(request);
+    const patientRef = String(params.patientId);
+    const patient = findPatient(patientRef);
+    const body = await readBody<Record<string, unknown>>(request);
     const visit: VisitNote = {
       id: `VN-${9100 + db.visitNotes.length}`,
-      appointmentId: body.appointmentId ?? null,
-      patient: patientId,
-      doctor: body.doctor ?? "D02",
-      dept: body.dept ?? "GEN",
-      chiefComplaint: body.chiefComplaint ?? "",
-      diagnosis: body.diagnosis ?? "",
-      clinicalNotes: body.clinicalNotes ?? "",
+      appointmentId: (body.appointment_id as string) ?? null,
+      patient: patient?.mrn ?? patientRef,
+      doctor: "—",
+      dept: "—",
+      chiefComplaint: String(body.chief_complaint ?? body.chiefComplaint ?? ""),
+      diagnosis: String(body.diagnosis ?? ""),
+      clinicalNotes: String(body.clinical_notes ?? body.clinicalNotes ?? ""),
       status: "draft",
       signedAt: null,
       createdAt: new Date().toISOString(),
       prescriptions: [],
     };
     db.visitNotes = [visit, ...db.visitNotes];
-    return respond(mockConfig.records.createVisit, visit, visit);
+    return respond(mockConfig.records.createVisit, beVisitNote(visit), beVisitNote(visit));
   }),
 
   // ---- Medical record timeline / per-visit / doctor worklist --------------
+  http.get("*/medical-records/patients/:id/visits", async ({ params, request }) => {
+    const id = String(params.id);
+    const patient = findPatient(id);
+    if (!patient) return notFound("Patient", id);
+    const url = new URL(request.url);
+    const signed = url.searchParams.get("signed");
+    let items = db.visitNotes.filter((v) => v.patient === patient.mrn);
+    if (signed !== null) items = items.filter((v) => Boolean(v.signedAt) === (signed === "true"));
+    return respond(mockConfig.records.visits, { visits: items.map(beVisitNote), total: items.length }, { visits: [], total: 0 });
+  }),
+
   http.get("*/medical-records/patients/:id/history", async ({ params }) => {
     const id = String(params.id);
-    const patient = db.patients.find((p) => p.mrn === id);
+    const patient = findPatient(id);
     if (!patient) return notFound("Patient", id);
+    const mrn = patient.mrn;
     const events: HistoryEvent[] = [
       ...db.visitNotes
-        .filter((v) => v.patient === id)
+        .filter((v) => v.patient === mrn)
         .map((v) => ({
           timestamp: v.createdAt,
           type: "visit" as const,
@@ -1141,7 +1310,7 @@ export const handlers = [
           signed: Boolean(v.signedAt),
         })),
       ...db.visitNotes
-        .filter((v) => v.patient === id)
+        .filter((v) => v.patient === mrn)
         .flatMap((v) =>
           v.prescriptions.map((r) => ({
             timestamp: v.createdAt,
@@ -1153,7 +1322,7 @@ export const handlers = [
           })),
         ),
       ...db.vitals
-        .filter((v) => v.patient === id)
+        .filter((v) => v.patient === mrn)
         .map((v) => ({
           timestamp: v.recordedAt,
           type: "vitals" as const,
@@ -1163,7 +1332,7 @@ export const handlers = [
           signed: false,
         })),
       ...db.carePlanItems
-        .filter((c) => c.patient === id)
+        .filter((c) => c.patient === mrn)
         .map((c) => ({
           timestamp: c.dueAt,
           type: "care_plan" as const,
@@ -1173,7 +1342,7 @@ export const handlers = [
           signed: false,
         })),
       ...db.invoices
-        .filter((i) => i.patient === id)
+        .filter((i) => i.patient === mrn)
         .map((i) => ({
           timestamp: `${i.date}T09:00:00.000Z`,
           type: "billing" as const,
@@ -1183,14 +1352,26 @@ export const handlers = [
           signed: false,
         })),
     ].sort((a, b) => String(b.timestamp ?? "").localeCompare(String(a.timestamp ?? "")));
-    return respond(mockConfig.records.history, { patient_id: id, events }, { patient_id: id, events: [] });
+    return respond(
+      mockConfig.records.history,
+      { patient_id: patientIdFor(patient), events: events.map(beHistoryEvent) },
+      { patient_id: patientIdFor(patient), events: [] },
+    );
   }),
 
   http.get("*/medical-records/visits/:id", async ({ params }) => {
     const id = String(params.id);
-    const visit = db.visitNotes.find((v) => v.id === id);
+    const visit = findVisit(id);
     if (!visit) return notFound("Visit", id);
-    return respond(mockConfig.records.visit, { visit }, null as unknown as { visit: VisitNote });
+    return respond(
+      mockConfig.records.visit,
+      {
+        visit: beVisitNote(visit),
+        prescriptions: visit.prescriptions.map((rx) => bePrescription(rx, visit)),
+        attachments: [],
+      },
+      null as unknown as Record<string, unknown>,
+    );
   }),
 
   http.get("*/medical-records/visits", async ({ request }) => {
@@ -1254,8 +1435,9 @@ export const handlers = [
 
   http.post("*/medical-records/visits/:visitId/sign", async ({ params, request }) => {
     const visitId = String(params.visitId);
-    const index = db.visitNotes.findIndex((v) => v.id === visitId);
-    if (index === -1) return notFound("Visit", visitId);
+    const visit = findVisit(visitId);
+    if (!visit) return notFound("Visit", visitId);
+    const index = db.visitNotes.indexOf(visit);
     const body = await readBody<{ password_confirmation?: string; password?: string }>(request);
     const password = body.password_confirmation ?? body.password ?? "";
     if (password !== DEMO_PASSWORD) {
@@ -1274,9 +1456,9 @@ export const handlers = [
 
   http.post("*/medical-records/visits/:visitId/prescriptions", async ({ params, request }) => {
     const visitId = String(params.visitId);
-    const visit = db.visitNotes.find((v) => v.id === visitId);
+    const visit = findVisit(visitId);
     if (!visit) return notFound("Visit", visitId);
-    const body = await readBody<Partial<Prescription>>(request);
+    const body = await readBody<Partial<Prescription> & { duration_days?: number }>(request);
     const medication = String(body.medication ?? "");
     // Server-enforced allergy block: penicillin-allergic patients cannot get
     // amoxicillin/penicillin-family drugs (mirrors the backend rule from #21).
@@ -1313,14 +1495,14 @@ export const handlers = [
       medication,
       dosage: body.dosage ?? "",
       frequency: body.frequency ?? "",
-      durationDays: body.durationDays ?? 30,
+      durationDays: body.durationDays ?? body.duration_days ?? 30,
     };
-    const visitIndex = db.visitNotes.findIndex((v) => v.id === visitId);
+    const visitIndex = db.visitNotes.indexOf(visit);
     db.visitNotes[visitIndex] = {
       ...db.visitNotes[visitIndex],
       prescriptions: [...db.visitNotes[visitIndex].prescriptions, rx],
     };
-    return respond(mockConfig.records.createVisit, rx, rx);
+    return respond(mockConfig.records.createVisit, bePrescription(rx, visit), bePrescription(rx, visit));
   }),
 
   // ---- Vitals -------------------------------------------------------------

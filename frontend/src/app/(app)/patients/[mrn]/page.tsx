@@ -16,8 +16,22 @@ import {
 import { renderIcon } from "@/lib/iconRenderer";
 import { useQuery, queryKeys } from "@/lib/api/queryCache";
 import { api } from "@/lib/api/client";
+import { resolvePatientId } from "@/lib/api/resolvePatientId";
+import {
+  toFrontendClinicalSummary,
+  toFrontendHistoryEvent,
+  toFrontendPatient,
+  toFrontendPrescription,
+  toFrontendVisitNote,
+} from "@/lib/api/serialize/patients";
+import { toIso } from "@/lib/api/serialize/coerce";
 import { byDoctor, deptName, rp } from "@/lib/fixtures";
 import type {
+  BackendClinicalSummary,
+  BackendHistoryEvent,
+  BackendPatient,
+  BackendPrescription,
+  BackendVisitNote,
   ClinicalSummary,
   HistoryEvent,
   Invoice,
@@ -87,24 +101,52 @@ export default function PatientDetailPage({ params }: { params: { mrn: string } 
   const [tab, setTab] = useState<TabId>("overview");
 
   const patientQuery = useQuery<Patient>(queryKeys.patient(mrn), {
-    fetcher: () => api.get<Patient>(`/patients/${mrn}`),
+    fetcher: async () => {
+      const id = await resolvePatientId(mrn);
+      const row = await api.get<BackendPatient>(`/patients/${id}`);
+      return toFrontendPatient(row);
+    },
   });
   const summaryQuery = useQuery<ClinicalSummary>(["patients", mrn, "clinical-summary"], {
-    fetcher: () => api.get<ClinicalSummary>(`/patients/${mrn}/clinical-summary`),
+    fetcher: async () => {
+      const id = await resolvePatientId(mrn);
+      const row = await api.get<BackendClinicalSummary>(`/patients/${id}/clinical-summary`);
+      return toFrontendClinicalSummary(row);
+    },
   });
   const timelineQuery = useQuery<{ events: HistoryEvent[] }>(queryKeys.patientTimeline(mrn), {
-    fetcher: () => api.get<{ events: HistoryEvent[] }>(`/medical-records/patients/${mrn}/history`),
+    fetcher: async () => {
+      const id = await resolvePatientId(mrn);
+      const res = await api.get<{ events: BackendHistoryEvent[] }>(`/medical-records/patients/${id}/history`);
+      return { events: (res.events ?? []).map(toFrontendHistoryEvent) };
+    },
     enabled: tab === "timeline",
   });
   const visitsQuery = useQuery<{ visits: VisitNote[] }>(queryKeys.visits(mrn), {
-    fetcher: () => api.get<{ visits: VisitNote[] }>(`/medical-records/patients/${mrn}/visits`),
+    fetcher: async () => {
+      const id = await resolvePatientId(mrn);
+      const res = await api.get<{ visits: BackendVisitNote[] }>(`/medical-records/patients/${id}/visits`);
+      return { visits: (res.visits ?? []).map((v) => toFrontendVisitNote(v)) };
+    },
     enabled: tab === "records",
   });
   type PrescriptionRow = VisitNote["prescriptions"][number] & { visitDate?: string; status?: VisitNote["status"] };
   const rxQuery = useQuery<{ prescriptions: PrescriptionRow[] }>(
     ["patients", mrn, "prescriptions"],
     {
-      fetcher: () => api.get<{ prescriptions: PrescriptionRow[] }>(`/medical-records/patients/${mrn}/prescriptions`),
+      fetcher: async () => {
+        const id = await resolvePatientId(mrn);
+        const res = await api.get<{ prescriptions: BackendPrescription[] }>(
+          `/medical-records/patients/${id}/prescriptions`,
+        );
+        return {
+          prescriptions: (res.prescriptions ?? []).map((r) => ({
+            ...toFrontendPrescription(r),
+            visitDate: toIso(r.visit_date) ?? undefined,
+            status: (r.visit_signed_at ? "signed" : "draft") as VisitNote["status"],
+          })),
+        };
+      },
       enabled: tab === "prescriptions",
     },
   );

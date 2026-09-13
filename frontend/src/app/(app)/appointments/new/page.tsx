@@ -19,8 +19,9 @@ import {
 import { renderIcon } from "@/lib/iconRenderer";
 import { api, ApiError } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries, setOptimistic } from "@/lib/api/queryCache";
+import { toFrontendPatient } from "@/lib/api/serialize/patients";
 import { byDoctor, deptName, doctors as fixtureDoctors, TODAY } from "@/lib/fixtures";
-import type { AdminUser, ApiDepartment, Appointment, Patient, ScheduleSlot } from "@/lib/fixtures";
+import type { AdminUser, ApiDepartment, Appointment, BackendPatient, Patient, ScheduleSlot } from "@/lib/fixtures";
 
 interface ScheduleResponse {
   doctor_id: number;
@@ -73,10 +74,12 @@ function BookingForm() {
   const patientSearch = useQuery<{ patients: Patient[] }>(
     ["patients", "search", debouncedPatientQ],
     {
-      fetcher: () =>
-        api.get<{ patients: Patient[] }>("/patients", {
-          query: { q: debouncedPatientQ || undefined, page: 1, page_size: 6 },
-        }),
+      fetcher: async () => {
+        const res = await api.get<{ patients: BackendPatient[] }>("/patients", {
+          query: { query: debouncedPatientQ || undefined, page: 1, page_size: 6 },
+        });
+        return { patients: (res.patients ?? []).map(toFrontendPatient) };
+      },
       enabled: debouncedPatientQ.length > 0,
     },
   );

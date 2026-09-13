@@ -618,3 +618,205 @@ export interface DepartmentStaffAssignment {
   full_name: string;
   assigned_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Backend row shapes (#57)
+// ---------------------------------------------------------------------------
+//
+// The canonical FastAPI serialiser emits flat snake_case rows (`_row_to_dict`
+// over the SQLite schema and the explicit serialisers in `patient.py`). The
+// per-domain adapters in `lib/api/serialize/*` map these to the render types
+// above. Every key the frontend reads must exist here, or the contract test
+// (`backend/tests/test_frontend_contract.py`) fails.
+
+/** `GET /patients`, `GET /patients/{id}` — row + optional relations. */
+export interface BackendPatient {
+  id: number;
+  mrn: string;
+  full_name: string;
+  dob: string | null;
+  sex: string | null;
+  national_id: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  blood_type: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  acuity: Acuity;
+  admission_status: PatientStatus;
+  is_active: boolean;
+  primary_department_id: number | null;
+  payer_name: string | null;
+  created_by: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  allergies?: BackendAllergy[];
+  departments?: Array<{ department_id: number; code: string; name: string; since_date: string | null }>;
+}
+
+/** `serialize_allergy` — the `allergen`/`reaction` row shape. */
+export interface BackendAllergy {
+  id: number | string;
+  patient_id?: number | string;
+  allergen: string;
+  severity: AllergySeverity;
+  reaction: string | null;
+  noted_by: number | string | null;
+  noted_at: string | null;
+}
+
+/** `GET /patients/{id}/clinical-summary`. */
+export interface BackendClinicalSummary {
+  id: number;
+  mrn: string;
+  full_name: string;
+  dob: string | null;
+  sex: string | null;
+  phone: string | null;
+  email: string | null;
+  acuity: Acuity;
+  admission_status: PatientStatus;
+  is_active: boolean;
+  primary_department_id: number | null;
+  allergies: BackendAllergy[];
+  active_prescriptions_count: number;
+  active_appointments_count: number;
+}
+
+/** One event from `GET /medical-records/patients/{id}/history`. */
+export interface BackendHistoryEvent {
+  timestamp: number | string | null;
+  type: "visit" | "prescription" | "attachment" | "vitals" | "care_plan" | "billing";
+  department_code: string | null;
+  summary: string;
+  source_id: number | string;
+  signed: boolean;
+}
+
+/** `visit_notes` row. */
+export interface BackendVisitNote {
+  id: number;
+  appointment_id: number | null;
+  patient_id: number;
+  doctor_id: number;
+  chief_complaint: string | null;
+  diagnosis: string | null;
+  clinical_notes: string | null;
+  department_id: number | null;
+  status: VisitNoteStatus;
+  signed_at: string | number | null;
+  created_at: string | number | null;
+  updated_at?: string | number | null;
+}
+
+/** `prescriptions` row (with the patient-prescriptions join columns). */
+export interface BackendPrescription {
+  id: number;
+  visit_note_id: number;
+  medication: string;
+  dosage: string | null;
+  frequency: string | null;
+  duration_days: number | null;
+  created_at?: string | number | null;
+  visit_date?: string | number | null;
+  visit_signed_at?: string | number | null;
+}
+
+/** `vitals` row. */
+export interface BackendVitals {
+  id: number;
+  patient_id: number;
+  appointment_id: number | null;
+  systolic: number | null;
+  diastolic: number | null;
+  heart_rate: number | null;
+  spo2: number | null;
+  temperature_c: number | null;
+  respiratory_rate: number | null;
+  note: string | null;
+  recorded_by: number | null;
+  recorded_at: string | number | null;
+}
+
+/** `care_plan_items` row. */
+export interface BackendCarePlanItem {
+  id: number;
+  patient_id: number;
+  source_visit_note_id: number | null;
+  description: string;
+  due_at: string | number | null;
+  priority: "high" | "normal" | "low";
+  completed: boolean;
+  completed_by: number | null;
+  completed_at?: string | number | null;
+  created_at: string | number | null;
+}
+
+/** `invoices` row. */
+export interface BackendInvoice {
+  id: number;
+  patient_id: number;
+  visit_note_id: number | null;
+  payer_name: string | null;
+  total_amount: number;
+  amount_paid: number;
+  status: InvoiceStatus;
+  created_at: string | number | null;
+  invoice_number?: string | null;
+}
+
+/** `invoice_line_items` row. */
+export interface BackendInvoiceLine {
+  id: number;
+  invoice_id: number;
+  code: string;
+  description: string | null;
+  quantity: number;
+  unit_amount: number;
+  item_type: string | null;
+  department_id: number | null;
+}
+
+/** `insurance_claims` row. */
+export interface BackendClaim {
+  id: number;
+  invoice_id: number;
+  payer_name: string;
+  claim_number: string | null;
+  status: ClaimStatus;
+  denial_reason: string | null;
+  appeal_deadline: string | number | null;
+  submitted_at: string | number | null;
+}
+
+/** `payments` row. */
+export interface BackendPayment {
+  id: number;
+  invoice_id: number;
+  amount: number;
+  method: Payment["method"];
+  reference: string | null;
+  paid_at: string | number | null;
+}
+
+/** `widget_definitions` row. */
+export interface BackendWidgetDefinition {
+  id: number;
+  key: string;
+  name: string;
+  default_role: Role | null;
+  globally_enabled: boolean;
+  globally_locked: boolean;
+}
+
+/** One entry from `GET /widget-config/me` (`items[]`). */
+export interface BackendWidgetLayoutItem {
+  widget_id: number;
+  position_order: number;
+  enabled: boolean;
+  size: WidgetSize | null;
+  key: string;
+  name: string;
+  globally_locked: boolean;
+}

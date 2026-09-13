@@ -12,7 +12,8 @@ import {
 import { renderIcon } from "@/lib/iconRenderer";
 import { api } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
-import type { ApiDepartment, Patient } from "@/lib/fixtures";
+import { toFrontendPatient } from "@/lib/api/serialize/patients";
+import type { ApiDepartment, BackendPatient } from "@/lib/fixtures";
 
 interface DedupSuspect {
   mrn: string;
@@ -54,23 +55,26 @@ function RegisterPatientForm() {
   const createPatient = useCallback(async () => {
     setSubmitting(true);
     try {
-      const created = await api.post<Patient>("/patients", {
-        name: form.name.trim(),
+      const departmentId =
+        (depts.data?.departments ?? []).find((d) => d.code === form.dept)?.id ?? null;
+      const created = await api.post<BackendPatient>("/patients", {
+        full_name: form.name.trim(),
         dob: form.dob,
-        sex: form.sex as Patient["sex"],
-        dept: form.dept,
-        phone: form.phone || undefined,
-        insurer: form.insurer,
+        sex: form.sex.toLowerCase(),
+        primary_department_id: departmentId,
+        phone: form.phone || "+62 800 0000 000",
+        payer_name: form.insurer,
       });
+      const patient = toFrontendPatient(created);
       invalidateQueries(queryKeys.patients() as unknown as unknown[], ["patients", "search"]);
-      toast({ tone: "success", message: `Patient ${created.name} registered`, detail: created.mrn });
-      router.push(`/patients/${created.mrn}`);
+      toast({ tone: "success", message: `Patient ${patient.name} registered`, detail: patient.mrn });
+      router.push(`/patients/${patient.mrn}`);
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Could not register the patient.");
     } finally {
       setSubmitting(false);
     }
-  }, [form, router, toast]);
+  }, [form, depts.data, router, toast]);
 
   const onSubmit = useCallback(async () => {
     if (!form.name.trim() || !form.dept) {

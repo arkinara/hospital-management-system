@@ -19,8 +19,9 @@ import {
 import { renderIcon } from "@/lib/iconRenderer";
 import { useQuery, queryKeys } from "@/lib/api/queryCache";
 import { api } from "@/lib/api/client";
+import { toFrontendPatient } from "@/lib/api/serialize/patients";
 import { byDoctor, deptName } from "@/lib/fixtures";
-import type { ApiDepartment, Patient } from "@/lib/fixtures";
+import type { ApiDepartment, BackendPatient, Patient } from "@/lib/fixtures";
 
 const PAGE_SIZE = 20;
 
@@ -76,17 +77,22 @@ export default function PatientsPage() {
       department: department ?? undefined,
     }),
     {
-      fetcher: () =>
-        api.get<PatientsResponse>("/patients", {
-          query: {
-            q: debouncedQ || undefined,
-            page,
-            page_size: PAGE_SIZE,
-            acuity: acuity ?? undefined,
-            admission_status: admissionStatus ?? undefined,
-            department: department ?? undefined,
+      fetcher: async () => {
+        const res = await api.get<{ patients: BackendPatient[]; total: number; page: number; page_size: number }>(
+          "/patients",
+          {
+            query: {
+              query: debouncedQ || undefined,
+              page,
+              page_size: PAGE_SIZE,
+              acuity: acuity ?? undefined,
+              admission_status: admissionStatus ?? undefined,
+              department: department ?? undefined,
+            },
           },
-        }),
+        );
+        return { ...res, patients: (res.patients ?? []).map(toFrontendPatient) };
+      },
     },
   );
 
