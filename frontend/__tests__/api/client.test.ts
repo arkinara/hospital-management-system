@@ -3,7 +3,13 @@ import { api, ApiError } from "@/lib/api/client";
 import { resetMockDb } from "@/lib/api/handlers";
 import { mockConfig, resetMockConfig } from "@/lib/api/mockConfig";
 import { server } from "@/lib/api/server";
-import type { Appointment, AuthUser, BackendPatient, Vitals, Widget } from "@/lib/fixtures";
+import type {
+  Appointment,
+  AuthUser,
+  BackendPatient,
+  BackendWidgetLayoutItem,
+  Vitals,
+} from "@/lib/fixtures";
 
 process.env.NEXT_PUBLIC_API_URL = "http://localhost:3000";
 
@@ -58,11 +64,12 @@ describe("api client with MSW: happy path", () => {
   });
 
   it("GET /widgets/me respects the admin lock", async () => {
-    const res = await api.get<{ widgets: Widget[] }>("/widget-config/me", {
-      query: { role: "doctor" },
-    });
-    const schedule = res.widgets.find((w) => w.key === "todays-schedule");
-    expect(schedule?.locked).toBe(true);
+    const res = await api.get<{ user_id: number; items: BackendWidgetLayoutItem[] }>(
+      "/widget-config/me",
+      { query: { role: "doctor" } },
+    );
+    const schedule = res.items.find((w) => w.key === "todays-schedule");
+    expect(schedule?.globally_locked).toBe(true);
     expect(schedule?.enabled).toBe(true);
   });
 });

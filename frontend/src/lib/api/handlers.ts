@@ -429,6 +429,42 @@ function beCarePlanItem(c: CarePlanItem): Record<string, unknown> {
   };
 }
 
+function widgetIdFor(w: Widget): number {
+  const index = db.widgets.indexOf(w);
+  return index === -1 ? 0 : index + 1;
+}
+
+function beWidgetDefinition(w: Widget): Record<string, unknown> {
+  return {
+    id: widgetIdFor(w),
+    key: w.key,
+    name: w.name,
+    default_role: (w.roles[0]?.toLowerCase() as Role | undefined) ?? null,
+    globally_enabled: w.enabled,
+    globally_locked: w.locked,
+  };
+}
+
+function beWidgetLayoutItem(
+  w: Widget,
+  layout: WidgetLayout | undefined,
+  positionOrder = 999,
+): Record<string, unknown> {
+  return {
+    widget_id: widgetIdFor(w),
+    position_order: layout?.positionOrder ?? positionOrder,
+    enabled: w.locked ? true : (layout?.enabled ?? w.enabled),
+    size: layout?.size ?? w.size,
+    key: w.key,
+    name: w.name,
+    globally_locked: w.locked,
+  };
+}
+
+function widgetKeyForId(id: number): string | undefined {
+  return db.widgets[id - 1]?.key;
+}
+
 function readBody<T>(request: Request): Promise<T> {
   return request.json() as Promise<T>;
 }
@@ -1795,49 +1831,67 @@ export const handlers = [
 
   // ---- Widgets ------------------------------------------------------------
   http.get("*/widget-config/widgets/admin/library", async () => {
-    return respond(mockConfig.widgets.library, { widgets: db.widgets }, { widgets: [] });
+    return respond(
+      mockConfig.widgets.library,
+      { widgets: db.widgets.map(beWidgetDefinition) },
+      { widgets: [] },
+    );
   }),
-
 
   http.get("*/widget-config/me", async ({ request }) => {
     const role = roleFromRequest(request, "doctor");
-    const display = ROLE_DISPLAY[role];
     const userId = ROLE_TO_USER[role];
     const layout = db.widgetLayouts.filter((l) => l.userId === userId);
-    const resolved = db.widgets
-      .filter((w) => w.roles.includes(display))
-      .map((w) => {
-        const entry = layout.find((l) => l.widgetKey === w.key);
-        return { ...w, enabled: w.locked ? true : (entry?.enabled ?? w.enabled) };
-      });
+    const items = layout
+      .map((l) => {
+        const w = db.widgets.find((x) => x.key === l.widgetKey);
+        return w ? beWidgetLayoutItem(w, l) : null;
+      })
+      .filter((x): x is Record<string, unknown> => x !== null);
     return respond(
       mockConfig.widgets.me,
-      { widgets: resolved, layout },
-      { widgets: [], layout: [] },
+      { user_id: userId, items },
+      { user_id: userId, items: [] },
     );
   }),
 
   http.put("*/widget-config/me", async ({ request }) => {
-    const body = await readBody<{ userId?: string; role?: Role; layout: WidgetLayout[] }>(request);
+    const body = await readBody<{
+      userId?: string;
+      role?: Role;
+      items?: Array<{
+        widget_id: number;
+        position_order: number;
+        enabled: boolean;
+        size: Widget["size"];
+      }>;
+    }>(request);
     const userId = body.userId ?? ROLE_TO_USER[body.role ?? "doctor"];
-    db.widgetLayouts = [...db.widgetLayouts.filter((l) => l.userId !== userId), ...body.layout];
+    const saved: WidgetLayout[] = (body.items ?? []).map((it) => ({
+      userId,
+      widgetKey: widgetKeyForId(it.widget_id) ?? String(it.widget_id),
+      positionOrder: it.position_order,
+      enabled: it.enabled,
+      size: it.size ?? "md",
+    }));
+    db.widgetLayouts = [...db.widgetLayouts.filter((l) => l.userId !== userId), ...saved];
     const layout = db.widgetLayouts.filter((l) => l.userId === userId);
-    return respond(mockConfig.widgets.saveMe, { layout }, { layout: [] });
+    const items = layout
+      .map((l) => {
+        const w = db.widgets.find((x) => x.key === l.widgetKey);
+        return w ? beWidgetLayoutItem(w, l) : null;
+      })
+      .filter((x): x is Record<string, unknown> => x !== null);
+    return respond(mockConfig.widgets.saveMe, { user_id: userId, items }, { user_id: userId, items: [] });
   }),
 
   // ---- Widget config (admin widget library, ticket #10) ------------------
   http.get("*/widget-config/widgets", async () => {
-    const definitions: WidgetDefinition[] = db.widgets.map((w) => ({
-      key: w.key,
-      name: w.name,
-      desc: w.desc,
-      icon: w.icon,
-      size: w.size,
-      default_role: (w.roles[0]?.toLowerCase() as Role | undefined) ?? null,
-      globally_enabled: w.enabled,
-      globally_locked: w.locked,
-    }));
-    return respond(mockConfig.widgets.definitions, { widgets: definitions }, { widgets: [] });
+    return respond(
+      mockConfig.widgets.definitions,
+      { widgets: db.widgets.map(beWidgetDefinition) },
+      { widgets: [] },
+    );
   }),
 
   http.post("*/widget-config/widgets", async ({ request }) => {
@@ -1851,12 +1905,12 @@ export const handlers = [
     const widget: Widget = {
       key: body.key!,
       name: body.name!,
-      desc: body.desc ?? "",
-      size: body.size ?? "md",
+      desc: "",
+      size: "md",
       roles: body.default_role ? [ROLE_DISPLAY[body.default_role]] : ["Admin"],
       enabled: body.globally_enabled ?? true,
       locked: false,
-      icon: body.icon ?? "layout-grid",
+      icon: "layout-grid",
     };
     db.widgets = [...db.widgets, widget];
     db.auditLog = [
@@ -1870,37 +1924,21 @@ export const handlers = [
       },
       ...db.auditLog,
     ];
-    const def: WidgetDefinition = {
-      key: widget.key,
-      name: widget.name,
-      desc: widget.desc,
-      icon: widget.icon,
-      size: widget.size,
-      default_role: widget.roles[0].toLowerCase() as Role,
-      globally_enabled: widget.enabled,
-      globally_locked: widget.locked,
-    };
+    const def = beWidgetDefinition(widget);
     return respond(mockConfig.widgets.add, def, def);
   }),
 
   http.patch("*/widget-config/widgets/:id", async ({ params, request }) => {
-    const id = String(params.id);
-    const index = db.widgets.findIndex((w) => w.key === id);
-    if (index === -1) return notFound("Widget", id);
+    const id = Number(params.id);
+    const index = id - 1;
+    if (index < 0 || index >= db.widgets.length) return notFound("Widget", String(params.id));
     const body = await readBody<{
       name?: string;
-      desc?: string;
-      icon?: string;
-      size?: Widget["size"];
       default_role?: Role;
       globally_enabled?: boolean;
-      globally_locked?: boolean;
     }>(request);
-    const next: Widget = { ...db.widgets[index], key: id };
+    const next: Widget = { ...db.widgets[index] };
     if (body.name !== undefined) next.name = body.name;
-    if (body.desc !== undefined) next.desc = body.desc;
-    if (body.icon !== undefined) next.icon = body.icon;
-    if (body.size !== undefined) next.size = body.size;
     if (body.default_role !== undefined) {
       next.roles = body.default_role ? [ROLE_DISPLAY[body.default_role]] : next.roles;
     }
@@ -1909,7 +1947,6 @@ export const handlers = [
       // Disabling a locked widget is the confirmed disable-and-unlock action.
       if (!body.globally_enabled) next.locked = false;
     }
-    if (body.globally_locked !== undefined) next.locked = body.globally_locked;
     db.widgets[index] = next;
     db.auditLog = [
       {
@@ -1917,28 +1954,28 @@ export const handlers = [
         actorUserId: 1,
         action: "widget.update",
         entityType: "widget",
-        entityId: id,
+        entityId: String(id),
         createdAt: new Date().toISOString(),
       },
       ...db.auditLog,
     ];
-    return respond(mockConfig.widgets.patchAdmin, db.widgets[index], db.widgets[index]);
+    return respond(mockConfig.widgets.patchAdmin, beWidgetDefinition(next), beWidgetDefinition(next));
   }),
 
   http.patch("*/widget-config/widgets/:id/lock", async ({ params, request }) => {
-    const id = String(params.id);
-    const index = db.widgets.findIndex((w) => w.key === id);
-    if (index === -1) return notFound("Widget", id);
-    const body = await readBody<{ locked?: boolean }>(request);
+    const id = Number(params.id);
+    const index = id - 1;
+    if (index < 0 || index >= db.widgets.length) return notFound("Widget", String(params.id));
+    const body = await readBody<{ globally_locked?: boolean }>(request);
     const widget = db.widgets[index];
-    if (body.locked && !widget.enabled) {
+    if (body.globally_locked && !widget.enabled) {
       return errorResponse(
         "validation_error",
         "Cannot lock a widget that is globally disabled",
         422,
       );
     }
-    const next: Widget = { ...widget, locked: body.locked ?? !widget.locked };
+    const next: Widget = { ...widget, locked: body.globally_locked ?? !widget.locked };
     db.widgets[index] = next;
     db.auditLog = [
       {
@@ -1946,12 +1983,12 @@ export const handlers = [
         actorUserId: 1,
         action: "widget.lock_toggle",
         entityType: "widget",
-        entityId: id,
+        entityId: String(id),
         createdAt: new Date().toISOString(),
       },
       ...db.auditLog,
     ];
-    return respond(mockConfig.widgets.toggleLock, db.widgets[index], db.widgets[index]);
+    return respond(mockConfig.widgets.toggleLock, beWidgetDefinition(next), beWidgetDefinition(next));
   }),
 
   // ---- Auth ---------------------------------------------------------------

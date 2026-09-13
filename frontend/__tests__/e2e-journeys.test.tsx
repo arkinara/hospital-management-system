@@ -293,7 +293,7 @@ async function adminJourney(): Promise<JourneyStep[]> {
   });
 
   const locked = await api.patch<{ key: string; globally_locked: boolean }>(
-    "/widget-config/widgets/todays-appointments/lock",
+    "/widget-config/widgets/1/lock",
     { globally_locked: true },
   );
   steps.push({

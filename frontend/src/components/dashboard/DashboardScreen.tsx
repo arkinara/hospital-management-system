@@ -22,6 +22,7 @@ import { useQuery, queryKeys, invalidateQueries } from "@/lib/api/queryCache";
 import { useCurrentSession } from "@/lib/auth/currentUserContext";
 import { toFrontendPatient } from "@/lib/api/serialize/patients";
 import { toFrontendCarePlanItem, toFrontendVisitNote } from "@/lib/api/serialize/records";
+import { resolveWidgetId } from "@/lib/api/resolveWidgetId";
 import { TODAY, byDoctor, deptName, rp } from "@/lib/fixtures";
 import type {
   AdminUser,
@@ -31,6 +32,8 @@ import type {
   BackendCarePlanItem,
   BackendPatient,
   BackendVisitNote,
+  BackendWidgetDefinition,
+  BackendWidgetLayoutItem,
   CarePlanItem,
   Invoice,
   MyPatient,
@@ -39,7 +42,6 @@ import type {
   ScheduleSlot,
   VisitNote,
   Widget,
-  WidgetLayout,
   WidgetSize,
 } from "@/lib/fixtures";
 
@@ -675,6 +677,20 @@ function CarePlanWidget({ userId }: WidgetProps) {
 // Widget factory
 // ---------------------------------------------------------------------------
 
+/** Backend layout item -> the render `Widget` the grid consumes. */
+function toWidget(item: BackendWidgetLayoutItem): Widget {
+  return {
+    key: item.key,
+    name: item.name,
+    desc: "",
+    size: (item.size ?? "md") as WidgetSize,
+    roles: [],
+    enabled: item.enabled,
+    locked: item.globally_locked,
+    icon: "layout-grid",
+  };
+}
+
 function buildDefinitions(props: WidgetProps, widgets: Widget[]): WidgetDefinition[] {
   const renderers: Record<string, () => React.ReactNode> = {
     "todays-appointments": () => <TodayAppointmentsWidget {...props} />,
@@ -722,51 +738,46 @@ export function DashboardScreen() {
     fetcher: () => api.get<AuthSession>("/auth/me"),
   });
 
-  const myWidgets = useQuery<{ widgets: Widget[]; layout: WidgetLayout[] }>(queryKeys.myLayout(), {
-    fetcher: () =>
-      api.get<{ widgets: Widget[]; layout: WidgetLayout[] }>("/widget-config/me", {
-        query: { role: role.toLowerCase() },
-      }),
+  const myWidgets = useQuery<{ user_id: number; items: BackendWidgetLayoutItem[] }>(
+    queryKeys.myLayout(),
+    {
+      fetcher: () =>
+        api.get<{ user_id: number; items: BackendWidgetLayoutItem[] }>("/widget-config/me", {
+          query: { role: role.toLowerCase() },
+        }),
+    },
+  );
+
+  const library = useQuery<{ widgets: BackendWidgetDefinition[] }>(queryKeys.widgetLibrary(), {
+    fetcher: () => api.get<{ widgets: BackendWidgetDefinition[] }>("/widget-config/widgets/admin/library"),
   });
 
-  const library = useQuery<{ widgets: Widget[] }>(queryKeys.widgetLibrary(), {
-    fetcher: () => api.get<{ widgets: Widget[] }>("/widget-config/widgets/admin/library"),
-  });
+  const itemByKey = useMemo(() => {
+    const map = new Map<string, BackendWidgetLayoutItem>();
+    for (const item of myWidgets.data?.items ?? []) map.set(item.key, item);
+    return map;
+  }, [myWidgets.data]);
 
   // Initialise the visible order from the server layout.
   useEffect(() => {
     if (!myWidgets.data) return;
-    const widgets = myWidgets.data.widgets.filter((w) => w.enabled);
-    const layout = myWidgets.data.layout;
-    const ordered = [...widgets].sort((a, b) => {
-      const pa = layout.find((l) => l.widgetKey === a.key)?.positionOrder ?? 999;
-      const pb = layout.find((l) => l.widgetKey === b.key)?.positionOrder ?? 999;
-      return pa - pb;
-    });
+    const enabled = myWidgets.data.items.filter((w) => w.enabled);
+    const ordered = [...enabled].sort((a, b) => a.position_order - b.position_order);
     setOrder(ordered.map((w) => w.key));
   }, [myWidgets.data]);
 
   const persist = useCallback(
     (nextOrder: string[], nextHidden: Set<string>) => {
       if (!myWidgets.data) return;
-      const data = myWidgets.data;
-      const layout: WidgetLayout[] = [
-        ...nextOrder.map((key, i) => {
-          const w = data.widgets.find((x) => x.key === key) ?? library.data?.widgets.find((x) => x.key === key);
-          return {
-            userId: String(me.data?.id ?? 0),
-            widgetKey: key,
-            positionOrder: i,
-            enabled: true,
-            size: (w?.size ?? "md") as WidgetSize,
-          };
-        }),
+      const idByKey = new Map<string, number>();
+      for (const item of myWidgets.data.items) idByKey.set(item.key, item.widget_id);
+      for (const def of library.data?.widgets ?? []) idByKey.set(def.key, def.id);
+      const rows = [
+        ...nextOrder.map((key, i) => ({ key, positionOrder: i, enabled: true })),
         ...[...nextHidden].map((key, i) => ({
-          userId: String(me.data?.id ?? 0),
-          widgetKey: key,
+          key,
           positionOrder: nextOrder.length + i,
           enabled: false,
-          size: "md" as WidgetSize,
         })),
       ];
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -774,17 +785,25 @@ export function DashboardScreen() {
         // Local `order`/`hidden` state is the optimistic UI. A failed write
         // invalidates the layout so the authoritative server state re-renders
         // instead of leaving a mismatched grid.
-        void api
-          .put("/widget-config/me", { role: role.toLowerCase(), layout })
-          .then(() => {
-            invalidateQueries(queryKeys.myLayout() as unknown as unknown[]);
-          })
-          .catch(() => {
-            invalidateQueries(queryKeys.myLayout() as unknown as unknown[]);
-          });
+        void (async () => {
+          try {
+            const items = await Promise.all(
+              rows.map(async (row) => ({
+                widget_id: idByKey.get(row.key) ?? (await resolveWidgetId(row.key)),
+                position_order: row.positionOrder,
+                enabled: row.enabled,
+                size: (itemByKey.get(row.key)?.size ?? "md") as WidgetSize,
+              })),
+            );
+            await api.put("/widget-config/me", { role: role.toLowerCase(), items });
+          } catch {
+            // fall through to invalidate below
+          }
+          invalidateQueries(queryKeys.myLayout() as unknown as unknown[]);
+        })();
       }, 400);
     },
-    [myWidgets.data, library.data, me.data, role],
+    [myWidgets.data, library.data, itemByKey, role],
   );
 
   const onReorder = useCallback(
@@ -822,17 +841,15 @@ export function DashboardScreen() {
 
   const visibleWidgets = useMemo(() => {
     if (!myWidgets.data) return [];
-    const widgets = myWidgets.data.widgets.filter((w) => w.enabled && !hidden.has(w.key));
-    const byKey = new Map(widgets.map((w) => [w.key, w]));
-    const present = order.filter((k) => byKey.has(k));
-    const remaining = widgets.filter((w) => !present.includes(w.key)).map((w) => w.key);
+    const enabled = myWidgets.data.items.filter((w) => w.enabled && !hidden.has(w.key));
+    const keys = new Set(enabled.map((w) => w.key));
+    const present = order.filter((k) => keys.has(k));
+    const remaining = enabled.filter((w) => !present.includes(w.key)).map((w) => w.key);
     return [...present, ...remaining];
   }, [myWidgets.data, order, hidden]);
 
   const definitions = useMemo(() => {
     if (!myWidgets.data) return [];
-    const roleWidgets = myWidgets.data.widgets.filter((w) => w.enabled && !hidden.has(w.key));
-    const byKey = new Map(roleWidgets.map((w) => [w.key, w]));
     return buildDefinitions(
       {
         role,
@@ -840,22 +857,35 @@ export function DashboardScreen() {
         userId: me.data?.id ?? 0,
         navigate: (href) => router.push(href),
       },
-      visibleWidgets.map((k) => byKey.get(k)).filter((w): w is Widget => Boolean(w)),
+      visibleWidgets
+        .map((k) => itemByKey.get(k))
+        .filter((w): w is BackendWidgetLayoutItem => Boolean(w))
+        .map(toWidget),
     );
-  }, [myWidgets.data, visibleWidgets, role, me.data, router, hidden]);
+  }, [myWidgets.data, visibleWidgets, itemByKey, role, me.data, router]);
 
   const addableWidgets = useMemo(() => {
     const current = new Set(visibleWidgets);
     return (library.data?.widgets ?? [])
-      .filter((w) => w.roles.includes(role as Widget["roles"][number]))
-      .filter((w) => !current.has(w.key) && !w.locked);
-  }, [library.data, visibleWidgets, role]);
+      .filter((w) => !current.has(w.key) && !w.globally_locked)
+      .map((w) =>
+        toWidget({
+          widget_id: w.id,
+          position_order: 0,
+          enabled: w.globally_enabled,
+          size: "md",
+          key: w.key,
+          name: w.name,
+          globally_locked: w.globally_locked,
+        }),
+      );
+  }, [library.data, visibleWidgets]);
 
   const screenState: DataState = myWidgets.error
     ? "error"
     : myWidgets.loading && !myWidgets.data
       ? "loading"
-      : (myWidgets.data?.widgets.filter((w) => w.enabled).length ?? 0) === 0
+      : (myWidgets.data?.items.filter((w) => w.enabled).length ?? 0) === 0
         ? "empty"
         : "ready";
 

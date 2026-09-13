@@ -57,7 +57,7 @@ const REGIONS: RegionSpec[] = [
   { label: "appointments", path: "/appointments", listKey: "appointments", resource: "appointments", operation: "list" },
   { label: "invoices", path: "/billing/invoices", listKey: "invoices", resource: "invoices", operation: "list" },
   { label: "audit", path: "/audit/log", listKey: "entries", resource: "audit", operation: "list" },
-  { label: "widgets", path: "/widget-config/me", listKey: "widgets", resource: "widgets", operation: "me" },
+  { label: "widgets", path: "/widget-config/me", listKey: "items", resource: "widgets", operation: "me" },
 ];
 
 function scenarioFor(spec: RegionSpec): Scenario {

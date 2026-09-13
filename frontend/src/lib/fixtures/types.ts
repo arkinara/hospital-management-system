@@ -438,13 +438,14 @@ export interface WidgetLayout {
   size: WidgetSize;
 }
 
-/** Matches `GET /widget-config/widgets` — the admin library screen. */
+/**
+ * Matches a `widget_definitions` row from `GET /widget-config/widgets` —
+ * the admin library screen. Widgets are addressed by integer `id`.
+ */
 export interface WidgetDefinition {
+  id: number;
   key: string;
   name: string;
-  desc: string;
-  icon: string;
-  size: WidgetSize;
   /** The role a fresh user gets for this widget by default. */
   default_role: Role | null;
   globally_enabled: boolean;

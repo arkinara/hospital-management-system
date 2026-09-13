@@ -20,7 +20,7 @@ import {
 import { renderIcon } from "@/lib/iconRenderer";
 import { api, ApiError } from "@/lib/api/client";
 import { useQuery, queryKeys, invalidateQueries, setOptimistic } from "@/lib/api/queryCache";
-import type { Role, WidgetDefinition, WidgetSize } from "@/lib/fixtures";
+import type { Role, WidgetDefinition } from "@/lib/fixtures";
 
 const ROLE_OPTIONS: Array<{ label: string; value: Role }> = [
   { label: "Admin", value: "admin" },
@@ -29,22 +29,13 @@ const ROLE_OPTIONS: Array<{ label: string; value: Role }> = [
   { label: "Receptionist", value: "receptionist" },
 ];
 
-const SIZE_OPTIONS: Array<{ label: string; value: WidgetSize }> = [
-  { label: "Small", value: "sm" },
-  { label: "Medium", value: "md" },
-  { label: "Large", value: "lg" },
-];
-
 function WidgetLibraryScreen() {
   const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({
     key: "",
     name: "",
-    desc: "",
-    icon: "",
     default_role: "doctor" as Role,
-    size: "md" as WidgetSize,
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -84,7 +75,7 @@ function WidgetLibraryScreen() {
         return;
       }
       try {
-        await api.patch(`/widget-config/widgets/${w.key}`, { globally_enabled: !w.globally_enabled });
+        await api.patch(`/widget-config/widgets/${w.id}`, { globally_enabled: !w.globally_enabled });
         refresh();
         toast({ tone: "success", message: `${w.name} ${w.globally_enabled ? "disabled" : "enabled"} globally` });
       } catch (e) {
@@ -97,7 +88,7 @@ function WidgetLibraryScreen() {
   const confirmDisable = useCallback(async () => {
     if (!disableTarget) return;
     try {
-      await api.patch(`/widget-config/widgets/${disableTarget.key}`, { globally_enabled: false });
+      await api.patch(`/widget-config/widgets/${disableTarget.id}`, { globally_enabled: false });
       refresh();
       toast({
         tone: "success",
@@ -130,7 +121,7 @@ function WidgetLibraryScreen() {
           },
         );
         try {
-          await api.patch(`/widget-config/widgets/${w.key}/lock`, { locked: true });
+          await api.patch(`/widget-config/widgets/${w.id}/lock`, { globally_locked: true });
         } catch (e) {
           rollback();
           throw e;
@@ -151,7 +142,7 @@ function WidgetLibraryScreen() {
   const confirmUnlock = useCallback(async () => {
     if (!unlockTarget) return;
     try {
-      await api.patch(`/widget-config/widgets/${unlockTarget.key}/lock`, { locked: false });
+      await api.patch(`/widget-config/widgets/${unlockTarget.id}/lock`, { globally_locked: false });
       refresh();
       toast({ tone: "success", message: `${unlockTarget.name} unlocked`, detail: "Users can now remove it if they want." });
       setUnlockTarget(null);
@@ -163,7 +154,7 @@ function WidgetLibraryScreen() {
   const changeRole = useCallback(
     async (w: WidgetDefinition, role: Role) => {
       try {
-        await api.patch(`/widget-config/widgets/${w.key}`, { default_role: role });
+        await api.patch(`/widget-config/widgets/${w.id}`, { default_role: role });
         refresh();
         toast({ tone: "success", message: `${w.name} default role → ${role}` });
       } catch (e) {
@@ -174,7 +165,7 @@ function WidgetLibraryScreen() {
   );
 
   const openAdd = useCallback(() => {
-    setForm({ key: "", name: "", desc: "", icon: "", default_role: "doctor", size: "md" });
+    setForm({ key: "", name: "", default_role: "doctor" });
     setFormError(null);
     setAddOpen(true);
   }, []);
@@ -194,10 +185,7 @@ function WidgetLibraryScreen() {
       await api.post("/widget-config/widgets", {
         key: form.key.trim(),
         name: form.name.trim(),
-        desc: form.desc.trim() || undefined,
-        icon: form.icon.trim() || undefined,
         default_role: form.default_role,
-        size: form.size,
         globally_enabled: true,
       });
       refresh();
@@ -221,7 +209,7 @@ function WidgetLibraryScreen() {
       cell: (w) => (
         <span className="inline-flex items-center gap-2">
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-container text-primary-container-foreground">
-            {renderIcon(w.icon || "layout-grid", "h-4 w-4")}
+            {renderIcon("layout-grid", "h-4 w-4")}
           </span>
           <span>
             <span className="block font-medium">{w.name}</span>
@@ -297,12 +285,6 @@ function WidgetLibraryScreen() {
           </span>
         </button>
       ),
-    },
-    {
-      key: "size",
-      label: "Size",
-      width: "7rem",
-      cell: (w) => <span className="uppercase text-muted">{w.size}</span>,
     },
   ];
 
@@ -415,38 +397,6 @@ function WidgetLibraryScreen() {
               onChange={(v) => setForm((f) => ({ ...f, name: v }))}
               placeholder="e.g. Lab Results"
               required
-              renderIcon={renderIcon}
-            />
-          </div>
-          <Field
-            id="w-desc"
-            label="Description"
-            type="textarea"
-            rows={2}
-            value={form.desc}
-            onChange={(v) => setForm((f) => ({ ...f, desc: v }))}
-            placeholder="What this widget shows…"
-            optional
-            renderIcon={renderIcon}
-          />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              id="w-icon"
-              label="Icon"
-              type="text"
-              value={form.icon}
-              onChange={(v) => setForm((f) => ({ ...f, icon: v }))}
-              placeholder="e.g. flask-conical"
-              optional
-              renderIcon={renderIcon}
-            />
-            <Field
-              id="w-size"
-              label="Size"
-              type="select"
-              options={SIZE_OPTIONS}
-              value={form.size}
-              onChange={(v) => setForm((f) => ({ ...f, size: v as WidgetSize }))}
               renderIcon={renderIcon}
             />
           </div>
