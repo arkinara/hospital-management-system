@@ -20,7 +20,7 @@ from __future__ import annotations
 import time
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.audit import write_audit
@@ -33,6 +33,13 @@ from app.security import (
     hash_password,
     hash_refresh_token,
     verify_password,
+)
+from app.security.rate_limit import (
+    get_client_ip,
+    is_locked,
+    locked_accounts,
+    normalize_email,
+    record_success,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -49,6 +56,14 @@ ModuleLiteral = Literal[
 ]
 
 RESET_TOKEN_TTL_SECONDS = 3600  # 1h
+
+# A valid bcrypt hash checked on lockout / unknown-email paths so the response
+# latency matches a real password check and never hints at account existence.
+_TIMING_HASH = "$2b$12$Sh6/eAmnpXjDla6OsWt/k.JS45G6.olZDsyTRAZQFOlAKhQ0X4yZ."
+
+
+def _dummy_verify(password: str) -> None:
+    verify_password(password, _TIMING_HASH)
 
 
 class LoginRequest(BaseModel):
@@ -127,19 +142,33 @@ def _client_context(request: Request) -> tuple[str, str]:
 
 @router.post("/login", status_code=status.HTTP_200_OK)
 async def login(request: Request, body: LoginRequest) -> dict:
+    email = normalize_email(body.email)
+    ip = get_client_ip(request)
+
+    # Throttle before any credential work. The response is deliberately the
+    # same 401 envelope as a normal rejection (with matching timing) so a
+    # locked-out caller cannot tell it apart from a wrong password.
+    if is_locked(email, ip):
+        _dummy_verify(body.password)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
     with get_db() as conn:
-        user = conn.execute("SELECT * FROM users WHERE email = ?", (body.email,)).fetchone()
+        user = conn.execute(
+            "SELECT * FROM users WHERE email = ? COLLATE NOCASE", (email,)
+        ).fetchone()
     if user is None:
-        write_audit(None, "login.failed", "user", None, {"email": body.email})
+        _dummy_verify(body.password)
+        write_audit(None, "login.failed", "user", None, {"email": email, "ip": ip})
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not verify_password(body.password, user["password_hash"]):
-        write_audit(user["id"], "login.failed", "user", user["id"], {"email": body.email})
+        write_audit(user["id"], "login.failed", "user", user["id"], {"email": email, "ip": ip})
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not user["is_active"]:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
+    record_success(email, ip)
     refresh_token = create_refresh_token()
     with get_db() as conn:
         _insert_session(conn, user["id"], refresh_token)
@@ -147,8 +176,7 @@ async def login(request: Request, body: LoginRequest) -> dict:
             "UPDATE users SET last_login_at = ? WHERE id = ?",
             (int(time.time()), user["id"]),
         )
-    ip, ua = _client_context(request)
-    write_audit(user["id"], "login.success", "user", user["id"], {"email": body.email, "ip": ip})
+    write_audit(user["id"], "login.success", "user", user["id"], {"email": email, "ip": ip})
 
     return {
         "access_token": create_access_token(user["id"], user["role"]),
@@ -303,6 +331,22 @@ async def change_password(
 
 
 # ---- Admin-only: permission matrix + user management -----------------------
+
+
+@router.get("/lockouts", status_code=status.HTTP_200_OK)
+async def list_lockouts(
+    _user: dict = Depends(require_admin),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    """Currently locked-out emails plus the seconds left in their cooldown."""
+    locked = locked_accounts()
+    return {
+        "lockouts": locked[offset : offset + limit],
+        "total": len(locked),
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/permissions", status_code=status.HTTP_200_OK)

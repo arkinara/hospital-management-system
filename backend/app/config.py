@@ -49,6 +49,18 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = Field(default=15, description="Access token lifetime.")
     refresh_token_ttl_days: int = Field(default=7, description="Refresh token lifetime.")
     bcrypt_rounds: int = Field(default=12, description="bcrypt cost factor for passwords.")
+    auth_max_attempts_per_email: int = Field(
+        default=5, description="Failed logins per email before a temporary lockout."
+    )
+    auth_max_attempts_per_ip: int = Field(
+        default=20, description="Failed logins per client IP before a temporary lockout."
+    )
+    auth_lockout_window_seconds: int = Field(
+        default=900, description="Rolling window failures are counted over."
+    )
+    auth_lockout_cooldown_seconds: int = Field(
+        default=900, description="How long a lockout lasts after the last failure."
+    )
 
     @property
     def cors_origin_list(self) -> list[str]:
