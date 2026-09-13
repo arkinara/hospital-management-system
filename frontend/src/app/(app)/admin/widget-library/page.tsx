@@ -84,7 +84,7 @@ function WidgetLibraryScreen() {
         return;
       }
       try {
-        await api.patch(`/admin/widgets/${w.key}`, { globally_enabled: !w.globally_enabled });
+        await api.patch(`/widget-config/widgets/${w.key}`, { globally_enabled: !w.globally_enabled });
         refresh();
         toast({ tone: "success", message: `${w.name} ${w.globally_enabled ? "disabled" : "enabled"} globally` });
       } catch (e) {
@@ -97,7 +97,7 @@ function WidgetLibraryScreen() {
   const confirmDisable = useCallback(async () => {
     if (!disableTarget) return;
     try {
-      await api.patch(`/admin/widgets/${disableTarget.key}`, { globally_enabled: false });
+      await api.patch(`/widget-config/widgets/${disableTarget.key}`, { globally_enabled: false });
       refresh();
       toast({
         tone: "success",
@@ -163,7 +163,7 @@ function WidgetLibraryScreen() {
   const changeRole = useCallback(
     async (w: WidgetDefinition, role: Role) => {
       try {
-        await api.patch(`/admin/widgets/${w.key}`, { default_role: role });
+        await api.patch(`/widget-config/widgets/${w.key}`, { default_role: role });
         refresh();
         toast({ tone: "success", message: `${w.name} default role → ${role}` });
       } catch (e) {
@@ -191,7 +191,7 @@ function WidgetLibraryScreen() {
     setSaving(true);
     setFormError(null);
     try {
-      await api.post("/admin/widgets", {
+      await api.post("/widget-config/widgets", {
         key: form.key.trim(),
         name: form.name.trim(),
         desc: form.desc.trim() || undefined,

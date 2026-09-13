@@ -2,13 +2,12 @@
 
 Append-only read API for the audit_log table. Admin only.
 """
+
 from __future__ import annotations
 
 import uuid
 
-import pytest
-
-from test_auth import _db_conn, bearer, client, login
+from test_auth import bearer, client, login
 
 ADMIN = ("admin@hospital.test", "Hospital2025!")
 DOCTOR = ("doctor@hospital.test", "Hospital2025!")
@@ -41,9 +40,14 @@ def test_audit_log_filters_by_action():
     h = _admin_h()
     # Trigger an audit entry by creating + deleting a user
     ur = client.post(
-        "/admin/users", headers=h,
-        json={"email": f"audit-{uuid.uuid4().hex[:8]}@example.com",
-              "password": "Hospital2025!", "full_name": "X", "role": "nurse"},
+        "/admin/users",
+        headers=h,
+        json={
+            "email": f"audit-{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Hospital2025!",
+            "full_name": "X",
+            "role": "nurse",
+        },
     )
     if ur.status_code == 201:
         uid = ur.json()["id"]
@@ -62,9 +66,14 @@ def test_audit_log_filters_by_target_type():
     h = _admin_h()
     # Create a patient (which writes admin.patient_create or similar)
     ur = client.post(
-        "/admin/users", headers=h,
-        json={"email": f"audit-{uuid.uuid4().hex[:8]}@example.com",
-              "password": "Hospital2025!", "full_name": "X", "role": "nurse"},
+        "/admin/users",
+        headers=h,
+        json={
+            "email": f"audit-{uuid.uuid4().hex[:8]}@example.com",
+            "password": "Hospital2025!",
+            "full_name": "X",
+            "role": "nurse",
+        },
     )
     if ur.status_code == 201:
         uid = ur.json()["id"]

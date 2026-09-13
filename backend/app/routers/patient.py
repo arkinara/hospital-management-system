@@ -201,7 +201,9 @@ def _next_mrn(conn) -> str:
         if digits:
             highest = max(highest, int(digits))
     candidate = highest + 1
-    while conn.execute("SELECT 1 FROM patients WHERE mrn = ?", (f"MRN-{candidate:06d}",)).fetchone():
+    while conn.execute(
+        "SELECT 1 FROM patients WHERE mrn = ?", (f"MRN-{candidate:06d}",)
+    ).fetchone():
         candidate += 1
     return f"MRN-{candidate:06d}"
 
@@ -490,9 +492,7 @@ def update_patient(
                     (patient_id, payload.primary_department_id, int(datetime.now(UTC).timestamp())),
                 )
         row = _get_patient(conn, patient_id)
-    write_audit(
-        user["id"], "patient.update", "patient", patient_id, {"fields": sorted(changes)}
-    )
+    write_audit(user["id"], "patient.update", "patient", patient_id, {"fields": sorted(changes)})
     return serialize_patient(row)
 
 
@@ -523,9 +523,7 @@ def add_allergy(
         # TODO(#21): the prescription sign endpoint MUST re-check this patient's
         # allergies before allowing a signature; a life_threatening allergen
         # should hard-block the sign flow.
-        row = conn.execute(
-            "SELECT * FROM patient_allergies WHERE id = ?", (allergy_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM patient_allergies WHERE id = ?", (allergy_id,)).fetchone()
     write_audit(
         user["id"],
         "patient.allergy_add",

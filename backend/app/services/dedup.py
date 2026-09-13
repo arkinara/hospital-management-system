@@ -104,8 +104,7 @@ def find_fuzzy_name_dob(
     if not full_name or dob is None:
         return []
     rows = conn.execute(
-        "SELECT id, mrn, full_name, dob, national_id FROM patients "
-        "WHERE dob = ? AND is_active = 1",
+        "SELECT id, mrn, full_name, dob, national_id FROM patients WHERE dob = ? AND is_active = 1",
         (dob,),
     ).fetchall()
     matches: list[Suspect] = []

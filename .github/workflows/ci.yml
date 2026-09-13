@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   frontend:
-    name: Frontend (lint, typecheck, build)
+    name: Frontend (lint, typecheck, test, build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,10 +26,11 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
+      - run: npm run test:run
       - run: npm run build
 
   backend:
-    name: Backend (install, import, health)
+    name: Backend (lint, test, import, health)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -46,6 +47,8 @@ jobs:
         run: |
           ruff check .
           ruff format --check .
+      - name: Unit and integration tests (pytest)
+        run: pytest -q
       - name: Import app and count routes
         run: python -c "from app.main import app; print(len(app.routes))"
       - name: Boot server and probe /health

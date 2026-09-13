@@ -130,15 +130,15 @@ async function receptionistJourney(): Promise<JourneyStep[]> {
   const checked = await api.post<{ status: string }>(`/appointments/${appt.id}/check-in`);
   steps.push({ route: "/appointments", note: `Checked in — status ${checked.status}` });
 
-  const invoice = await api.post<{ id: string }>("/invoices", {
+  const invoice = await api.post<{ id: string }>("/billing/invoices", {
     patient: patient.mrn,
     total: 150000,
   });
   steps.push({ route: "/billing", note: `Invoice ${invoice.id} created` });
 
-  await api.post(`/invoices/${invoice.id}/payments`, { amount: 150000, method: "cash" });
+  await api.post(`/billing/invoices/${invoice.id}/payments`, { amount: 150000, method: "cash" });
   const list = await api.get<{ invoices: Array<{ id: string; status: string }> }>(
-    "/invoices",
+    "/billing/invoices",
     { query: { patient: patient.mrn } },
   );
   const paid = list.invoices.find((i) => i.id === invoice.id);
@@ -290,8 +290,8 @@ async function adminJourney(): Promise<JourneyStep[]> {
     note: `Assigned ${assignment.userId} to ${assignment.departmentId}`,
   });
 
-  const locked = await api.put<{ key: string; globally_locked: boolean }>(
-    "/widgets/admin/library/todays-appointments",
+  const locked = await api.patch<{ key: string; globally_locked: boolean }>(
+    "/widget-config/widgets/todays-appointments/lock",
     { globally_locked: true },
   );
   steps.push({
@@ -299,7 +299,7 @@ async function adminJourney(): Promise<JourneyStep[]> {
     note: `Locked widget ${locked.key} (${locked.globally_locked})`,
   });
 
-  const audit = await api.get<{ entries: Array<{ action: string }> }>("/audit-log");
+  const audit = await api.get<{ entries: Array<{ action: string }> }>("/audit/log");
   const wanted = ["admin.user_create", "admin.staff_assign", "widget.lock_toggle"];
   const present = wanted.filter((action) => audit.entries.some((e) => e.action === action));
   steps.push({

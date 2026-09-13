@@ -30,6 +30,7 @@ ADMIN = ("admin@hospital.test", "Hospital2025!")
 DOCTOR = ("doctor@hospital.test", "Hospital2025!")
 RECEPTIONIST = ("receptionist@hospital.test", "Hospital2025!")
 
+
 def make_patient(**overrides) -> dict:
     """Build a unique, dedup-clean patient payload.
 
@@ -370,8 +371,7 @@ def test_allergy_add_returns_201_object_and_audits():
 
 def test_allergy_delete_unknown_is_404():
     assert (
-        client.delete("/patients/999999/allergies/999", headers=headers("admin")).status_code
-        == 404
+        client.delete("/patients/999999/allergies/999", headers=headers("admin")).status_code == 404
     )
 
 

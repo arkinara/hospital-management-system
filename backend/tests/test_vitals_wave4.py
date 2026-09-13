@@ -122,9 +122,7 @@ def test_post_vitals_missing_field_is_422():
 def test_post_vitals_linked_to_appointment():
     pid = _make_patient()
     with _db_conn() as conn:
-        doctor_id = conn.execute(
-            "SELECT id FROM users WHERE email = ?", (DOCTOR[0],)
-        ).fetchone()[0]
+        doctor_id = conn.execute("SELECT id FROM users WHERE email = ?", (DOCTOR[0],)).fetchone()[0]
         dept_id = conn.execute("SELECT id FROM departments ORDER BY id LIMIT 1").fetchone()[0]
         start = int((datetime.now(UTC) + timedelta(days=1)).replace(hour=9, minute=0).timestamp())
         cur = conn.execute(
@@ -146,9 +144,7 @@ def test_list_vitals_newest_first():
     pid = _make_patient()
     _post_vitals(pid, {"systolic": 110})
     _post_vitals(pid, {"systolic": 130})
-    r = client.get(
-        f"/medical-records/patients/{pid}/vitals", headers=_headers(NURSE)
-    )
+    r = client.get(f"/medical-records/patients/{pid}/vitals", headers=_headers(NURSE))
     assert r.status_code == 200
     vitals = r.json()["vitals"]
     assert len(vitals) == 2
@@ -157,9 +153,7 @@ def test_list_vitals_newest_first():
 
 def test_list_vitals_empty_patient_returns_empty_array():
     pid = _make_patient()
-    r = client.get(
-        f"/medical-records/patients/{pid}/vitals", headers=_headers(NURSE)
-    )
+    r = client.get(f"/medical-records/patients/{pid}/vitals", headers=_headers(NURSE))
     assert r.status_code == 200
     assert r.json()["vitals"] == []
 
@@ -256,9 +250,7 @@ def test_review_queue_department_filter():
     created = _post_vitals(pid, {"spo2": 88})
     vital_id = created.json()["id"]
     with _db_conn() as conn:
-        dept_id = conn.execute(
-            "SELECT id FROM departments ORDER BY id LIMIT 1"
-        ).fetchone()[0]
+        dept_id = conn.execute("SELECT id FROM departments ORDER BY id LIMIT 1").fetchone()[0]
     r = client.get(
         "/medical-records/vitals/review-queue",
         params={"department_id": dept_id},
@@ -288,17 +280,16 @@ def test_acknowledge_removes_from_queue():
 def test_acknowledge_twice_is_409():
     pid = _make_patient()
     vital_id = _post_vitals(pid, {"heart_rate": 150}).json()["id"]
-    assert client.post(
-        f"/medical-records/vitals/{vital_id}/acknowledge", headers=_headers(DOCTOR)
-    ).status_code == 200
-    r = client.post(
-        f"/medical-records/vitals/{vital_id}/acknowledge", headers=_headers(DOCTOR)
+    assert (
+        client.post(
+            f"/medical-records/vitals/{vital_id}/acknowledge", headers=_headers(DOCTOR)
+        ).status_code
+        == 200
     )
+    r = client.post(f"/medical-records/vitals/{vital_id}/acknowledge", headers=_headers(DOCTOR))
     assert r.status_code == 409
 
 
 def test_acknowledge_unknown_reading_is_404():
-    r = client.post(
-        "/medical-records/vitals/999999/acknowledge", headers=_headers(DOCTOR)
-    )
+    r = client.post("/medical-records/vitals/999999/acknowledge", headers=_headers(DOCTOR))
     assert r.status_code == 404

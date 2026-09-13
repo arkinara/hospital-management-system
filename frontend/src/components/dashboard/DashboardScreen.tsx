@@ -237,7 +237,7 @@ function DepartmentOccupancyWidget() {
 
 function RevenueMonthWidget() {
   const q = useQuery<{ invoices: Invoice[] }>(queryKeys.invoices(), {
-    fetcher: () => api.get<{ invoices: Invoice[] }>("/invoices"),
+    fetcher: () => api.get<{ invoices: Invoice[] }>("/billing/invoices"),
   });
   const state = widgetState(q, (d) => d.invoices.length === 0);
   const total = (q.data?.invoices ?? []).reduce((s, i) => s + i.total, 0);
@@ -716,13 +716,13 @@ export function DashboardScreen() {
 
   const myWidgets = useQuery<{ widgets: Widget[]; layout: WidgetLayout[] }>(queryKeys.myLayout(), {
     fetcher: () =>
-      api.get<{ widgets: Widget[]; layout: WidgetLayout[] }>("/widgets/me", {
+      api.get<{ widgets: Widget[]; layout: WidgetLayout[] }>("/widget-config/me", {
         query: { role: role.toLowerCase() },
       }),
   });
 
   const library = useQuery<{ widgets: Widget[] }>(queryKeys.widgetLibrary(), {
-    fetcher: () => api.get<{ widgets: Widget[] }>("/widgets/admin/library"),
+    fetcher: () => api.get<{ widgets: Widget[] }>("/widget-config/widgets/admin/library"),
   });
 
   // Initialise the visible order from the server layout.
@@ -767,7 +767,7 @@ export function DashboardScreen() {
         // invalidates the layout so the authoritative server state re-renders
         // instead of leaving a mismatched grid.
         void api
-          .put("/widgets/me", { role: role.toLowerCase(), layout })
+          .put("/widget-config/me", { role: role.toLowerCase(), layout })
           .then(() => {
             invalidateQueries(queryKeys.myLayout() as unknown as unknown[]);
           })

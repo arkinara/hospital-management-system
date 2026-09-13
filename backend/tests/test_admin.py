@@ -2,13 +2,12 @@
 
 User CRUD, department CRUD, role assignment, department-staff mapping.
 """
+
 from __future__ import annotations
 
 import uuid
 
-import pytest
-
-from test_auth import _db_conn, bearer, client, login
+from test_auth import bearer, client, login
 
 ADMIN = ("admin@hospital.test", "Hospital2025!")
 DOCTOR = ("doctor@hospital.test", "Hospital2025!")
@@ -29,7 +28,8 @@ def _unique_email() -> str:
 def test_admin_creates_user_201():
     h = _admin_h()
     r = client.post(
-        "/admin/users", headers=h,
+        "/admin/users",
+        headers=h,
         json={
             "email": _unique_email(),
             "password": "Hospital2025!",
@@ -64,9 +64,14 @@ def test_admin_creates_user_duplicate_email_409():
 def test_admin_patches_user_role():
     h = _admin_h()
     r = client.post(
-        "/admin/users", headers=h,
-        json={"email": _unique_email(), "password": "Hospital2025!",
-              "full_name": "X", "role": "nurse"},
+        "/admin/users",
+        headers=h,
+        json={
+            "email": _unique_email(),
+            "password": "Hospital2025!",
+            "full_name": "X",
+            "role": "nurse",
+        },
     )
     uid = r.json()["id"]
     p = client.patch(f"/admin/users/{uid}", headers=h, json={"role": "doctor"})
@@ -83,9 +88,14 @@ def test_doctor_cannot_list_users_403():
 def test_admin_deactivates_user_204():
     h = _admin_h()
     r = client.post(
-        "/admin/users", headers=h,
-        json={"email": _unique_email(), "password": "Hospital2025!",
-              "full_name": "To Deact", "role": "nurse"},
+        "/admin/users",
+        headers=h,
+        json={
+            "email": _unique_email(),
+            "password": "Hospital2025!",
+            "full_name": "To Deact",
+            "role": "nurse",
+        },
     )
     uid = r.json()["id"]
     d = client.post(f"/admin/users/{uid}/deactivate", headers=h)
@@ -98,9 +108,15 @@ def test_admin_creates_department_201():
     h = _admin_h()
     code = f"D{uuid.uuid4().hex[:4].upper()}"
     r = client.post(
-        "/admin/departments", headers=h,
-        json={"name": "Cardiology", "code": code, "type": "specialty",
-              "bed_capacity": 30, "min_clinicians_per_shift": 3},
+        "/admin/departments",
+        headers=h,
+        json={
+            "name": "Cardiology",
+            "code": code,
+            "type": "specialty",
+            "bed_capacity": 30,
+            "min_clinicians_per_shift": 3,
+        },
     )
     assert r.status_code == 201, r.text
     data = r.json()
@@ -121,11 +137,13 @@ def test_admin_creates_department_duplicate_code_409():
 def test_patches_department_capacity():
     h = _admin_h()
     code = f"D{uuid.uuid4().hex[:4].upper()}"
-    r = client.post("/admin/departments", headers=h,
-                    json={"name": "X", "code": code, "type": "general"})
+    r = client.post(
+        "/admin/departments", headers=h, json={"name": "X", "code": code, "type": "general"}
+    )
     did = r.json()["id"]
-    p = client.patch(f"/admin/departments/{did}", headers=h,
-                     json={"bed_capacity": 99, "active": False})
+    p = client.patch(
+        f"/admin/departments/{did}", headers=h, json={"bed_capacity": 99, "active": False}
+    )
     assert p.status_code == 200
     assert p.json()["bed_capacity"] == 99
     assert not p.json()["active"]  # may be 0/False from SQLite
@@ -135,26 +153,34 @@ def test_assigns_staff_to_department():
     h = _admin_h()
     # Create a fresh doctor
     ur = client.post(
-        "/admin/users", headers=h,
-        json={"email": _unique_email(), "password": "Hospital2025!",
-              "full_name": "New Doc", "role": "doctor"},
+        "/admin/users",
+        headers=h,
+        json={
+            "email": _unique_email(),
+            "password": "Hospital2025!",
+            "full_name": "New Doc",
+            "role": "doctor",
+        },
     )
     uid = ur.json()["id"]
     # Create a fresh department
     code = f"D{uuid.uuid4().hex[:4].upper()}"
-    dr = client.post("/admin/departments", headers=h,
-                     json={"name": "Y", "code": code, "type": "general"})
+    dr = client.post(
+        "/admin/departments", headers=h, json={"name": "Y", "code": code, "type": "general"}
+    )
     did = dr.json()["id"]
     # Assign
     ar = client.post(
-        "/admin/department-staff", headers=h,
+        "/admin/department-staff",
+        headers=h,
         json={"user_id": uid, "department_id": did},
     )
     assert ar.status_code == 201, ar.text
     aid = ar.json()["id"]
     # Duplicate assignment
     ar2 = client.post(
-        "/admin/department-staff", headers=h,
+        "/admin/department-staff",
+        headers=h,
         json={"user_id": uid, "department_id": did},
     )
     assert ar2.status_code == 409
@@ -173,7 +199,8 @@ def test_doctor_can_list_departments():
 def test_doctor_cannot_create_department_403():
     h = _doctor_h()
     r = client.post(
-        "/admin/departments", headers=h,
+        "/admin/departments",
+        headers=h,
         json={"name": "Z", "code": f"DZ{uuid.uuid4().hex[:3].upper()}", "type": "general"},
     )
     assert r.status_code == 403

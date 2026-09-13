@@ -124,9 +124,7 @@ def _row_to_dict(row) -> dict:
 
 
 def _get_appointment(conn, appointment_id: int) -> dict:
-    row = conn.execute(
-        "SELECT * FROM appointments WHERE id = ?", (appointment_id,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM appointments WHERE id = ?", (appointment_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Appointment not found")
     return row
@@ -155,15 +153,15 @@ def _clock_minutes(value: str) -> int:
     try:
         hour, minute = (int(p) for p in value.split(":"))
     except (TypeError, ValueError):
-        raise HTTPException(status_code=422, detail=f"Invalid time '{value}'; expected HH:MM") from None
+        raise HTTPException(
+            status_code=422, detail=f"Invalid time '{value}'; expected HH:MM"
+        ) from None
     if hour < 0 or hour > 23 or minute < 0 or minute > 59:
         raise HTTPException(status_code=422, detail=f"Invalid time '{value}'; expected HH:MM")
     return hour * 60 + minute
 
 
-def _validate_windows(
-    conn, doctor_id: int, windows: list[AvailabilityWindow]
-) -> list[dict]:
+def _validate_windows(conn, doctor_id: int, windows: list[AvailabilityWindow]) -> list[dict]:
     """Validate a PUT windows payload and return normalized dicts (raises 422).
 
     Rules: every window ends after it starts; department_id must exist; no two
@@ -178,9 +176,12 @@ def _validate_windows(
                 status_code=422,
                 detail=f"Window {index}: end_time must be after start_time",
             )
-        if window.department_id is not None and not conn.execute(
-            "SELECT 1 FROM departments WHERE id = ?", (window.department_id,)
-        ).fetchone():
+        if (
+            window.department_id is not None
+            and not conn.execute(
+                "SELECT 1 FROM departments WHERE id = ?", (window.department_id,)
+            ).fetchone()
+        ):
             raise HTTPException(
                 status_code=422,
                 detail=f"Window {index}: unknown department_id {window.department_id}",
@@ -198,7 +199,11 @@ def _validate_windows(
     for i in range(len(out)):
         for j in range(i + 1, len(out)):
             a, b = out[i], out[j]
-            if a["day_of_week"] == b["day_of_week"] and a["start_min"] < b["end_min"] and b["start_min"] < a["end_min"]:
+            if (
+                a["day_of_week"] == b["day_of_week"]
+                and a["start_min"] < b["end_min"]
+                and b["start_min"] < a["end_min"]
+            ):
                 raise HTTPException(
                     status_code=422,
                     detail=(
@@ -259,9 +264,7 @@ def _blocked_conflicts(
 
 def _resolve_existence(conn, body: dict) -> None:
     """Raise 404 for nonexistent patient/doctor/department references."""
-    if not conn.execute(
-        "SELECT 1 FROM patients WHERE id = ?", (body["patient_id"],)
-    ).fetchone():
+    if not conn.execute("SELECT 1 FROM patients WHERE id = ?", (body["patient_id"],)).fetchone():
         raise HTTPException(status_code=404, detail="Patient not found")
     doctor = conn.execute(
         "SELECT id, role FROM users WHERE id = ?", (body["doctor_id"],)
@@ -269,13 +272,12 @@ def _resolve_existence(conn, body: dict) -> None:
     if doctor is None:
         raise HTTPException(status_code=404, detail="Doctor not found")
     if doctor["role"] != "doctor":
-        raise HTTPException(
-            status_code=422, detail="doctor_id must reference a doctor account"
-        )
+        raise HTTPException(status_code=422, detail="doctor_id must reference a doctor account")
     dept_id = body.get("department_id")
-    if dept_id is not None and not conn.execute(
-        "SELECT 1 FROM departments WHERE id = ?", (dept_id,)
-    ).fetchone():
+    if (
+        dept_id is not None
+        and not conn.execute("SELECT 1 FROM departments WHERE id = ?", (dept_id,)).fetchone()
+    ):
         raise HTTPException(status_code=404, detail="Department not found")
 
 
@@ -360,12 +362,13 @@ def _transition(
         updates.append("completed_at = ?")
         params.append(now)
     params.append(appointment_id)
-    conn.execute(
-        f"UPDATE appointments SET {', '.join(updates)} WHERE id = ?", params
-    )
+    conn.execute(f"UPDATE appointments SET {', '.join(updates)} WHERE id = ?", params)
     _insert_lifecycle_event(conn, appointment_id, row["status"], to_status, user["id"], reason)
     write_audit(
-        user["id"], f"appointment.{action}", "appointment", appointment_id,
+        user["id"],
+        f"appointment.{action}",
+        "appointment",
+        appointment_id,
         {"from": row["status"], "to": to_status, "reason": reason},
         conn=conn,
     )
@@ -415,9 +418,9 @@ async def list_appointments(
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
     with get_db() as conn:
-        total = conn.execute(
-            f"SELECT COUNT(*) AS n FROM appointments {where}", params
-        ).fetchone()["n"]
+        total = conn.execute(f"SELECT COUNT(*) AS n FROM appointments {where}", params).fetchone()[
+            "n"
+        ]
         rows = conn.execute(
             f"SELECT * FROM appointments {where} ORDER BY scheduled_at LIMIT ? OFFSET ?",
             params + [page_size, (page - 1) * page_size],
@@ -445,8 +448,11 @@ async def appointment_wait_time_stats(
     if to:
         where.append("scheduled_at <= ?")
         params.append(_to_epoch(datetime.fromisoformat(to.replace("Z", "+00:00"))))
-    if from_ and to and _to_epoch(datetime.fromisoformat(from_.replace("Z", "+00:00"))) > _to_epoch(
-        datetime.fromisoformat(to.replace("Z", "+00:00"))
+    if (
+        from_
+        and to
+        and _to_epoch(datetime.fromisoformat(from_.replace("Z", "+00:00")))
+        > _to_epoch(datetime.fromisoformat(to.replace("Z", "+00:00")))
     ):
         raise HTTPException(status_code=422, detail="from must be on or before to")
     groups: dict[tuple[int, str], list[int]] = {}
@@ -512,22 +518,19 @@ async def create_appointment(
 ) -> dict:
     start = _to_epoch(body.scheduled_start)
     duration = body.duration_minutes or 30
-    end = (
-        _to_epoch(body.scheduled_end)
-        if body.scheduled_end is not None
-        else start + duration * 60
-    )
+    end = _to_epoch(body.scheduled_end) if body.scheduled_end is not None else start + duration * 60
     if end <= start:
-        raise HTTPException(
-            status_code=422, detail="scheduled_end must be after scheduled_start"
-        )
+        raise HTTPException(status_code=422, detail="scheduled_end must be after scheduled_start")
 
     with get_db() as conn:
-        _resolve_existence(conn, {
-            "patient_id": body.patient_id,
-            "doctor_id": body.doctor_id,
-            "department_id": body.department_id,
-        })
+        _resolve_existence(
+            conn,
+            {
+                "patient_id": body.patient_id,
+                "doctor_id": body.doctor_id,
+                "department_id": body.department_id,
+            },
+        )
         _enforce_booking_rules(conn, body.doctor_id, start, end)
         now = int(time.time())
         cursor = conn.execute(
@@ -551,9 +554,16 @@ async def create_appointment(
         new_id = cursor.lastrowid
         _insert_lifecycle_event(conn, new_id, None, "booked", user["id"], None)
         write_audit(
-            user["id"], "appointment.create", "appointment", new_id,
-            {"patient_id": body.patient_id, "doctor_id": body.doctor_id,
-             "start": _iso(start), "end": _iso(end)},
+            user["id"],
+            "appointment.create",
+            "appointment",
+            new_id,
+            {
+                "patient_id": body.patient_id,
+                "doctor_id": body.doctor_id,
+                "start": _iso(start),
+                "end": _iso(end),
+            },
             conn=conn,
         )
         row = conn.execute("SELECT * FROM appointments WHERE id = ?", (new_id,)).fetchone()
@@ -617,7 +627,11 @@ async def update_appointment(
             list(fields.values()) + [int(time.time()), appointment_id],
         )
         write_audit(
-            user["id"], "appointment.update", "appointment", appointment_id, fields,
+            user["id"],
+            "appointment.update",
+            "appointment",
+            appointment_id,
+            fields,
             conn=conn,
         )
         row = conn.execute("SELECT * FROM appointments WHERE id = ?", (appointment_id,)).fetchone()
@@ -663,9 +677,12 @@ async def complete_appointment(
     with get_db() as conn:
         row = _get_appointment(conn, appointment_id)
         _require_appointment_scope(user, row)
-        if body.visit_note_id is not None and not conn.execute(
-            "SELECT 1 FROM visit_notes WHERE id = ?", (body.visit_note_id,)
-        ).fetchone():
+        if (
+            body.visit_note_id is not None
+            and not conn.execute(
+                "SELECT 1 FROM visit_notes WHERE id = ?", (body.visit_note_id,)
+            ).fetchone()
+        ):
             raise HTTPException(status_code=404, detail="Visit note not found")
         fresh = _transition(conn, appointment_id, user, "complete", "in_progress", "completed")
     return _row_to_dict(fresh)
@@ -739,9 +756,7 @@ async def get_doctor_availability(
         raise HTTPException(status_code=403, detail="Forbidden")
     today = datetime.now(UTC).date()
     try:
-        start_day = (
-            datetime.strptime(from_date, "%Y-%m-%d").date() if from_date else today
-        )
+        start_day = datetime.strptime(from_date, "%Y-%m-%d").date() if from_date else today
         end_day = (
             datetime.strptime(to_date, "%Y-%m-%d").date()
             if to_date
@@ -849,7 +864,10 @@ async def put_doctor_availability(
                 }
             )
         write_audit(
-            user["id"], "availability.update", "doctor", doctor_id,
+            user["id"],
+            "availability.update",
+            "doctor",
+            doctor_id,
             {"windows": saved},
             conn=conn,
         )
@@ -866,7 +884,9 @@ async def add_blocked_day(
     if (body.start_time is None) != (body.end_time is None):
         raise HTTPException(
             status_code=422,
-            detail="start_time and end_time must be provided together (or both omitted for a full day)",
+            detail=(
+                "start_time and end_time must be provided together (or both omitted for a full day)"
+            ),
         )
     start_min = end_min = None
     if body.start_time is not None:
@@ -896,9 +916,7 @@ async def add_blocked_day(
             (doctor_id, body.blocked_date.isoformat()),
         ).fetchall()
         for row in existing:
-            existing_start = (
-                _clock_minutes(row["start_time"]) if row["start_time"] else None
-            )
+            existing_start = _clock_minutes(row["start_time"]) if row["start_time"] else None
             existing_end = _clock_minutes(row["end_time"]) if row["end_time"] else None
             if start_min is None or existing_start is None:
                 raise HTTPException(status_code=409, detail="That date is already blocked")
@@ -918,7 +936,10 @@ async def add_blocked_day(
             ),
         )
         write_audit(
-            user["id"], "availability.blocked_add", "doctor", doctor_id,
+            user["id"],
+            "availability.blocked_add",
+            "doctor",
+            doctor_id,
             {
                 "date": body.blocked_date.isoformat(),
                 "start_time": body.start_time,
@@ -960,7 +981,10 @@ async def delete_blocked_day(
             raise HTTPException(status_code=404, detail="Blocked period not found")
         conn.execute("DELETE FROM doctor_blocked_days WHERE id = ?", (blocked_id,))
         write_audit(
-            user["id"], "availability.blocked_delete", "doctor", doctor_id,
+            user["id"],
+            "availability.blocked_delete",
+            "doctor",
+            doctor_id,
             {"id": blocked_id, "date": row["blocked_date"]},
             conn=conn,
         )

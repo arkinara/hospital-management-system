@@ -6,7 +6,6 @@ handover bundle built from the nurse's patient assignments.
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -43,9 +42,7 @@ def _future_ts(hours=2):
 
 def _nurse_id():
     with _db_conn() as conn:
-        return conn.execute(
-            "SELECT id FROM users WHERE email = ?", (NURSE[0],)
-        ).fetchone()[0]
+        return conn.execute("SELECT id FROM users WHERE email = ?", (NURSE[0],)).fetchone()[0]
 
 
 def _assign(pid, user_id, shift_date):
@@ -54,8 +51,13 @@ def _assign(pid, user_id, shift_date):
     with _db_conn() as conn:
         start = int(datetime.fromisoformat(f"{shift_date}T00:00:00+00:00").timestamp())
         return insert_assignment(
-            conn, patient_id=pid, user_id=user_id, role="nurse",
-            shift_start=start, shift_end=start + 12 * 3600, created_by=user_id,
+            conn,
+            patient_id=pid,
+            user_id=user_id,
+            role="nurse",
+            shift_start=start,
+            shift_end=start + 12 * 3600,
+            created_by=user_id,
         )
 
 
@@ -126,9 +128,7 @@ def test_list_care_plan_sorts_by_priority_then_due():
         headers=_headers(DOCTOR),
         json={"description": "low item", "priority": "low"},
     )
-    r = client.get(
-        f"/medical-records/patients/{pid}/care-plan", headers=_headers(NURSE)
-    )
+    r = client.get(f"/medical-records/patients/{pid}/care-plan", headers=_headers(NURSE))
     assert r.status_code == 200
     order = [item["description"] for item in r.json()["items"]]
     assert order == ["high item", "normal item", "low item"]
@@ -215,12 +215,13 @@ def test_complete_twice_is_409():
         headers=_headers(DOCTOR),
         json={"description": "double", "priority": "normal"},
     ).json()
-    assert client.post(
-        f"/medical-records/care-plan/{item['id']}/complete", headers=_headers(NURSE)
-    ).status_code == 200
-    r = client.post(
-        f"/medical-records/care-plan/{item['id']}/complete", headers=_headers(NURSE)
+    assert (
+        client.post(
+            f"/medical-records/care-plan/{item['id']}/complete", headers=_headers(NURSE)
+        ).status_code
+        == 200
     )
+    r = client.post(f"/medical-records/care-plan/{item['id']}/complete", headers=_headers(NURSE))
     assert r.status_code == 409
 
 
@@ -248,9 +249,7 @@ def test_reassign_to_non_nurse_is_422():
         json={"description": "no move", "priority": "normal"},
     ).json()
     with _db_conn() as conn:
-        doctor_id = conn.execute(
-            "SELECT id FROM users WHERE email = ?", (DOCTOR[0],)
-        ).fetchone()[0]
+        doctor_id = conn.execute("SELECT id FROM users WHERE email = ?", (DOCTOR[0],)).fetchone()[0]
     r = client.post(
         f"/medical-records/care-plan/{item['id']}/reassign",
         headers=_headers(ADMIN),
@@ -289,9 +288,7 @@ def test_shift_handover_returns_patients_with_open_items():
 def test_shift_handover_nurse_cannot_read_another_shift():
     pid = _make_patient()
     with _db_conn() as conn:
-        doctor_id = conn.execute(
-            "SELECT id FROM users WHERE email = ?", (DOCTOR[0],)
-        ).fetchone()[0]
+        doctor_id = conn.execute("SELECT id FROM users WHERE email = ?", (DOCTOR[0],)).fetchone()[0]
     shift_date = datetime.now(UTC).date().isoformat()
     _assign(pid, doctor_id, shift_date)
     r = client.get(

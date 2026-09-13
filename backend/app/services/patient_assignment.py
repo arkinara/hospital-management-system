@@ -123,9 +123,7 @@ def assignments_for_user_on_date(conn, user_id: int, shift_date: str) -> list:
             f"AND shift_date = ? {status_cond} ORDER BY id"
         )
     else:
-        day_start = int(
-            datetime.fromisoformat(f"{shift_date}T00:00:00+00:00").timestamp()
-        )
+        day_start = int(datetime.fromisoformat(f"{shift_date}T00:00:00+00:00").timestamp())
         day_end = day_start + 86400
         params.extend([day_end, day_start])
         sql = (

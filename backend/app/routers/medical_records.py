@@ -8,6 +8,7 @@ Schema-adaptive: works against the on-disk visit_notes schema (migration0000 +
 incremental additions) by checking which columns exist before referencing them.
 This keeps us forward-compatible as more medical-records columns land.
 """
+
 from __future__ import annotations
 
 import re
@@ -28,9 +29,7 @@ from app.services.allergy import RecordedAllergy, match_contraindication
 
 router = APIRouter(prefix="/medical-records", tags=["medical-records"])
 
-ATTACHMENT_STORAGE = (
-    Path(__file__).resolve().parents[2] / "storage" / "attachments"
-)
+ATTACHMENT_STORAGE = Path(__file__).resolve().parents[2] / "storage" / "attachments"
 ATTACHMENT_STORAGE.mkdir(parents=True, exist_ok=True)
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 ALLOWED_MIME = {"image/png", "image/jpeg", "application/pdf"}
@@ -68,8 +67,7 @@ def _check_allergy(conn: sqlite3.Connection, patient_id: int, medication_name: s
         # can't check; assume safe
         return None
     rows = conn.execute(
-        "SELECT allergen, severity, reaction FROM patient_allergies "
-        "WHERE patient_id = ?",
+        "SELECT allergen, severity, reaction FROM patient_allergies WHERE patient_id = ?",
         [patient_id],
     ).fetchall()
     recorded = [
@@ -118,7 +116,8 @@ def list_patient_visits(
         where.append("created_at <= ?")
         params.append(_parse_iso(to))
     sql = (
-        "SELECT * FROM visit_notes WHERE " + " AND ".join(where)
+        "SELECT * FROM visit_notes WHERE "
+        + " AND ".join(where)
         + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
     )
     params.extend([limit, offset])
@@ -130,6 +129,60 @@ def list_patient_visits(
             params[:-2],
         ).fetchone()["c"]
     return {"visits": [_row_to_dict(r) for r in rows], "total": total}
+
+
+@router.get("/visits")
+def list_visits(
+    doctor_id: int | None = Query(None),
+    patient_id: int | None = Query(None),
+    signed: bool | None = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    _user=Depends(require_permission("records")),
+) -> dict:
+    """Cross-patient visit worklist (dashboard pending-records widget)."""
+    where, params = [], []
+    if doctor_id is not None:
+        where.append("doctor_id = ?")
+        params.append(doctor_id)
+    if patient_id is not None:
+        where.append("patient_id = ?")
+        params.append(patient_id)
+    if signed is not None:
+        where.append("signed_at IS NOT NULL" if signed else "signed_at IS NULL")
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM visit_notes{clause} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
+        total = conn.execute(f"SELECT COUNT(*) AS c FROM visit_notes{clause}", params).fetchone()[
+            "c"
+        ]
+    return {"visits": [_row_to_dict(r) for r in rows], "total": total}
+
+
+@router.get("/patients/{patient_id}/prescriptions")
+def list_patient_prescriptions(
+    patient_id: int,
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    _user=Depends(require_permission("records")),
+) -> dict:
+    """Every prescription across a patient's visits, newest first."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT rx.*, v.created_at AS visit_date, v.signed_at AS visit_signed_at "
+            "FROM prescriptions rx JOIN visit_notes v ON v.id = rx.visit_note_id "
+            "WHERE v.patient_id = ? ORDER BY rx.created_at DESC LIMIT ? OFFSET ?",
+            [patient_id, limit, offset],
+        ).fetchall()
+        total = conn.execute(
+            "SELECT COUNT(*) AS c FROM prescriptions rx "
+            "JOIN visit_notes v ON v.id = rx.visit_note_id WHERE v.patient_id = ?",
+            [patient_id],
+        ).fetchone()["c"]
+    return {"prescriptions": [_row_to_dict(r) for r in rows], "total": total}
 
 
 @router.get("/visits/{visit_id}")
@@ -163,23 +216,41 @@ def create_visit(
     now = int(datetime.now(UTC).timestamp())
     with get_conn() as conn:
         cols = _table_columns(conn, "visit_notes")
-        cols_present = {"appointment_id", "chief_complaint", "diagnosis",
-                        "clinical_notes", "status", "created_at"}
+        cols_present = {
+            "appointment_id",
+            "chief_complaint",
+            "diagnosis",
+            "clinical_notes",
+            "status",
+            "created_at",
+        }
         cols_present &= cols  # only those that exist
         if "appointment_id" not in cols:
             # Schema predates #21 — write the columns that exist
-            cols_present = {"patient_id", "doctor_id", "chief_complaint",
-                            "diagnosis", "clinical_notes", "status", "created_at"} & cols
+            cols_present = {
+                "patient_id",
+                "doctor_id",
+                "chief_complaint",
+                "diagnosis",
+                "clinical_notes",
+                "status",
+                "created_at",
+            } & cols
         # Build INSERT dynamically based on what's available
-        col_list = ["patient_id", "doctor_id"] + sorted(c for c in cols_present if c not in {"patient_id", "doctor_id"})
+        col_list = ["patient_id", "doctor_id"] + sorted(
+            c for c in cols_present if c not in {"patient_id", "doctor_id"}
+        )
         placeholders = ",".join("?" for _ in col_list)
         sql = f"INSERT INTO visit_notes ({','.join(col_list)}) VALUES ({placeholders})"
         values = {
-            "patient_id": body.patient_id, "doctor_id": user_id,
+            "patient_id": body.patient_id,
+            "doctor_id": user_id,
             "appointment_id": body.appointment_id,
             "chief_complaint": body.chief_complaint,
-            "diagnosis": body.diagnosis, "clinical_notes": body.clinical_notes,
-            "status": "draft", "created_at": now,
+            "diagnosis": body.diagnosis,
+            "clinical_notes": body.clinical_notes,
+            "status": "draft",
+            "created_at": now,
         }
         params = [values[c] for c in col_list]
         cur = conn.execute(sql, params)
@@ -188,15 +259,23 @@ def create_visit(
         backfill_cols = []
         backfill_vals = []
         if "updated_at" in cols:
-            backfill_cols.append("updated_at = ?"); backfill_vals.append(now)
+            backfill_cols.append("updated_at = ?")
+            backfill_vals.append(now)
         if "is_locked_after_sign" in cols:
             backfill_cols.append("is_locked_after_sign = 0")
         if backfill_cols:
-            conn.execute(f"UPDATE visit_notes SET {', '.join(backfill_cols)} WHERE id = ?",
-                         [*backfill_vals, visit_id])
-        write_audit(conn=conn, actor_user_id=user_id, action="record.visit_create",
-                    target_type="visit", target_id=visit_id,
-                    metadata={"patient_id": body.patient_id})
+            conn.execute(
+                f"UPDATE visit_notes SET {', '.join(backfill_cols)} WHERE id = ?",
+                [*backfill_vals, visit_id],
+            )
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="record.visit_create",
+            target_type="visit",
+            target_id=visit_id,
+            metadata={"patient_id": body.patient_id},
+        )
         visit = conn.execute("SELECT * FROM visit_notes WHERE id = ?", [visit_id]).fetchone()
     return _row_to_dict(visit)
 
@@ -214,21 +293,32 @@ def update_visit(
         if not v:
             raise HTTPException(404, "Visit not found")
         # Sign-lock enforcement if column exists
-        if "is_locked_after_sign" in _table_columns(conn, "visit_notes") and v["is_locked_after_sign"]:
+        if (
+            "is_locked_after_sign" in _table_columns(conn, "visit_notes")
+            and v["is_locked_after_sign"]
+        ):
             raise HTTPException(409, "Visit is signed and locked; cannot edit")
         cols = _table_columns(conn, "visit_notes")
         sets = []
         params = []
         if "appointment_id" in cols:
-            sets.append("appointment_id = ?"); params.append(body.appointment_id)
+            sets.append("appointment_id = ?")
+            params.append(body.appointment_id)
         for c in ("chief_complaint", "diagnosis", "clinical_notes"):
-            sets.append(f"{c} = ?"); params.append(getattr(body, c))
+            sets.append(f"{c} = ?")
+            params.append(getattr(body, c))
         if "updated_at" in cols:
-            sets.append("updated_at = ?"); params.append(now)
+            sets.append("updated_at = ?")
+            params.append(now)
         params.append(visit_id)
         conn.execute(f"UPDATE visit_notes SET {', '.join(sets)} WHERE id = ?", params)
-        write_audit(conn=conn, actor_user_id=user_id, action="record.visit_update",
-                    target_type="visit", target_id=visit_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="record.visit_update",
+            target_type="visit",
+            target_id=visit_id,
+        )
         v = conn.execute("SELECT * FROM visit_notes WHERE id = ?", [visit_id]).fetchone()
     return _row_to_dict(v)
 
@@ -272,8 +362,13 @@ def sign_visit(
                 "is_locked_after_sign=1, updated_at=? WHERE id=?",
                 [now, user_id, now, visit_id],
             )
-        write_audit(conn=conn, actor_user_id=user_id, action="record.visit_sign",
-                    target_type="visit", target_id=visit_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="record.visit_sign",
+            target_type="visit",
+            target_id=visit_id,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +387,10 @@ def create_prescription(
         v = conn.execute("SELECT * FROM visit_notes WHERE id = ?", [visit_id]).fetchone()
         if not v:
             raise HTTPException(404, "Visit not found")
-        if "is_locked_after_sign" in _table_columns(conn, "visit_notes") and v["is_locked_after_sign"]:
+        if (
+            "is_locked_after_sign" in _table_columns(conn, "visit_notes")
+            and v["is_locked_after_sign"]
+        ):
             raise HTTPException(409, "Visit is signed and locked")
         block = _check_allergy(conn, v["patient_id"], body.medication)
         if block:
@@ -308,12 +406,16 @@ def create_prescription(
         cur = conn.execute(
             "INSERT INTO prescriptions (visit_note_id, medication, dosage, frequency, "
             "duration_days, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            [visit_id, body.medication, body.dosage, body.frequency,
-             body.duration_days, now],
+            [visit_id, body.medication, body.dosage, body.frequency, body.duration_days, now],
         )
         rx_id = cur.lastrowid
-        write_audit(conn=conn, actor_user_id=user_id, action="record.prescription_create",
-                    target_type="prescription", target_id=rx_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="record.prescription_create",
+            target_type="prescription",
+            target_id=rx_id,
+        )
         rx = conn.execute("SELECT * FROM prescriptions WHERE id = ?", [rx_id]).fetchone()
     return _row_to_dict(rx)
 
@@ -341,8 +443,13 @@ def delete_prescription(
         if not rx:
             raise HTTPException(404, "Prescription not found")
         conn.execute("DELETE FROM prescriptions WHERE id = ?", [rx_id])
-        write_audit(conn=conn, actor_user_id=user_id, action="record.prescription_delete",
-                    target_type="prescription", target_id=rx_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="record.prescription_delete",
+            target_type="prescription",
+            target_id=rx_id,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -384,8 +491,10 @@ async def upload_attachment(
                 col_list.append(c)
         # Map values
         vmap = {
-            "visit_note_id": visit_id, "file_name": file.filename,
-            "file_url": str(storage_path), "uploaded_by": user_id,
+            "visit_note_id": visit_id,
+            "file_name": file.filename,
+            "file_url": str(storage_path),
+            "uploaded_by": user_id,
             "created_at": now,
         }
         values = [vmap[c] for c in col_list]
@@ -395,8 +504,13 @@ async def upload_attachment(
             values,
         )
         att_id = cur.lastrowid
-        write_audit(conn=conn, actor_user_id=user_id, action="record.attachment_upload",
-                    target_type="attachment", target_id=att_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="record.attachment_upload",
+            target_type="attachment",
+            target_id=att_id,
+        )
         row = conn.execute("SELECT * FROM attachments WHERE id = ?", [att_id]).fetchone()
     return _row_to_dict(row)
 
@@ -430,63 +544,94 @@ def patient_history(
     events: list[dict] = []
     with get_conn() as conn:
         for v in conn.execute(
-            "SELECT id, created_at, signed_at, diagnosis FROM visit_notes "
-            "WHERE patient_id = ?", [patient_id]
+            "SELECT id, created_at, signed_at, diagnosis FROM visit_notes WHERE patient_id = ?",
+            [patient_id],
         ).fetchall():
-            events.append({
-                "timestamp": v["created_at"], "type": "visit",
-                "department_code": None, "summary": v["diagnosis"] or "Visit",
-                "source_id": v["id"], "signed": bool(v["signed_at"]),
-            })
+            events.append(
+                {
+                    "timestamp": v["created_at"],
+                    "type": "visit",
+                    "department_code": None,
+                    "summary": v["diagnosis"] or "Visit",
+                    "source_id": v["id"],
+                    "signed": bool(v["signed_at"]),
+                }
+            )
         if _table_exists(conn, "prescriptions"):
             for r in conn.execute(
                 "SELECT id, created_at, medication FROM prescriptions WHERE visit_note_id IN "
-                "(SELECT id FROM visit_notes WHERE patient_id = ?)", [patient_id]
+                "(SELECT id FROM visit_notes WHERE patient_id = ?)",
+                [patient_id],
             ).fetchall():
-                events.append({
-                    "timestamp": r["created_at"], "type": "prescription",
-                    "department_code": None, "summary": f"Rx: {r['medication']}",
-                    "source_id": r["id"], "signed": False,
-                })
+                events.append(
+                    {
+                        "timestamp": r["created_at"],
+                        "type": "prescription",
+                        "department_code": None,
+                        "summary": f"Rx: {r['medication']}",
+                        "source_id": r["id"],
+                        "signed": False,
+                    }
+                )
         if _table_exists(conn, "attachments"):
             for a in conn.execute(
                 "SELECT id, created_at, file_name FROM attachments WHERE visit_note_id IN "
-                "(SELECT id FROM visit_notes WHERE patient_id = ?)", [patient_id]
+                "(SELECT id FROM visit_notes WHERE patient_id = ?)",
+                [patient_id],
             ).fetchall():
-                events.append({
-                    "timestamp": a["created_at"], "type": "attachment",
-                    "department_code": None, "summary": f"Attachment: {a['file_name']}",
-                    "source_id": a["id"], "signed": False,
-                })
+                events.append(
+                    {
+                        "timestamp": a["created_at"],
+                        "type": "attachment",
+                        "department_code": None,
+                        "summary": f"Attachment: {a['file_name']}",
+                        "source_id": a["id"],
+                        "signed": False,
+                    }
+                )
         if _table_exists(conn, "vitals"):
             for vit in conn.execute(
                 "SELECT id, recorded_at FROM vitals WHERE patient_id = ?", [patient_id]
             ).fetchall():
-                events.append({
-                    "timestamp": vit["recorded_at"], "type": "vitals",
-                    "department_code": None, "summary": "Vitals reading",
-                    "source_id": vit["id"], "signed": False,
-                })
+                events.append(
+                    {
+                        "timestamp": vit["recorded_at"],
+                        "type": "vitals",
+                        "department_code": None,
+                        "summary": "Vitals reading",
+                        "source_id": vit["id"],
+                        "signed": False,
+                    }
+                )
         if _table_exists(conn, "care_plan_items"):
             for cp in conn.execute(
                 "SELECT id, created_at FROM care_plan_items WHERE patient_id = ?", [patient_id]
             ).fetchall():
-                events.append({
-                    "timestamp": cp["created_at"], "type": "care_plan",
-                    "department_code": None, "summary": "Care plan item",
-                    "source_id": cp["id"], "signed": False,
-                })
+                events.append(
+                    {
+                        "timestamp": cp["created_at"],
+                        "type": "care_plan",
+                        "department_code": None,
+                        "summary": "Care plan item",
+                        "source_id": cp["id"],
+                        "signed": False,
+                    }
+                )
         if _table_exists(conn, "invoices"):
             for inv in conn.execute(
                 "SELECT id, created_at, payer_name FROM invoices WHERE patient_id = ?",
                 [patient_id],
             ).fetchall():
-                events.append({
-                    "timestamp": inv["created_at"], "type": "billing",
-                    "department_code": None,
-                    "summary": f"Invoice ({inv['payer_name']})",
-                    "source_id": inv["id"], "signed": False,
-                })
+                events.append(
+                    {
+                        "timestamp": inv["created_at"],
+                        "type": "billing",
+                        "department_code": None,
+                        "summary": f"Invoice ({inv['payer_name']})",
+                        "source_id": inv["id"],
+                        "signed": False,
+                    }
+                )
     events.sort(key=lambda e: e["timestamp"] or 0, reverse=True)
     return {"patient_id": patient_id, "events": events}
 
@@ -580,9 +725,12 @@ def create_vitals(
     with get_conn() as conn:
         if not conn.execute("SELECT 1 FROM patients WHERE id = ?", [patient_id]).fetchone():
             raise HTTPException(404, "Patient not found")
-        if body.appointment_id is not None and not conn.execute(
-            "SELECT 1 FROM appointments WHERE id = ?", [body.appointment_id]
-        ).fetchone():
+        if (
+            body.appointment_id is not None
+            and not conn.execute(
+                "SELECT 1 FROM appointments WHERE id = ?", [body.appointment_id]
+            ).fetchone()
+        ):
             raise HTTPException(404, "Appointment not found")
         cur = conn.execute(
             "INSERT INTO vitals (patient_id, appointment_id, systolic, diastolic, "
@@ -603,9 +751,14 @@ def create_vitals(
             ],
         )
         vital_id = cur.lastrowid
-        write_audit(conn=conn, actor_user_id=user_id, action="vital.create",
-                    target_type="vital", target_id=vital_id,
-                    metadata={"patient_id": patient_id})
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="vital.create",
+            target_type="vital",
+            target_id=vital_id,
+            metadata={"patient_id": patient_id},
+        )
         row = conn.execute("SELECT * FROM vitals WHERE id = ?", [vital_id]).fetchone()
     return _serialize_vitals(row)
 
@@ -632,7 +785,8 @@ def list_vitals(
         if not conn.execute("SELECT 1 FROM patients WHERE id = ?", [patient_id]).fetchone():
             raise HTTPException(404, "Patient not found")
         rows = conn.execute(
-            "SELECT * FROM vitals WHERE " + " AND ".join(where)
+            "SELECT * FROM vitals WHERE "
+            + " AND ".join(where)
             + " ORDER BY recorded_at DESC, id DESC LIMIT ?",
             params + [limit],
         ).fetchall()
@@ -685,8 +839,13 @@ def acknowledge_vital(
             "UPDATE vitals SET acknowledged_at = ?, acknowledged_by = ? WHERE id = ?",
             [now, user_id, vital_id],
         )
-        write_audit(conn=conn, actor_user_id=user_id, action="vital.acknowledge",
-                    target_type="vital", target_id=vital_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="vital.acknowledge",
+            target_type="vital",
+            target_id=vital_id,
+        )
         row = conn.execute("SELECT * FROM vitals WHERE id = ?", [vital_id]).fetchone()
     return _serialize_vitals(row)
 
@@ -721,16 +880,18 @@ def vitals_trend(
         if not conn.execute("SELECT 1 FROM patients WHERE id = ?", [patient_id]).fetchone():
             raise HTTPException(404, "Patient not found")
         rows = conn.execute(
-            "SELECT recorded_at, " + column + " AS value FROM vitals WHERE "
-            + " AND ".join(where) + f" AND {column} IS NOT NULL ORDER BY recorded_at ASC",
+            "SELECT recorded_at, "
+            + column
+            + " AS value FROM vitals WHERE "
+            + " AND ".join(where)
+            + f" AND {column} IS NOT NULL ORDER BY recorded_at ASC",
             params,
         ).fetchall()
     return {
         "patient_id": patient_id,
         "metric": metric,
         "series": [
-            {"recorded_at": _parse_iso_rev(r["recorded_at"]), "value": r["value"]}
-            for r in rows
+            {"recorded_at": _parse_iso_rev(r["recorded_at"]), "value": r["value"]} for r in rows
         ],
     }
 
@@ -809,9 +970,12 @@ def create_care_plan_item(
     with get_conn() as conn:
         if not conn.execute("SELECT 1 FROM patients WHERE id = ?", [patient_id]).fetchone():
             raise HTTPException(404, "Patient not found")
-        if body.source_visit_note_id is not None and not conn.execute(
-            "SELECT 1 FROM visit_notes WHERE id = ?", [body.source_visit_note_id]
-        ).fetchone():
+        if (
+            body.source_visit_note_id is not None
+            and not conn.execute(
+                "SELECT 1 FROM visit_notes WHERE id = ?", [body.source_visit_note_id]
+            ).fetchone()
+        ):
             raise HTTPException(404, "Source visit note not found")
         cols = _table_columns(conn, "care_plan_items")
         col_map = {
@@ -831,9 +995,14 @@ def create_care_plan_item(
             [col_map[c] for c in names],
         )
         item_id = cur.lastrowid
-        write_audit(conn=conn, actor_user_id=user_id, action="care_plan.create",
-                    target_type="care_plan_item", target_id=item_id,
-                    metadata={"patient_id": patient_id})
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="care_plan.create",
+            target_type="care_plan_item",
+            target_id=item_id,
+            metadata={"patient_id": patient_id},
+        )
         row = conn.execute("SELECT * FROM care_plan_items WHERE id = ?", [item_id]).fetchone()
     return _care_item_to_dict(row)
 
@@ -858,25 +1027,35 @@ def update_care_plan_item(
         sets: list[str] = []
         params: list = []
         if body.description is not None:
-            sets.append("description = ?"); params.append(body.description)
+            sets.append("description = ?")
+            params.append(body.description)
         if body.priority is not None:
-            sets.append("priority = ?"); params.append(body.priority.lower())
+            sets.append("priority = ?")
+            params.append(body.priority.lower())
         if due_at is not None:
-            sets.append("due_at = ?"); params.append(due_at)
+            sets.append("due_at = ?")
+            params.append(due_at)
         if body.completed is not None:
             sets.append("completed = ?")
             params.append(int(body.completed))
             if body.completed:
-                sets.append("completed_by = ?"); params.append(user_id)
-                sets.append("completed_at = ?"); params.append(now)
+                sets.append("completed_by = ?")
+                params.append(user_id)
+                sets.append("completed_at = ?")
+                params.append(now)
             else:
                 sets.append("completed_by = NULL")
                 sets.append("completed_at = NULL")
         if sets:
             params.append(item_id)
             conn.execute(f"UPDATE care_plan_items SET {', '.join(sets)} WHERE id = ?", params)
-        write_audit(conn=conn, actor_user_id=user_id, action="care_plan.update",
-                    target_type="care_plan_item", target_id=item_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="care_plan.update",
+            target_type="care_plan_item",
+            target_id=item_id,
+        )
         row = conn.execute("SELECT * FROM care_plan_items WHERE id = ?", [item_id]).fetchone()
     return _care_item_to_dict(row)
 
@@ -899,8 +1078,13 @@ def complete_care_plan_item(
             "WHERE id = ?",
             [user_id, now, item_id],
         )
-        write_audit(conn=conn, actor_user_id=user_id, action="care_plan.complete",
-                    target_type="care_plan_item", target_id=item_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="care_plan.complete",
+            target_type="care_plan_item",
+            target_id=item_id,
+        )
         row = conn.execute("SELECT * FROM care_plan_items WHERE id = ?", [item_id]).fetchone()
     return _care_item_to_dict(row)
 
@@ -916,9 +1100,7 @@ def reassign_care_plan_item(
         row = conn.execute("SELECT * FROM care_plan_items WHERE id = ?", [item_id]).fetchone()
         if not row:
             raise HTTPException(404, "Care plan item not found")
-        target = conn.execute(
-            "SELECT role FROM users WHERE id = ?", [body.assigned_to]
-        ).fetchone()
+        target = conn.execute("SELECT role FROM users WHERE id = ?", [body.assigned_to]).fetchone()
         if not target:
             raise HTTPException(404, "Target user not found")
         if target["role"] != "nurse":
@@ -926,11 +1108,17 @@ def reassign_care_plan_item(
         cols = _table_columns(conn, "care_plan_items")
         if "assigned_to" not in cols:
             raise HTTPException(409, "Care plan reassignment not supported on this schema")
-        conn.execute("UPDATE care_plan_items SET assigned_to = ? WHERE id = ?",
-                     [body.assigned_to, item_id])
-        write_audit(conn=conn, actor_user_id=user_id, action="care_plan.reassign",
-                    target_type="care_plan_item", target_id=item_id,
-                    metadata={"assigned_to": body.assigned_to})
+        conn.execute(
+            "UPDATE care_plan_items SET assigned_to = ? WHERE id = ?", [body.assigned_to, item_id]
+        )
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="care_plan.reassign",
+            target_type="care_plan_item",
+            target_id=item_id,
+            metadata={"assigned_to": body.assigned_to},
+        )
         row = conn.execute("SELECT * FROM care_plan_items WHERE id = ?", [item_id]).fetchone()
     return _care_item_to_dict(row)
 
@@ -967,21 +1155,32 @@ def shift_handover(
                 ).fetchall()
             ]
             items.sort(key=_care_plan_sort_key)
-            patients.append({
-                "id": p["id"],
-                "mrn": p["mrn"],
-                "full_name": p["full_name"],
-                "acuity": p["acuity"],
-                "admission_status": p["admission_status"],
-                "primary_department_id": p["primary_department_id"],
-                "open_items": items,
-                "open_item_count": len(items),
-            })
+            patients.append(
+                {
+                    "id": p["id"],
+                    "mrn": p["mrn"],
+                    "full_name": p["full_name"],
+                    "acuity": p["acuity"],
+                    "admission_status": p["admission_status"],
+                    "primary_department_id": p["primary_department_id"],
+                    "open_items": items,
+                    "open_item_count": len(items),
+                }
+            )
         patients.sort(key=lambda x: x["full_name"])
-        write_audit(conn=conn, actor_user_id=user["id"], action="care_plan.handover",
-                    target_type="patient_assignment", target_id=None,
-                    metadata={"from_user_id": from_user_id, "to_user_id": to_user_id,
-                              "shift_date": shift_date, "patient_count": len(patients)})
+        write_audit(
+            conn=conn,
+            actor_user_id=user["id"],
+            action="care_plan.handover",
+            target_type="patient_assignment",
+            target_id=None,
+            metadata={
+                "from_user_id": from_user_id,
+                "to_user_id": to_user_id,
+                "shift_date": shift_date,
+                "patient_count": len(patients),
+            },
+        )
     return {
         "shift_date": shift_date,
         "from_user_id": from_user_id,

@@ -9,11 +9,11 @@ claim enum are SEPARATE per PRD:
 An invoice is never "denied"; that's a claim status. A claim carries
 denial_reason + appeal_deadline so denials can be worked.
 """
+
 from __future__ import annotations
 
 import sqlite3
-import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -158,9 +158,7 @@ def _update_status_from_payments(conn: sqlite3.Connection, invoice_id: int) -> N
     paid = paid_row["s"]
     new_status = compute_payment_status(paid, total, inv["status"])
     if new_status != inv["status"]:
-        conn.execute(
-            "UPDATE invoices SET status = ? WHERE id = ?", [new_status, invoice_id]
-        )
+        conn.execute("UPDATE invoices SET status = ? WHERE id = ?", [new_status, invoice_id])
 
 
 @router.post("/invoices", status_code=201)
@@ -176,14 +174,25 @@ def create_invoice(
         # Build column list dynamically
         col_list = []
         values = []
-        for c in ("patient_id", "visit_note_id", "payer_name", "total_amount",
-                  "amount_paid", "status", "created_at"):
+        for c in (
+            "patient_id",
+            "visit_note_id",
+            "payer_name",
+            "total_amount",
+            "amount_paid",
+            "status",
+            "created_at",
+        ):
             if c in cols:
                 col_list.append(c)
         vmap = {
-            "patient_id": body.patient_id, "visit_note_id": body.visit_note_id,
-            "payer_name": body.payer_name, "total_amount": total,
-            "amount_paid": 0.0, "status": "draft", "created_at": now,
+            "patient_id": body.patient_id,
+            "visit_note_id": body.visit_note_id,
+            "payer_name": body.payer_name,
+            "total_amount": total,
+            "amount_paid": 0.0,
+            "status": "draft",
+            "created_at": now,
         }
         values = [vmap[c] for c in col_list]
         placeholders = ",".join("?" for _ in col_list)
@@ -207,13 +216,23 @@ def create_invoice(
             for li in body.line_items:
                 col_list_li = []
                 vmap_li = {
-                    "invoice_id": invoice_id, "code": li.code or "",
-                    "description": li.description, "quantity": li.quantity,
+                    "invoice_id": invoice_id,
+                    "code": li.code or "",
+                    "description": li.description,
+                    "quantity": li.quantity,
                     "unit_amount": li.unit_amount,
-                    "item_type": "", "department_id": None,
+                    "item_type": "",
+                    "department_id": None,
                 }
-                for c in ("invoice_id", "code", "description", "quantity",
-                          "unit_amount", "item_type", "department_id"):
+                for c in (
+                    "invoice_id",
+                    "code",
+                    "description",
+                    "quantity",
+                    "unit_amount",
+                    "item_type",
+                    "department_id",
+                ):
                     if c in li_cols:
                         col_list_li.append(c)
                 vals_li = [vmap_li[c] for c in col_list_li]
@@ -223,9 +242,14 @@ def create_invoice(
                     f"VALUES ({placeholders_li})",
                     vals_li,
                 )
-        write_audit(conn=conn, actor_user_id=user_id, action="billing.invoice_create",
-                    target_type="invoice", target_id=invoice_id,
-                    metadata={"total": total})
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="billing.invoice_create",
+            target_type="invoice",
+            target_id=invoice_id,
+            metadata={"total": total},
+        )
         inv = conn.execute("SELECT * FROM invoices WHERE id = ?", [invoice_id]).fetchone()
     return _row_to_dict(inv)
 
@@ -236,7 +260,6 @@ def void_invoice(
     user=Depends(require_role("admin")),
 ) -> dict:
     user_id = user["id"]
-    now = int(datetime.now(UTC).timestamp())
     with get_conn() as conn:
         inv = conn.execute("SELECT * FROM invoices WHERE id = ?", [invoice_id]).fetchone()
         if not inv:
@@ -244,8 +267,13 @@ def void_invoice(
         if inv["status"] == "void":
             raise HTTPException(409, "Already voided")
         conn.execute("UPDATE invoices SET status = 'void' WHERE id = ?", [invoice_id])
-        write_audit(conn=conn, actor_user_id=user_id, action="billing.invoice_void",
-                    target_type="invoice", target_id=invoice_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="billing.invoice_void",
+            target_type="invoice",
+            target_id=invoice_id,
+        )
         inv = conn.execute("SELECT * FROM invoices WHERE id = ?", [invoice_id]).fetchone()
     return _row_to_dict(inv)
 
@@ -280,8 +308,13 @@ def add_payment(
             [body.amount, invoice_id],
         )
         _update_status_from_payments(conn, invoice_id)
-        write_audit(conn=conn, actor_user_id=user_id, action="billing.payment_create",
-                    target_type="payment", target_id=payment_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="billing.payment_create",
+            target_type="payment",
+            target_id=payment_id,
+        )
         row = conn.execute("SELECT * FROM payments WHERE id = ?", [payment_id]).fetchone()
     return _row_to_dict(row)
 
@@ -303,8 +336,13 @@ def create_claim(
             [invoice_id, body.payer_name, body.claim_number],
         )
         claim_id = cur.lastrowid
-        write_audit(conn=conn, actor_user_id=user_id, action="billing.claim_create",
-                    target_type="claim", target_id=claim_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="billing.claim_create",
+            target_type="claim",
+            target_id=claim_id,
+        )
         row = conn.execute("SELECT * FROM insurance_claims WHERE id = ?", [claim_id]).fetchone()
     return _row_to_dict(row)
 
@@ -319,16 +357,15 @@ def update_claim(
     if body.status not in CLAIM_STATUSES:
         raise HTTPException(400, f"Invalid status; must be one of {CLAIM_STATUSES}")
     with get_conn() as conn:
-        claim = conn.execute(
-            "SELECT * FROM insurance_claims WHERE id = ?", [claim_id]
-        ).fetchone()
+        claim = conn.execute("SELECT * FROM insurance_claims WHERE id = ?", [claim_id]).fetchone()
         if not claim:
             raise HTTPException(404, "Claim not found")
         # Status flow guards
         if body.status == "denied" and not body.denial_reason:
             raise HTTPException(400, "denial_reason required when status=denied")
         if body.status in ("approved", "denied") and claim["status"] not in (
-            "submitted", "in_review"
+            "submitted",
+            "in_review",
         ):
             raise HTTPException(409, f"Cannot transition from {claim['status']} to {body.status}")
         now = int(datetime.now(UTC).timestamp())
@@ -345,19 +382,28 @@ def update_claim(
             params.append(body.denial_reason)
         if "appeal_deadline" in cols and body.appeal_deadline:
             try:
-                ad = int(datetime.fromisoformat(body.appeal_deadline.replace("Z", "+00:00")).timestamp())
-            except Exception:
-                raise HTTPException(400, "appeal_deadline must be ISO date")
+                ad = int(
+                    datetime.fromisoformat(body.appeal_deadline.replace("Z", "+00:00")).timestamp()
+                )
+            except Exception as e:
+                raise HTTPException(400, "appeal_deadline must be ISO date") from e
             sets.append("appeal_deadline = ?")
             params.append(ad)
         if "submitted_at" in cols:
-            sets.append("submitted_at = ?"); params.append(submitted_at)
+            sets.append("submitted_at = ?")
+            params.append(submitted_at)
         if "decided_at" in cols:
-            sets.append("decided_at = ?"); params.append(decided_at)
+            sets.append("decided_at = ?")
+            params.append(decided_at)
         params.append(claim_id)
         conn.execute(f"UPDATE insurance_claims SET {', '.join(sets)} WHERE id = ?", params)
-        write_audit(conn=conn, actor_user_id=user_id, action=f"billing.claim_{body.status}",
-                    target_type="claim", target_id=claim_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action=f"billing.claim_{body.status}",
+            target_type="claim",
+            target_id=claim_id,
+        )
         row = conn.execute("SELECT * FROM insurance_claims WHERE id = ?", [claim_id]).fetchone()
     return _row_to_dict(row)
 
@@ -382,10 +428,12 @@ def list_claims(
     if appeal_due_before:
         try:
             ts = int(datetime.fromisoformat(appeal_due_before.replace("Z", "+00:00")).timestamp())
-            where.append("(status = 'denied' AND appeal_deadline IS NOT NULL AND appeal_deadline <= ?)")
+            where.append(
+                "(status = 'denied' AND appeal_deadline IS NOT NULL AND appeal_deadline <= ?)"
+            )
             params.append(ts)
-        except Exception:
-            raise HTTPException(400, "appeal_due_before must be ISO date")
+        except Exception as e:
+            raise HTTPException(400, "appeal_due_before must be ISO date") from e
     sql = "SELECT * FROM insurance_claims"
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -401,9 +449,7 @@ def get_claim(
     _user=Depends(require_permission("billing")),
 ) -> dict:
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM insurance_claims WHERE id = ?", [claim_id]
-        ).fetchone()
+        row = conn.execute("SELECT * FROM insurance_claims WHERE id = ?", [claim_id]).fetchone()
         if not row:
             raise HTTPException(404, "Claim not found")
     return _row_to_dict(row)

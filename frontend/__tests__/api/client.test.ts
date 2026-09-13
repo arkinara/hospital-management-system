@@ -56,7 +56,7 @@ describe("api client with MSW: happy path", () => {
   });
 
   it("GET /widgets/me respects the admin lock", async () => {
-    const res = await api.get<{ widgets: Widget[] }>("/widgets/me", {
+    const res = await api.get<{ widgets: Widget[] }>("/widget-config/me", {
       query: { role: "doctor" },
     });
     const schedule = res.widgets.find((w) => w.key === "todays-schedule");
@@ -116,7 +116,7 @@ describe("api client with MSW: errors", () => {
 
   it("an unhandled endpoint returns an explicit no_handler error, not a hang", async () => {
     const err = await api
-      .get<{ error: unknown }>("/invoices/INV-0001/summary")
+      .get<{ error: unknown }>("/billing/invoices/INV-0001/summary")
       .then(() => null)
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);

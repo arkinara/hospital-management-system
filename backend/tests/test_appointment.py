@@ -444,9 +444,12 @@ def test_availability_unknown_department_is_422():
 
 def test_availability_wipe_and_replace_removes_old_windows():
     doctor_id, _, _ = _ids()
-    assert _put_availability(
-        doctor_id, [{"day_of_week": 1, "start_time": "08:00", "end_time": "12:00"}]
-    ).status_code == 200
+    assert (
+        _put_availability(
+            doctor_id, [{"day_of_week": 1, "start_time": "08:00", "end_time": "12:00"}]
+        ).status_code
+        == 200
+    )
     resp = _put_availability(
         doctor_id, [{"day_of_week": 2, "start_time": "09:00", "end_time": "13:00"}]
     )
@@ -502,7 +505,12 @@ def test_cancelled_appointment_does_not_block_blocking_day():
     )
     resp = client.post(
         f"/doctors/{doctor_id}/blocked-days",
-        json={"blocked_date": _day(3), "start_time": "09:00", "end_time": "10:00", "reason": "lunch"},
+        json={
+            "blocked_date": _day(3),
+            "start_time": "09:00",
+            "end_time": "10:00",
+            "reason": "lunch",
+        },
         headers=_headers(ADMIN),
     )
     assert resp.status_code == 201, resp.text
@@ -561,9 +569,12 @@ def test_availability_writes_append_audit_rows():
         before = conn.execute("SELECT COALESCE(MAX(id), 0) FROM audit_log").fetchone()[0]
     doctor_id, _, _ = _ids()
 
-    assert _put_availability(
-        doctor_id, [{"day_of_week": 3, "start_time": "08:00", "end_time": "12:00"}]
-    ).status_code == 200
+    assert (
+        _put_availability(
+            doctor_id, [{"day_of_week": 3, "start_time": "08:00", "end_time": "12:00"}]
+        ).status_code
+        == 200
+    )
     created = client.post(
         f"/doctors/{doctor_id}/blocked-days",
         json={"blocked_date": _day(12), "reason": "training"},

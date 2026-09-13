@@ -49,7 +49,7 @@ describe("Permission matrix wiring (#50)", () => {
 const putSpy = vi.fn((_info: { request: Request }) =>
   HttpResponse.json({ role: "doctor", module: "records", allowed: false, canView: false, canCreate: false, canEdit: false, canDelete: false }),
 );
-    server.use(http.put("*/permissions/:role/:module", putSpy));
+    server.use(http.put("*/auth/permissions/:role/:module", putSpy));
     render(<PermissionMatrixScreen />);
     await screen.findByRole("heading", { name: /permission matrix/i });
     // Toggle doctor/records/view off, then save.
@@ -59,12 +59,12 @@ const putSpy = vi.fn((_info: { request: Request }) =>
     fireEvent.click(screen.getByTestId("save"));
     await waitFor(() => expect(putSpy).toHaveBeenCalled());
     const info = putSpy.mock.calls[0][0] as { request: Request };
-    expect(info.request.url).toContain("/permissions/doctor/records");
+    expect(info.request.url).toContain("/auth/permissions/doctor/records");
   });
 
   it("keeps pending changes on screen when the save fails", async () => {
     server.use(
-      http.put("*/permissions/:role/:module", () =>
+      http.put("*/auth/permissions/:role/:module", () =>
         HttpResponse.json(
           { error: { code: "forbidden", message: "Cannot remove the last admin", trace_id: "t-403" } },
           { status: 403 },
@@ -82,7 +82,7 @@ const putSpy = vi.fn((_info: { request: Request }) =>
   });
 
   it("validates the response envelope shape used by the matrix", async () => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/permissions`);
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/permissions`);
     const body = (await res.json()) as { permissions: Array<Record<string, unknown>> };
     expect(res.status).toBe(200);
     expect(Array.isArray(body.permissions)).toBe(true);

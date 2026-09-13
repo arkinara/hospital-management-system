@@ -43,7 +43,7 @@ function InvoiceDetailBody({ id }: { id: string }) {
   const [payOpen, setPayOpen] = useState(false);
 
   const detail = useQuery<InvoiceDetail>(queryKeys.invoice(id), {
-    fetcher: () => api.get<InvoiceDetail>(`/invoices/${id}`),
+    fetcher: () => api.get<InvoiceDetail>(`/billing/invoices/${id}`),
   });
 
   const invoice = detail.data?.invoice;
@@ -284,7 +284,7 @@ function PaymentDialog({
           )
         : undefined;
     try {
-      await api.post(`/invoices/${invoiceId}/payments`, { amount: value, method });
+      await api.post(`/billing/invoices/${invoiceId}/payments`, { amount: value, method });
       setAmount("");
       onRecorded();
     } catch (e) {

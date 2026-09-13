@@ -74,7 +74,7 @@ function NewInvoiceForm() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const created = await api.post<Invoice & { id: string }>("/invoices", {
+      const created = await api.post<Invoice & { id: string }>("/billing/invoices", {
         patient: selectedPatient.mrn,
         insurer,
         total: lineItems.reduce((s, l) => s + l.qty * l.unit, 0),

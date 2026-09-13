@@ -4,12 +4,11 @@ Invoices, payments, insurance claims. Invoice enum and claim enum are separate
 per PRD: invoices have draft/unpaid/partially_paid/paid/void; claims have
 none/draft/submitted/in_review/approved/denied/settled.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-
-import pytest
 
 from test_auth import _db_conn, bearer, client, login
 
@@ -52,7 +51,8 @@ def _patient_with_visit(h_recept=None, h_doctor=None):
     pid = r.json()["id"]
     if h_doctor:
         vr = client.post(
-            "/medical-records/visits", headers=h_doctor,
+            "/medical-records/visits",
+            headers=h_doctor,
             json={"patient_id": pid, "chief_complaint": "x"},
         )
         assert vr.status_code == 201
@@ -82,7 +82,8 @@ def test_invoice_requires_line_items():
     h = _recept_h()
     pid, _ = _patient_with_visit()
     r = client.post(
-        "/billing/invoices", headers=h,
+        "/billing/invoices",
+        headers=h,
         json={"patient_id": pid, "line_items": []},
     )
     assert r.status_code == 422
@@ -91,16 +92,21 @@ def test_invoice_requires_line_items():
 def test_payment_full_marks_invoice_paid():
     h = _recept_h()
     pid, _ = _patient_with_visit()
-    inv = client.post("/billing/invoices", headers=h, json={
-        "patient_id": pid,
-        "line_items": [{"description": "x", "unit_amount": 100}],
-    }).json()
+    inv = client.post(
+        "/billing/invoices",
+        headers=h,
+        json={
+            "patient_id": pid,
+            "line_items": [{"description": "x", "unit_amount": 100}],
+        },
+    ).json()
     iid = inv["id"]
     # Move out of draft first (the payment refuses on draft)
     with _db_conn() as conn:
         conn.execute("UPDATE invoices SET status = 'unpaid' WHERE id = ?", [iid])
     pr = client.post(
-        f"/billing/invoices/{iid}/payments", headers=h,
+        f"/billing/invoices/{iid}/payments",
+        headers=h,
         json={"amount": 100.0, "method": "cash"},
     )
     assert pr.status_code == 201, pr.text
@@ -111,15 +117,20 @@ def test_payment_full_marks_invoice_paid():
 def test_payment_partial_marks_partially_paid():
     h = _recept_h()
     pid, _ = _patient_with_visit()
-    inv = client.post("/billing/invoices", headers=h, json={
-        "patient_id": pid,
-        "line_items": [{"description": "x", "unit_amount": 100}],
-    }).json()
+    inv = client.post(
+        "/billing/invoices",
+        headers=h,
+        json={
+            "patient_id": pid,
+            "line_items": [{"description": "x", "unit_amount": 100}],
+        },
+    ).json()
     iid = inv["id"]
     with _db_conn() as conn:
         conn.execute("UPDATE invoices SET status = 'unpaid' WHERE id = ?", [iid])
     client.post(
-        f"/billing/invoices/{iid}/payments", headers=h,
+        f"/billing/invoices/{iid}/payments",
+        headers=h,
         json={"amount": 40.0, "method": "card"},
     )
     after = client.get(f"/billing/invoices/{iid}", headers=h).json()
@@ -129,16 +140,26 @@ def test_payment_partial_marks_partially_paid():
 def test_payment_multiple_partials_accumulate():
     h = _recept_h()
     pid, _ = _patient_with_visit()
-    inv = client.post("/billing/invoices", headers=h, json={
-        "patient_id": pid,
-        "line_items": [{"description": "x", "unit_amount": 100}],
-    }).json()
+    inv = client.post(
+        "/billing/invoices",
+        headers=h,
+        json={
+            "patient_id": pid,
+            "line_items": [{"description": "x", "unit_amount": 100}],
+        },
+    ).json()
     iid = inv["id"]
     with _db_conn() as conn:
         conn.execute("UPDATE invoices SET status = 'unpaid' WHERE id = ?", [iid])
-    client.post(f"/billing/invoices/{iid}/payments", headers=h, json={"amount": 30, "method": "cash"})
-    client.post(f"/billing/invoices/{iid}/payments", headers=h, json={"amount": 30, "method": "cash"})
-    client.post(f"/billing/invoices/{iid}/payments", headers=h, json={"amount": 40, "method": "cash"})
+    client.post(
+        f"/billing/invoices/{iid}/payments", headers=h, json={"amount": 30, "method": "cash"}
+    )
+    client.post(
+        f"/billing/invoices/{iid}/payments", headers=h, json={"amount": 30, "method": "cash"}
+    )
+    client.post(
+        f"/billing/invoices/{iid}/payments", headers=h, json={"amount": 40, "method": "cash"}
+    )
     after = client.get(f"/billing/invoices/{iid}", headers=h).json()
     assert after["invoice"]["status"] == "paid"
     assert after["invoice"]["amount_paid"] == 100.0
@@ -148,10 +169,14 @@ def test_admin_can_void_invoice():
     h_admin = _admin_h()
     h_r = _recept_h()
     pid, _ = _patient_with_visit()
-    inv = client.post("/billing/invoices", headers=h_r, json={
-        "patient_id": pid,
-        "line_items": [{"description": "x", "unit_amount": 100}],
-    }).json()
+    inv = client.post(
+        "/billing/invoices",
+        headers=h_r,
+        json={
+            "patient_id": pid,
+            "line_items": [{"description": "x", "unit_amount": 100}],
+        },
+    ).json()
     iid = inv["id"]
     r = client.post(f"/billing/invoices/{iid}/void", headers=h_admin)
     assert r.status_code == 200
@@ -161,10 +186,14 @@ def test_admin_can_void_invoice():
 def test_receptionist_cannot_void_invoice():
     h_r = _recept_h()
     pid, _ = _patient_with_visit()
-    inv = client.post("/billing/invoices", headers=h_r, json={
-        "patient_id": pid,
-        "line_items": [{"description": "x", "unit_amount": 100}],
-    }).json()
+    inv = client.post(
+        "/billing/invoices",
+        headers=h_r,
+        json={
+            "patient_id": pid,
+            "line_items": [{"description": "x", "unit_amount": 100}],
+        },
+    ).json()
     iid = inv["id"]
     r = client.post(f"/billing/invoices/{iid}/void", headers=h_r)
     assert r.status_code == 403
@@ -173,13 +202,18 @@ def test_receptionist_cannot_void_invoice():
 def test_claim_create_and_submit_and_deny():
     h_r = _recept_h()
     pid, _ = _patient_with_visit()
-    inv = client.post("/billing/invoices", headers=h_r, json={
-        "patient_id": pid,
-        "line_items": [{"description": "x", "unit_amount": 100}],
-    }).json()
+    inv = client.post(
+        "/billing/invoices",
+        headers=h_r,
+        json={
+            "patient_id": pid,
+            "line_items": [{"description": "x", "unit_amount": 100}],
+        },
+    ).json()
     iid = inv["id"]
     cr = client.post(
-        f"/billing/invoices/{iid}/claim", headers=h_r,
+        f"/billing/invoices/{iid}/claim",
+        headers=h_r,
         json={"payer_name": "Acme", "claim_number": "CLM-001"},
     )
     assert cr.status_code == 201, cr.text
@@ -187,7 +221,9 @@ def test_claim_create_and_submit_and_deny():
     assert cr.json()["status"] == "draft"
     # Submit
     sr = client.patch(
-        f"/billing/claims/{cid}", headers=h_r, json={"status": "submitted"},
+        f"/billing/claims/{cid}",
+        headers=h_r,
+        json={"status": "submitted"},
     )
     assert sr.status_code == 200
     # Move to in_review first (otherwise approve/deny would 409 from draft)
@@ -195,7 +231,8 @@ def test_claim_create_and_submit_and_deny():
     # Deny with reason + appeal_deadline
     appeal = (datetime.now(UTC) + timedelta(days=30)).date().isoformat()
     dr = client.patch(
-        f"/billing/claims/{cid}", headers=h_r,
+        f"/billing/claims/{cid}",
+        headers=h_r,
         json={"status": "denied", "denial_reason": "Out of network", "appeal_deadline": appeal},
     )
     assert dr.status_code == 200, dr.text
@@ -207,10 +244,14 @@ def test_claim_create_and_submit_and_deny():
 def test_deny_without_reason_is_400():
     h_r = _recept_h()
     pid, _ = _patient_with_visit()
-    inv = client.post("/billing/invoices", headers=h_r, json={
-        "patient_id": pid,
-        "line_items": [{"description": "x", "unit_amount": 50}],
-    }).json()
+    inv = client.post(
+        "/billing/invoices",
+        headers=h_r,
+        json={
+            "patient_id": pid,
+            "line_items": [{"description": "x", "unit_amount": 50}],
+        },
+    ).json()
     iid = inv["id"]
     cr = client.post(f"/billing/invoices/{iid}/claim", headers=h_r, json={"payer_name": "X"}).json()
     cid = cr["id"]
@@ -223,10 +264,14 @@ def test_deny_without_reason_is_400():
 def test_appeal_due_before_filter_returns_due_claims():
     h_r = _recept_h()
     pid, _ = _patient_with_visit()
-    inv = client.post("/billing/invoices", headers=h_r, json={
-        "patient_id": pid,
-        "line_items": [{"description": "x", "unit_amount": 50}],
-    }).json()
+    inv = client.post(
+        "/billing/invoices",
+        headers=h_r,
+        json={
+            "patient_id": pid,
+            "line_items": [{"description": "x", "unit_amount": 50}],
+        },
+    ).json()
     iid = inv["id"]
     cr = client.post(f"/billing/invoices/{iid}/claim", headers=h_r, json={"payer_name": "X"}).json()
     cid = cr["id"]
@@ -235,13 +280,15 @@ def test_appeal_due_before_filter_returns_due_claims():
     # Deny with appeal_deadline 5 days from now
     soon = (datetime.now(UTC) + timedelta(days=5)).date().isoformat()
     client.patch(
-        f"/billing/claims/{cid}", headers=h_r,
+        f"/billing/claims/{cid}",
+        headers=h_r,
         json={"status": "denied", "denial_reason": "x", "appeal_deadline": soon},
     )
     # Filter for appeals due before 10 days from now
     cutoff = (datetime.now(UTC) + timedelta(days=10)).date().isoformat()
     r = client.get(
-        f"/billing/claims?appeal_due_before={cutoff}", headers=h_r,
+        f"/billing/claims?appeal_due_before={cutoff}",
+        headers=h_r,
     )
     assert r.status_code == 200
     ids = [c["id"] for c in r.json()["claims"]]
@@ -257,13 +304,18 @@ def test_rbac_doctor_denied_403():
 def test_payment_refuses_draft_invoice():
     h_r = _recept_h()
     pid, _ = _patient_with_visit()
-    inv = client.post("/billing/invoices", headers=h_r, json={
-        "patient_id": pid,
-        "line_items": [{"description": "x", "unit_amount": 50}],
-    }).json()
+    inv = client.post(
+        "/billing/invoices",
+        headers=h_r,
+        json={
+            "patient_id": pid,
+            "line_items": [{"description": "x", "unit_amount": 50}],
+        },
+    ).json()
     iid = inv["id"]
     r = client.post(
-        f"/billing/invoices/{iid}/payments", headers=h_r,
+        f"/billing/invoices/{iid}/payments",
+        headers=h_r,
         json={"amount": 50, "method": "cash"},
     )
     assert r.status_code == 409

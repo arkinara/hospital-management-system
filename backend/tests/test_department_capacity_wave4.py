@@ -99,15 +99,22 @@ def test_capacity_zero_bed_department_reports_zero_pressure():
 
 def test_capacity_read_roles():
     dept = _dept()
-    assert client.get(
-        f"/admin/departments/{dept['id']}/capacity", headers=_headers(DOCTOR)
-    ).status_code == 200
-    assert client.get(
-        f"/admin/departments/{dept['id']}/capacity", headers=_headers(NURSE)
-    ).status_code == 200
-    assert client.get(
-        f"/admin/departments/{dept['id']}/capacity", headers=_headers(RECEPTIONIST)
-    ).status_code == 403
+    assert (
+        client.get(
+            f"/admin/departments/{dept['id']}/capacity", headers=_headers(DOCTOR)
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get(f"/admin/departments/{dept['id']}/capacity", headers=_headers(NURSE)).status_code
+        == 200
+    )
+    assert (
+        client.get(
+            f"/admin/departments/{dept['id']}/capacity", headers=_headers(RECEPTIONIST)
+        ).status_code
+        == 403
+    )
 
 
 # ---- Capacity patch --------------------------------------------------------
@@ -118,8 +125,10 @@ def test_patch_capacity_above_occupancy_succeeds():
     r = client.patch(
         f"/admin/departments/{dept['id']}/capacity",
         headers=_headers(ADMIN),
-        json={"bed_capacity": dept["bed_capacity"] + 10,
-              "min_clinicians_per_shift": dept["min_clinicians_per_shift"] + 1},
+        json={
+            "bed_capacity": dept["bed_capacity"] + 10,
+            "min_clinicians_per_shift": dept["min_clinicians_per_shift"] + 1,
+        },
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -169,9 +178,9 @@ def test_admitting_patient_increments_occupancy_on_next_read():
     ).json()["occupied_beds"]
     pid = _create_patient(dept["id"])
     _admit(pid)
-    after = client.get(
-        f"/admin/departments/{dept['id']}/capacity", headers=_headers(ADMIN)
-    ).json()["occupied_beds"]
+    after = client.get(f"/admin/departments/{dept['id']}/capacity", headers=_headers(ADMIN)).json()[
+        "occupied_beds"
+    ]
     assert after == before + 1
 
 
@@ -211,11 +220,14 @@ def test_over_capacity_flags_departments_above_threshold():
 
 def test_over_capacity_ignores_zero_capacity():
     dept = _dept("NEU")
-    assert client.patch(
-        f"/admin/departments/{dept['id']}/capacity",
-        headers=_headers(ADMIN),
-        json={"bed_capacity": 0},
-    ).status_code == 200
+    assert (
+        client.patch(
+            f"/admin/departments/{dept['id']}/capacity",
+            headers=_headers(ADMIN),
+            json={"bed_capacity": 0},
+        ).status_code
+        == 200
+    )
     r = client.get(
         "/admin/departments/over-capacity",
         params={"threshold": 0.0},

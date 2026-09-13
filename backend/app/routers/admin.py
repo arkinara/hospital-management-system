@@ -4,6 +4,7 @@ User CRUD (admin only), department CRUD, department-staff mapping, role
 assignment. Bed capacity already exists on departments; capacity endpoints
 are added here for ticket #44 dependency.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -172,16 +173,25 @@ def update_department_capacity(
                 )
         sets, params = [], []
         if body.bed_capacity is not None:
-            sets.append("bed_capacity = ?"); params.append(body.bed_capacity)
+            sets.append("bed_capacity = ?")
+            params.append(body.bed_capacity)
         if body.min_clinicians_per_shift is not None:
-            sets.append("min_clinicians_per_shift = ?"); params.append(body.min_clinicians_per_shift)
+            sets.append("min_clinicians_per_shift = ?")
+            params.append(body.min_clinicians_per_shift)
         if sets:
             params.append(dept_id)
             conn.execute(f"UPDATE departments SET {', '.join(sets)} WHERE id = ?", params)
-        write_audit(conn=conn, actor_user_id=actor, action="admin.department_capacity_update",
-                    target_type="department", target_id=dept_id,
-                    metadata={"bed_capacity": body.bed_capacity,
-                              "min_clinicians_per_shift": body.min_clinicians_per_shift})
+        write_audit(
+            conn=conn,
+            actor_user_id=actor,
+            action="admin.department_capacity_update",
+            target_type="department",
+            target_id=dept_id,
+            metadata={
+                "bed_capacity": body.bed_capacity,
+                "min_clinicians_per_shift": body.min_clinicians_per_shift,
+            },
+        )
         row = conn.execute("SELECT * FROM departments WHERE id = ?", [dept_id]).fetchone()
         return _capacity_payload(conn, row)
 
@@ -205,7 +215,10 @@ def list_users(
     if department_id:
         where.append("department_id = ?")
         params.append(department_id)
-    sql = "SELECT id, email, full_name, role, department_id, specialisation, is_active, created_at FROM users"
+    sql = (
+        "SELECT id, email, full_name, role, department_id, specialisation, is_active, created_at "
+        "FROM users"
+    )
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY id"
@@ -222,7 +235,8 @@ def get_user(
     with get_conn() as conn:
         row = conn.execute(
             "SELECT id, email, full_name, role, department_id, specialisation, is_active, "
-            "created_at, last_login_at FROM users WHERE id = ?", [user_id]
+            "created_at, last_login_at FROM users WHERE id = ?",
+            [user_id],
         ).fetchone()
     if not row:
         raise HTTPException(404, "User not found")
@@ -245,17 +259,31 @@ def create_user(
                 "INSERT INTO users (email, password_hash, full_name, role, department_id, "
                 "specialisation, status, mfa_enabled, last_login_at, is_active, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, 'active', 0, NULL, ?, ?)",
-                [body.email, pw_hash, body.full_name, body.role, body.department_id,
-                 body.specialisation, int(body.is_active), now],
+                [
+                    body.email,
+                    pw_hash,
+                    body.full_name,
+                    body.role,
+                    body.department_id,
+                    body.specialisation,
+                    int(body.is_active),
+                    now,
+                ],
             )
         except sqlite3.IntegrityError as e:
-            raise HTTPException(409, f"Email already exists: {e}")
+            raise HTTPException(409, f"Email already exists: {e}") from e
         new_id = cur.lastrowid
-        write_audit(conn=conn, actor_user_id=user_id, action="admin.user_create",
-                    target_type="user", target_id=new_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=user_id,
+            action="admin.user_create",
+            target_type="user",
+            target_id=new_id,
+        )
         row = conn.execute(
-            "SELECT id, email, full_name, role, department_id, specialisation, is_active, created_at "
-            "FROM users WHERE id = ?", [new_id]
+            "SELECT id, email, full_name, role, department_id, specialisation, "
+            "is_active, created_at FROM users WHERE id = ?",
+            [new_id],
         ).fetchone()
     return _row_to_dict(row)
 
@@ -275,26 +303,38 @@ def update_user(
             raise HTTPException(404, "User not found")
         sets, params = [], []
         if body.full_name is not None:
-            sets.append("full_name = ?"); params.append(body.full_name)
+            sets.append("full_name = ?")
+            params.append(body.full_name)
         if body.role is not None:
-            sets.append("role = ?"); params.append(body.role)
+            sets.append("role = ?")
+            params.append(body.role)
         if body.department_id is not None:
-            sets.append("department_id = ?"); params.append(body.department_id)
+            sets.append("department_id = ?")
+            params.append(body.department_id)
         if body.specialisation is not None:
-            sets.append("specialisation = ?"); params.append(body.specialisation)
+            sets.append("specialisation = ?")
+            params.append(body.specialisation)
         if body.is_active is not None:
-            sets.append("is_active = ?"); params.append(int(body.is_active))
+            sets.append("is_active = ?")
+            params.append(int(body.is_active))
         if sets:
             cols = _table_cols(conn, "users")
             if "updated_at" in cols:
-                sets.append("updated_at = ?"); params.append(int(datetime.now(UTC).timestamp()))
+                sets.append("updated_at = ?")
+                params.append(int(datetime.now(UTC).timestamp()))
             params.append(user_id)
             conn.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = ?", params)
-        write_audit(conn=conn, actor_user_id=actor, action="admin.user_update",
-                    target_type="user", target_id=user_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=actor,
+            action="admin.user_update",
+            target_type="user",
+            target_id=user_id,
+        )
         row = conn.execute(
-            "SELECT id, email, full_name, role, department_id, specialisation, is_active, created_at "
-            "FROM users WHERE id = ?", [user_id]
+            "SELECT id, email, full_name, role, department_id, specialisation, "
+            "is_active, created_at FROM users WHERE id = ?",
+            [user_id],
         ).fetchone()
     return _row_to_dict(row)
 
@@ -317,8 +357,13 @@ def deactivate_user(
             conn.execute("UPDATE users SET status = 'inactive' WHERE id = ?", [user_id])
         if "updated_at" in cols:
             conn.execute("UPDATE users SET updated_at = ? WHERE id = ?", [now, user_id])
-        write_audit(conn=conn, actor_user_id=actor, action="admin.user_deactivate",
-                    target_type="user", target_id=user_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=actor,
+            action="admin.user_deactivate",
+            target_type="user",
+            target_id=user_id,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -378,14 +423,26 @@ def create_department(
                 "INSERT INTO departments (name, code, type, bed_capacity, "
                 "min_clinicians_per_shift, active, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [body.name, body.code, body.type, body.bed_capacity,
-                 body.min_clinicians_per_shift, int(body.active), now],
+                [
+                    body.name,
+                    body.code,
+                    body.type,
+                    body.bed_capacity,
+                    body.min_clinicians_per_shift,
+                    int(body.active),
+                    now,
+                ],
             )
         except sqlite3.IntegrityError as e:
-            raise HTTPException(409, f"Department code already exists: {e}")
+            raise HTTPException(409, f"Department code already exists: {e}") from e
         new_id = cur.lastrowid
-        write_audit(conn=conn, actor_user_id=actor, action="admin.department_create",
-                    target_type="department", target_id=new_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=actor,
+            action="admin.department_create",
+            target_type="department",
+            target_id=new_id,
+        )
         row = conn.execute("SELECT * FROM departments WHERE id = ?", [new_id]).fetchone()
     return _row_to_dict(row)
 
@@ -403,20 +460,30 @@ def update_department(
             raise HTTPException(404, "Department not found")
         sets, params = [], []
         if body.name is not None:
-            sets.append("name = ?"); params.append(body.name)
+            sets.append("name = ?")
+            params.append(body.name)
         if body.type is not None:
-            sets.append("type = ?"); params.append(body.type)
+            sets.append("type = ?")
+            params.append(body.type)
         if body.bed_capacity is not None:
-            sets.append("bed_capacity = ?"); params.append(body.bed_capacity)
+            sets.append("bed_capacity = ?")
+            params.append(body.bed_capacity)
         if body.min_clinicians_per_shift is not None:
-            sets.append("min_clinicians_per_shift = ?"); params.append(body.min_clinicians_per_shift)
+            sets.append("min_clinicians_per_shift = ?")
+            params.append(body.min_clinicians_per_shift)
         if body.active is not None:
-            sets.append("active = ?"); params.append(int(body.active))
+            sets.append("active = ?")
+            params.append(int(body.active))
         if sets:
             params.append(dept_id)
             conn.execute(f"UPDATE departments SET {', '.join(sets)} WHERE id = ?", params)
-        write_audit(conn=conn, actor_user_id=actor, action="admin.department_update",
-                    target_type="department", target_id=dept_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=actor,
+            action="admin.department_update",
+            target_type="department",
+            target_id=dept_id,
+        )
         row = conn.execute("SELECT * FROM departments WHERE id = ?", [dept_id]).fetchone()
     return _row_to_dict(row)
 
@@ -434,9 +501,11 @@ def list_dept_staff(
 ) -> dict:
     where, params = [], []
     if department_id:
-        where.append("department_id = ?"); params.append(department_id)
+        where.append("department_id = ?")
+        params.append(department_id)
     if user_id:
-        where.append("user_id = ?"); params.append(user_id)
+        where.append("user_id = ?")
+        params.append(user_id)
     sql = (
         "SELECT ds.*, u.email, u.full_name, d.name AS department_name "
         "FROM department_staff ds "
@@ -461,7 +530,9 @@ def assign_staff(
     with get_conn() as conn:
         if not conn.execute("SELECT 1 FROM users WHERE id = ?", [body.user_id]).fetchone():
             raise HTTPException(404, "User not found")
-        if not conn.execute("SELECT 1 FROM departments WHERE id = ?", [body.department_id]).fetchone():
+        if not conn.execute(
+            "SELECT 1 FROM departments WHERE id = ?", [body.department_id]
+        ).fetchone():
             raise HTTPException(404, "Department not found")
         existing = conn.execute(
             "SELECT id FROM department_staff WHERE user_id = ? AND department_id = ?",
@@ -470,16 +541,18 @@ def assign_staff(
         if existing:
             raise HTTPException(409, "Already assigned")
         cur = conn.execute(
-            "INSERT INTO department_staff (department_id, user_id, assigned_at) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO department_staff (department_id, user_id, assigned_at) VALUES (?, ?, ?)",
             [body.department_id, body.user_id, now],
         )
         new_id = cur.lastrowid
-        write_audit(conn=conn, actor_user_id=actor, action="admin.staff_assign",
-                    target_type="department_staff", target_id=new_id)
-        row = conn.execute(
-            "SELECT * FROM department_staff WHERE id = ?", [new_id]
-        ).fetchone()
+        write_audit(
+            conn=conn,
+            actor_user_id=actor,
+            action="admin.staff_assign",
+            target_type="department_staff",
+            target_id=new_id,
+        )
+        row = conn.execute("SELECT * FROM department_staff WHERE id = ?", [new_id]).fetchone()
     return _row_to_dict(row)
 
 
@@ -496,8 +569,13 @@ def unassign_staff(
         if not existing:
             raise HTTPException(404, "Assignment not found")
         conn.execute("DELETE FROM department_staff WHERE id = ?", [assignment_id])
-        write_audit(conn=conn, actor_user_id=actor, action="admin.staff_unassign",
-                    target_type="department_staff", target_id=assignment_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=actor,
+            action="admin.staff_unassign",
+            target_type="department_staff",
+            target_id=assignment_id,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -537,16 +615,17 @@ def create_patient_assignment(
     with get_conn() as conn:
         if not conn.execute("SELECT 1 FROM patients WHERE id = ?", [body.patient_id]).fetchone():
             raise HTTPException(404, "Patient not found")
-        target = conn.execute(
-            "SELECT role FROM users WHERE id = ?", [body.user_id]
-        ).fetchone()
+        target = conn.execute("SELECT role FROM users WHERE id = ?", [body.user_id]).fetchone()
         if not target:
             raise HTTPException(404, "User not found")
         if target["role"] != "nurse":
             raise HTTPException(422, "user_id must reference a nurse account")
         overlap = find_overlap(
-            conn, patient_id=body.patient_id, user_id=body.user_id,
-            shift_start=start, shift_end=end,
+            conn,
+            patient_id=body.patient_id,
+            user_id=body.user_id,
+            shift_start=start,
+            shift_end=end,
         )
         if overlap:
             raise HTTPException(
@@ -568,10 +647,19 @@ def create_patient_assignment(
             bed_label=body.bed_label,
             created_by=actor,
         )
-        write_audit(conn=conn, actor_user_id=actor, action="patient_assignment.create",
-                    target_type="patient_assignment", target_id=new_id,
-                    metadata={"patient_id": body.patient_id, "user_id": body.user_id,
-                              "shift_start": start, "shift_end": end})
+        write_audit(
+            conn=conn,
+            actor_user_id=actor,
+            action="patient_assignment.create",
+            target_type="patient_assignment",
+            target_id=new_id,
+            metadata={
+                "patient_id": body.patient_id,
+                "user_id": body.user_id,
+                "shift_start": start,
+                "shift_end": end,
+            },
+        )
         row = conn.execute("SELECT * FROM patient_assignments WHERE id = ?", [new_id]).fetchone()
     return _serialize_assignment(row)
 
@@ -605,7 +693,8 @@ def my_assigned_patients(
                 {"allergen": r["allergen"], "severity": r["severity"], "reaction": r["reaction"]}
                 for r in conn.execute(
                     "SELECT allergen, severity, reaction FROM patient_allergies "
-                    "WHERE patient_id = ?", [a["patient_id"]],
+                    "WHERE patient_id = ?",
+                    [a["patient_id"]],
                 ).fetchall()
             ]
             latest = conn.execute(
@@ -613,18 +702,20 @@ def my_assigned_patients(
                 [a["patient_id"]],
             ).fetchone()["at"]
             vitals_due = latest is None or (now - int(latest)) > 6 * 3600
-            patients.append({
-                "assignment_id": a["id"],
-                "patient_id": p["id"],
-                "mrn": p["mrn"],
-                "full_name": p["full_name"],
-                "acuity": p["acuity"],
-                "admission_status": p["admission_status"],
-                "primary_department_id": p["primary_department_id"],
-                "bed_label": a["bed_label"],
-                "allergies": allergies,
-                "vitals_due": vitals_due,
-            })
+            patients.append(
+                {
+                    "assignment_id": a["id"],
+                    "patient_id": p["id"],
+                    "mrn": p["mrn"],
+                    "full_name": p["full_name"],
+                    "acuity": p["acuity"],
+                    "admission_status": p["admission_status"],
+                    "primary_department_id": p["primary_department_id"],
+                    "bed_label": a["bed_label"],
+                    "allergies": allergies,
+                    "vitals_due": vitals_due,
+                }
+            )
         patients.sort(key=lambda x: x["full_name"])
     return {"shift_date": shift_date, "user_id": user_id, "patients": patients}
 
@@ -649,5 +740,10 @@ def cancel_patient_assignment(
             )
         else:
             conn.execute("DELETE FROM patient_assignments WHERE id = ?", [assignment_id])
-        write_audit(conn=conn, actor_user_id=actor, action="patient_assignment.cancel",
-                    target_type="patient_assignment", target_id=assignment_id)
+        write_audit(
+            conn=conn,
+            actor_user_id=actor,
+            action="patient_assignment.cancel",
+            target_type="patient_assignment",
+            target_id=assignment_id,
+        )

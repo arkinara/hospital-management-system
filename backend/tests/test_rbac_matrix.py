@@ -233,6 +233,8 @@ CASES: list[tuple[str, str, object | None, set[str], str]] = [
     ("DELETE", "/doctors/{doctor_id}/blocked-days/{blocked_id}", None, SELF_AVAILABILITY, ""),
     # ---- Medical records ------------------------------------------------
     ("GET", "/medical-records/patients/{patient_id}/visits", None, RECORDS_READ, ""),
+    ("GET", "/medical-records/patients/{patient_id}/prescriptions", None, RECORDS_READ, ""),
+    ("GET", "/medical-records/visits", None, RECORDS_READ, ""),
     ("GET", "/medical-records/visits/{visit_id}", None, RECORDS_READ, ""),
     (
         "POST",
@@ -405,6 +407,20 @@ CASES: list[tuple[str, str, object | None, set[str], str]] = [
     # ---- Widget config --------------------------------------------------
     ("GET", "/widget-config/widgets", None, ALL, ""),
     ("GET", "/widget-config/widgets/admin/library", None, ADMIN_ONLY, ""),
+    (
+        "POST",
+        "/widget-config/widgets",
+        {"key": "rbac-probe-widget", "name": "RBAC probe"},
+        ADMIN_ONLY,
+        "",
+    ),
+    (
+        "PATCH",
+        "/widget-config/widgets/{lock_widget_id}",
+        {"globally_enabled": True},
+        ADMIN_ONLY,
+        "",
+    ),
     (
         "PATCH",
         "/widget-config/widgets/{lock_widget_id}/lock",

@@ -223,7 +223,6 @@ def run_seed(db_path: Path) -> int:
             (patient_id, dept_id, now),
         )
 
-
     # ---- Allergies (no unique key -> existence check) ---------------------
     noted_by: dict[str, int | None] = {
         uid: user_id_by_fixture.get(uid) for uid in ("U-104", "U-203")
@@ -344,8 +343,7 @@ def run_seed(db_path: Path) -> int:
         blocked_date = (datetime.now(UTC).date() + timedelta(days=offset_days)).isoformat()
         inserted += _insert_if_absent(
             conn,
-            "INSERT INTO doctor_blocked_days (doctor_id, blocked_date, reason) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO doctor_blocked_days (doctor_id, blocked_date, reason) VALUES (?, ?, ?)",
             "SELECT 1 FROM doctor_blocked_days WHERE doctor_id = ? AND blocked_date = ?",
             (doctor_user_id, blocked_date),
             (doctor_user_id, blocked_date, reason),

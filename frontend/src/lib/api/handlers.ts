@@ -1370,7 +1370,7 @@ export const handlers = [
   }),
 
   // ---- Billing ------------------------------------------------------------
-  http.get("*/invoices", async ({ request }) => {
+  http.get("*/billing/invoices", async ({ request }) => {
     const url = new URL(request.url);
     const patient = url.searchParams.get("patient");
     const status = url.searchParams.get("status");
@@ -1380,7 +1380,7 @@ export const handlers = [
     return respond(mockConfig.invoices.list, { invoices: items }, { invoices: [] });
   }),
 
-  http.post("*/invoices", async ({ request }) => {
+  http.post("*/billing/invoices", async ({ request }) => {
     const body = await readBody<Partial<Invoice>>(request);
     const invoice: Invoice = {
       id: `INV-2026-${String(1000 + db.invoices.length).slice(-4)}`,
@@ -1397,7 +1397,7 @@ export const handlers = [
     return respond(mockConfig.invoices.create, invoice, invoice);
   }),
 
-  http.post("*/invoices/:id/payments", async ({ params, request }) => {
+  http.post("*/billing/invoices/:id/payments", async ({ params, request }) => {
     const id = String(params.id);
     const index = db.invoices.findIndex((i) => i.id === id);
     if (index === -1) return notFound("Invoice", id);
@@ -1422,7 +1422,7 @@ export const handlers = [
     return respond(mockConfig.invoices.payment, payment, payment);
   }),
 
-  http.get("*/invoices/:id", async ({ params }) => {
+  http.get("*/billing/invoices/:id", async ({ params }) => {
     const id = String(params.id);
     const invoice = db.invoices.find((i) => i.id === id);
     if (!invoice) return notFound("Invoice", id);
@@ -1435,7 +1435,7 @@ export const handlers = [
     );
   }),
 
-  http.get("*/claims", async ({ request }) => {
+  http.get("*/billing/claims", async ({ request }) => {
     const url = new URL(request.url);
     const status = url.searchParams.get("status");
     let items = db.claims;
@@ -1444,7 +1444,7 @@ export const handlers = [
   }),
 
   // ---- Permissions (admin) ------------------------------------------------
-  http.get("*/permissions", async () => {
+  http.get("*/auth/permissions", async () => {
     return respond(
       mockConfig.permissions.get,
       { permissions: db.permissions },
@@ -1452,7 +1452,7 @@ export const handlers = [
     );
   }),
 
-  http.put("*/permissions/:role/:module", async ({ params, request }) => {
+  http.put("*/auth/permissions/:role/:module", async ({ params, request }) => {
     const role = String(params.role) as Role;
     const moduleName = String(params.module);
     const body = await readBody<{
@@ -1485,31 +1485,12 @@ export const handlers = [
   }),
 
   // ---- Widgets ------------------------------------------------------------
-  http.get("*/widgets/admin/library", async () => {
+  http.get("*/widget-config/widgets/admin/library", async () => {
     return respond(mockConfig.widgets.library, { widgets: db.widgets }, { widgets: [] });
   }),
 
-  http.put("*/widgets/admin/library/:id", async ({ params, request }) => {
-    const id = String(params.id);
-    const index = db.widgets.findIndex((w) => w.key === id);
-    if (index === -1) return notFound("Widget", id);
-    const body = await readBody<Partial<Widget>>(request);
-    db.widgets[index] = { ...db.widgets[index], ...body, key: id };
-    db.auditLog = [
-      {
-        id: `AUD-${8000 + db.auditLog.length}`,
-        actorUserId: 1,
-        action: "widget.lock_toggle",
-        entityType: "widget",
-        entityId: id,
-        createdAt: new Date().toISOString(),
-      },
-      ...db.auditLog,
-    ];
-    return respond(mockConfig.widgets.update, db.widgets[index], db.widgets[index]);
-  }),
 
-  http.get("*/widgets/me", async ({ request }) => {
+  http.get("*/widget-config/me", async ({ request }) => {
     const role = roleFromRequest(request, "doctor");
     const display = ROLE_DISPLAY[role];
     const userId = ROLE_TO_USER[role];
@@ -1527,7 +1508,7 @@ export const handlers = [
     );
   }),
 
-  http.put("*/widgets/me", async ({ request }) => {
+  http.put("*/widget-config/me", async ({ request }) => {
     const body = await readBody<{ userId?: string; role?: Role; layout: WidgetLayout[] }>(request);
     const userId = body.userId ?? ROLE_TO_USER[body.role ?? "doctor"];
     db.widgetLayouts = [...db.widgetLayouts.filter((l) => l.userId !== userId), ...body.layout];
@@ -1550,7 +1531,7 @@ export const handlers = [
     return respond(mockConfig.widgets.definitions, { widgets: definitions }, { widgets: [] });
   }),
 
-  http.post("*/admin/widgets", async ({ request }) => {
+  http.post("*/widget-config/widgets", async ({ request }) => {
     const body = await readBody<Partial<WidgetDefinition>>(request);
     if (db.widgets.some((w) => w.key === body.key)) {
       return errorResponse("duplicate_widget", `Widget key '${body.key}' already exists`, 409);
@@ -1593,7 +1574,7 @@ export const handlers = [
     return respond(mockConfig.widgets.add, def, def);
   }),
 
-  http.patch("*/admin/widgets/:id", async ({ params, request }) => {
+  http.patch("*/widget-config/widgets/:id", async ({ params, request }) => {
     const id = String(params.id);
     const index = db.widgets.findIndex((w) => w.key === id);
     if (index === -1) return notFound("Widget", id);
@@ -1796,7 +1777,7 @@ export const handlers = [
   }),
 
   // ---- Audit --------------------------------------------------------------
-  http.get("*/audit-log", async () => {
+  http.get("*/audit/log", async () => {
     return respond(mockConfig.audit.list, { entries: db.auditLog }, { entries: [] });
   }),
 ];
@@ -1812,12 +1793,11 @@ const API_ROOTS = [
   "doctors",
   "medical-records",
   "vitals",
-  "invoices",
-  "permissions",
-  "widgets",
+  "billing",
+  "widget-config",
   "auth",
   "admin",
-  "audit-log",
+  "audit",
 ];
 
 export function isApiRequest(rawUrl: string): boolean {

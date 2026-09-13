@@ -188,7 +188,7 @@ export default function PermissionMatrixScreen(): JSX.Element {
     refetch,
   } = useQuery<{ permissions: PermissionRow[] }>(
     queryKeys.permissions() as unknown as unknown[],
-    { fetcher: () => api.get<{ permissions: PermissionRow[] }>("/permissions") },
+    { fetcher: () => api.get<{ permissions: PermissionRow[] }>("/auth/permissions") },
   );
   const baseline = useMemo(
     () => (rows?.permissions ? buildMatrix(rows.permissions) : null),
@@ -233,7 +233,7 @@ export default function PermissionMatrixScreen(): JSX.Element {
       // and the pending draft stays on screen — nothing is silently lost.
       await Promise.all(
         all.map((c) =>
-          api.put(`/permissions/${c.role}/${c.module}`, {
+          api.put(`/auth/permissions/${c.role}/${c.module}`, {
             allowed: c.toValue,
             ...cellToFlags(draft[c.role][c.module]),
           }),

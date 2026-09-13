@@ -55,9 +55,9 @@ interface RegionSpec {
 const REGIONS: RegionSpec[] = [
   { label: "patients", path: "/patients", listKey: "patients", resource: "patients", operation: "list" },
   { label: "appointments", path: "/appointments", listKey: "appointments", resource: "appointments", operation: "list" },
-  { label: "invoices", path: "/invoices", listKey: "invoices", resource: "invoices", operation: "list" },
-  { label: "audit", path: "/audit-log", listKey: "entries", resource: "audit", operation: "list" },
-  { label: "widgets", path: "/widgets/me", listKey: "widgets", resource: "widgets", operation: "me" },
+  { label: "invoices", path: "/billing/invoices", listKey: "invoices", resource: "invoices", operation: "list" },
+  { label: "audit", path: "/audit/log", listKey: "entries", resource: "audit", operation: "list" },
+  { label: "widgets", path: "/widget-config/me", listKey: "widgets", resource: "widgets", operation: "me" },
 ];
 
 function scenarioFor(spec: RegionSpec): Scenario {

@@ -27,10 +27,10 @@ export default function BillingPage() {
   const [tab, setTab] = useState<TabId>("invoices");
 
   const invoices = useQuery<{ invoices: Invoice[] }>(queryKeys.invoices(), {
-    fetcher: () => api.get<{ invoices: Invoice[] }>("/invoices"),
+    fetcher: () => api.get<{ invoices: Invoice[] }>("/billing/invoices"),
   });
   const claims = useQuery<{ claims: Claim[] }>(queryKeys.claims(), {
-    fetcher: () => api.get<{ claims: Claim[] }>("/claims"),
+    fetcher: () => api.get<{ claims: Claim[] }>("/billing/claims"),
     enabled: tab === "claims",
   });
 

@@ -97,19 +97,19 @@ export default function PatientDetailPage({ params }: { params: { mrn: string } 
     enabled: tab === "timeline",
   });
   const visitsQuery = useQuery<{ visits: VisitNote[] }>(queryKeys.visits(mrn), {
-    fetcher: () => api.get<{ visits: VisitNote[] }>(`/medical-records/${mrn}/visits`),
+    fetcher: () => api.get<{ visits: VisitNote[] }>(`/medical-records/patients/${mrn}/visits`),
     enabled: tab === "records",
   });
   type PrescriptionRow = VisitNote["prescriptions"][number] & { visitDate?: string; status?: VisitNote["status"] };
   const rxQuery = useQuery<{ prescriptions: PrescriptionRow[] }>(
     ["patients", mrn, "prescriptions"],
     {
-      fetcher: () => api.get<{ prescriptions: PrescriptionRow[] }>(`/patients/${mrn}/prescriptions`),
+      fetcher: () => api.get<{ prescriptions: PrescriptionRow[] }>(`/medical-records/patients/${mrn}/prescriptions`),
       enabled: tab === "prescriptions",
     },
   );
   const invoicesQuery = useQuery<{ invoices: Invoice[] }>(queryKeys.invoices({ patient: mrn }), {
-    fetcher: () => api.get<{ invoices: Invoice[] }>("/invoices", { query: { patient: mrn } }),
+    fetcher: () => api.get<{ invoices: Invoice[] }>("/billing/invoices", { query: { patient: mrn } }),
     enabled: tab === "billing",
   });
 

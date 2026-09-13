@@ -2,11 +2,10 @@
 
 Per-user layout persistence + global lock enforcement.
 """
+
 from __future__ import annotations
 
-import pytest
-
-from test_auth import _db_conn, bearer, client, login
+from test_auth import bearer, client, login
 
 ADMIN = ("admin@hospital.test", "Hospital2025!")
 DOCTOR = ("doctor@hospital.test", "Hospital2025!")
@@ -67,7 +66,8 @@ def test_locked_widget_cannot_be_removed_by_user():
     target = widgets[0]
     # Lock it as admin
     lr = client.patch(
-        f"/widget-config/widgets/{target['id']}/lock", headers=h_admin,
+        f"/widget-config/widgets/{target['id']}/lock",
+        headers=h_admin,
         json={"globally_locked": True},
     )
     assert lr.status_code == 200
@@ -83,13 +83,15 @@ def test_locked_widget_re_added_on_layout_save():
     target = widgets[0]
     # Lock
     client.patch(
-        f"/widget-config/widgets/{target['id']}/lock", headers=h_admin,
+        f"/widget-config/widgets/{target['id']}/lock",
+        headers=h_admin,
         json={"globally_locked": True},
     )
     # Doctor saves layout that DOESN'T include the locked widget
     other = widgets[1] if len(widgets) > 1 else widgets[0]
     client.put(
-        "/widget-config/me", headers=h_doc,
+        "/widget-config/me",
+        headers=h_doc,
         json={"items": [{"widget_id": other["id"], "position_order": 0}]},
     )
     # The locked widget should still be in the layout (re-inserted)
@@ -105,12 +107,14 @@ def test_unlocks_widget_after_admin_toggle():
     target = widgets[0]
     # Lock + verify
     client.patch(
-        f"/widget-config/widgets/{target['id']}/lock", headers=h_admin,
+        f"/widget-config/widgets/{target['id']}/lock",
+        headers=h_admin,
         json={"globally_locked": True},
     )
     # Unlock
     r = client.patch(
-        f"/widget-config/widgets/{target['id']}/lock", headers=h_admin,
+        f"/widget-config/widgets/{target['id']}/lock",
+        headers=h_admin,
         json={"globally_locked": False},
     )
     assert r.status_code == 200
@@ -124,7 +128,49 @@ def test_doctor_cannot_lock_widget_403():
     h_doc = _doctor_h()
     widgets = client.get("/widget-config/widgets", headers=h_doc).json()["widgets"]
     r = client.patch(
-        f"/widget-config/widgets/{widgets[0]['id']}/lock", headers=h_doc,
+        f"/widget-config/widgets/{widgets[0]['id']}/lock",
+        headers=h_doc,
         json={"globally_locked": True},
     )
     assert r.status_code == 403
+
+
+def test_create_and_update_widget_definition():
+    """Admin can add a widget to the library and flip its global enable flag."""
+    h = _admin_h()
+    created = client.post(
+        "/widget-config/widgets",
+        headers=h,
+        json={"key": "test-occupancy", "name": "Occupancy", "default_role": "nurse"},
+    )
+    assert created.status_code == 201, created.text
+    widget = created.json()
+    assert widget["key"] == "test-occupancy"
+    assert widget["globally_enabled"] in (1, True)
+
+    dupe = client.post(
+        "/widget-config/widgets",
+        headers=h,
+        json={"key": "test-occupancy", "name": "Occupancy again"},
+    )
+    assert dupe.status_code == 409
+
+    patched = client.patch(
+        f"/widget-config/widgets/{widget['id']}",
+        headers=h,
+        json={"globally_enabled": False, "default_role": "doctor"},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["globally_enabled"] in (0, False)
+    assert patched.json()["default_role"] == "doctor"
+
+    assert (
+        client.patch(f"/widget-config/widgets/{widget['id']}", headers=h, json={}).status_code
+        == 422
+    )
+    assert (
+        client.patch(
+            "/widget-config/widgets/999999", headers=h, json={"globally_enabled": True}
+        ).status_code
+        == 404
+    )

@@ -147,9 +147,7 @@ def test_complete_with_visit_note_id_succeeds():
 
 def test_no_show_allowed_from_booked():
     appt_id = _book()
-    r = client.post(
-        f"/appointments/{appt_id}/no-show", json={}, headers=_headers(RECEPTIONIST)
-    )
+    r = client.post(f"/appointments/{appt_id}/no-show", json={}, headers=_headers(RECEPTIONIST))
     assert r.status_code == 200
     assert r.json()["status"] == "no_show"
 
@@ -157,9 +155,7 @@ def test_no_show_allowed_from_booked():
 def test_no_show_allowed_from_checked_in():
     appt_id = _book()
     _check_in(appt_id)
-    r = client.post(
-        f"/appointments/{appt_id}/no-show", json={}, headers=_headers(RECEPTIONIST)
-    )
+    r = client.post(f"/appointments/{appt_id}/no-show", json={}, headers=_headers(RECEPTIONIST))
     assert r.status_code == 200
 
 
@@ -172,21 +168,18 @@ def test_no_show_on_completed_is_409():
         json={"clinical_notes": "done"},
         headers=_headers(RECEPTIONIST),
     )
-    r = client.post(
-        f"/appointments/{appt_id}/no-show", json={}, headers=_headers(RECEPTIONIST)
-    )
+    r = client.post(f"/appointments/{appt_id}/no-show", json={}, headers=_headers(RECEPTIONIST))
     assert r.status_code == 409
 
 
 def test_no_show_on_cancelled_is_409():
     appt_id = _book()
     client.post(
-        f"/appointments/{appt_id}/cancel", json={"reason": "moved"},
+        f"/appointments/{appt_id}/cancel",
+        json={"reason": "moved"},
         headers=_headers(RECEPTIONIST),
     )
-    r = client.post(
-        f"/appointments/{appt_id}/no-show", json={}, headers=_headers(RECEPTIONIST)
-    )
+    r = client.post(f"/appointments/{appt_id}/no-show", json={}, headers=_headers(RECEPTIONIST))
     assert r.status_code == 409
 
 

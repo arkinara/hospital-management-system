@@ -84,9 +84,7 @@ def search_patients(
         return [], 0
 
     where_sql, params = _where(query, department, acuity, admission_status)
-    total = conn.execute(
-        f"SELECT COUNT(*) FROM patients p WHERE {where_sql}", params
-    ).fetchone()[0]
+    total = conn.execute(f"SELECT COUNT(*) FROM patients p WHERE {where_sql}", params).fetchone()[0]
 
     page = max(1, int(page))
     size = clamp_page_size(page_size)
@@ -98,8 +96,7 @@ def search_patients(
             "WHEN 'standard' THEN 2 ELSE 3 END, p.full_name COLLATE NOCASE, p.id"
         )
     rows = conn.execute(
-        f"SELECT p.* FROM patients p WHERE {where_sql} "
-        f"ORDER BY {order} LIMIT ? OFFSET ?",
+        f"SELECT p.* FROM patients p WHERE {where_sql} ORDER BY {order} LIMIT ? OFFSET ?",
         [*params, size, offset],
     ).fetchall()
     return rows, total

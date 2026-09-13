@@ -77,7 +77,7 @@ describe("Billing wiring (#30)", () => {
 
   it("shows the live 422 payment error from the server", async () => {
     server.use(
-      http.post("*/invoices/:id/payments", () =>
+      http.post("*/billing/invoices/:id/payments", () =>
         HttpResponse.json(
           {
             error: {

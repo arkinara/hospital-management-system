@@ -7,7 +7,7 @@ worklist, and soft-delete cancellation that preserves the audit trail.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from test_auth import _db_conn, bearer, client, login
 
@@ -29,9 +29,7 @@ def _shift_iso(hour):
 
 def _nurse_id():
     with _db_conn() as conn:
-        return conn.execute(
-            "SELECT id FROM users WHERE email = ?", (NURSE[0],)
-        ).fetchone()[0]
+        return conn.execute("SELECT id FROM users WHERE email = ?", (NURSE[0],)).fetchone()[0]
 
 
 def _make_patient():
@@ -220,9 +218,12 @@ def test_my_patients_ignores_cancelled_assignments():
     assignment = _create_assignment(pid, nurse_id, 0, 12)
     assert assignment.status_code == 201
     assignment_id = assignment.json()["id"]
-    assert client.delete(
-        f"/admin/patient-assignments/{assignment_id}", headers=_headers(ADMIN)
-    ).status_code == 204
+    assert (
+        client.delete(
+            f"/admin/patient-assignments/{assignment_id}", headers=_headers(ADMIN)
+        ).status_code
+        == 204
+    )
     r = client.get(
         f"/admin/users/{nurse_id}/my-patients",
         params={"shift_date": _today()},
@@ -238,9 +239,7 @@ def test_delete_assignment_soft_cancels():
     pid = _make_patient()
     assignment = _create_assignment(pid, _nurse_id(), 0, 12)
     assignment_id = assignment.json()["id"]
-    r = client.delete(
-        f"/admin/patient-assignments/{assignment_id}", headers=_headers(ADMIN)
-    )
+    r = client.delete(f"/admin/patient-assignments/{assignment_id}", headers=_headers(ADMIN))
     assert r.status_code == 204
     with _db_conn() as conn:
         row = conn.execute(

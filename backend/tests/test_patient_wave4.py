@@ -72,9 +72,7 @@ def test_clinical_summary_returns_safety_attributes_and_counts():
 def test_clinical_summary_counts_prescriptions_and_appointments():
     pid = _make_patient()
     with _db_conn() as conn:
-        doctor_id = conn.execute(
-            "SELECT id FROM users WHERE email = ?", (DOCTOR[0],)
-        ).fetchone()[0]
+        doctor_id = conn.execute("SELECT id FROM users WHERE email = ?", (DOCTOR[0],)).fetchone()[0]
         visit = conn.execute(
             "INSERT INTO visit_notes (patient_id, doctor_id, diagnosis, status, created_at) "
             "VALUES (?, ?, 'sum', 'signed', 0)",
@@ -116,7 +114,8 @@ def test_patient_filter_acuity_and_admission_status():
 def test_patient_filter_acuity_alone():
     _make_patient(acuity="critical")
     listing = client.get(
-        "/patients", params={"acuity": "critical", "page_size": 100},
+        "/patients",
+        params={"acuity": "critical", "page_size": 100},
         headers=_headers(DOCTOR),
     )
     assert listing.status_code == 200
@@ -127,7 +126,8 @@ def test_patient_sort_by_acuity_ranks_critical_first():
     _make_patient(acuity="routine")
     _make_patient(acuity="critical")
     listing = client.get(
-        "/patients", params={"sort": "acuity", "page_size": 100},
+        "/patients",
+        params={"sort": "acuity", "page_size": 100},
         headers=_headers(DOCTOR),
     )
     assert listing.status_code == 200
@@ -179,9 +179,7 @@ def test_acuity_update_persists_and_is_attributable():
 
 def test_acuity_update_invalid_value_is_422_without_mutation():
     pid = _make_patient(acuity="routine")
-    r = client.patch(
-        f"/patients/{pid}", headers=_headers(RECEPTIONIST), json={"acuity": "super"}
-    )
+    r = client.patch(f"/patients/{pid}", headers=_headers(RECEPTIONIST), json={"acuity": "super"})
     assert r.status_code == 422
     with _db_conn() as conn:
         row = conn.execute("SELECT acuity FROM patients WHERE id = ?", (pid,)).fetchone()

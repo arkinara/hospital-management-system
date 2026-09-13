@@ -75,9 +75,7 @@ def _blocked_partial(conn: sqlite3.Connection, doctor_id: int, day: date) -> lis
     return ranges
 
 
-def get_doctor_slots(
-    conn: sqlite3.Connection, doctor_id: int, value: str | date
-) -> list[dict]:
+def get_doctor_slots(conn: sqlite3.Connection, doctor_id: int, value: str | date) -> list[dict]:
     """Return the 15-minute slot grid for one doctor/day.
 
     A fully blocked day yields an empty grid (blocked days do not surface).
@@ -98,9 +96,7 @@ def get_doctor_slots(
         "ORDER BY scheduled_at",
         (doctor_id,),
     ).fetchall()
-    booked_ranges = [
-        (int(a["scheduled_at"]), _appt_end(a), a) for a in appointments
-    ]
+    booked_ranges = [(int(a["scheduled_at"]), _appt_end(a), a) for a in appointments]
     partial_blocks = _blocked_partial(conn, doctor_id, day)
 
     slots: list[dict] = []
@@ -171,9 +167,7 @@ def is_doctor_available(
         return _available_with_conn(db, doctor_id, start, end, day)
 
 
-def within_working_hours(
-    conn: sqlite3.Connection, doctor_id: int, start: int, end: int
-) -> bool:
+def within_working_hours(conn: sqlite3.Connection, doctor_id: int, start: int, end: int) -> bool:
     """True when [start, end) fits a working window on a non-blocked day.
 
     Excludes the conflict check so callers can report a precise 409 reason

@@ -584,15 +584,16 @@ export const nav: NavItem[] = [
   { key: "dashboard", label: "Dashboard", icon: "layout-dashboard", href: null, module: null },
   { key: "patients", label: "Patients", icon: "users", href: "/patients", module: "patients" },
   { key: "appointments", label: "Appointments", icon: "calendar-days", href: "/appointments", module: "appointments" },
-  { key: "records", label: "Records", icon: "file-text", href: "/records", module: "records" },
+  { key: "records", label: "Records", icon: "file-text", href: "/medical-records", module: "records" },
   { key: "billing", label: "Billing", icon: "receipt-text", href: "/billing", module: "billing" },
   {
     key: "admin", label: "Admin", icon: "shield-check", href: null, module: "admin",
     children: [
       { key: "users", label: "Users", icon: "user-cog", href: "/admin/users", module: "admin" },
       { key: "departments", label: "Departments", icon: "building-2", href: "/admin/departments", module: "admin" },
-      { key: "widgets", label: "Widget Library", icon: "layout-grid", href: "/admin/widgets", module: "admin" },
+      { key: "widgets", label: "Widget Library", icon: "layout-grid", href: "/admin/widget-library", module: "admin" },
       { key: "permissions", label: "Permissions", icon: "key-round", href: "/admin/permissions", module: "admin" },
+      { key: "audit", label: "Audit log", icon: "history", href: "/admin/audit", module: "admin" },
     ],
   },
   { key: "reports", label: "Reports", icon: "bar-chart-3", href: null, module: null },
