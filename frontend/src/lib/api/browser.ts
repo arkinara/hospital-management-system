@@ -12,7 +12,15 @@ import { handlers } from "./handlers";
 
 export const worker = setupWorker(...handlers);
 
+/**
+ * Kill switch: when `NEXT_PUBLIC_API_MOCK=off` the worker is left stopped so
+ * every request falls through to the real API (used by the e2e-live run).
+ * Any other value (unset in dev) keeps the mock layer on.
+ */
 export function startMockWorker(): Promise<unknown> {
+  if (process.env.NEXT_PUBLIC_API_MOCK === "off") {
+    return Promise.resolve();
+  }
   return worker.start({
     onUnhandledRequest: "bypass",
     quiet: true,
