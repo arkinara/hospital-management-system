@@ -67,7 +67,7 @@ Spot-checks that **passed**: #1 skip link and the five-item mobile bottom bar wi
 
 ---
 
-## 4. Outstanding — not fixed, still blocking a live backend
+## 4. Outstanding — tracked as #57, #58, #59, #60
 
 Paths now line up. **Payload shapes and identifiers do not.** The frontend types are the prototype fixture shapes; the backend returns database rows. This was the part of "wiring" the M3 tickets never did, and it is a real piece of work, not a rename:
 
@@ -76,10 +76,17 @@ Paths now line up. **Payload shapes and identifiers do not.** The frontend types
 - **Body-field drift.** The lock toggle sends `{locked: true}`; the backend expects `{globally_locked: true}`.
 - **Consequence.** With `NEXT_PUBLIC_API_URL` pointed at FastAPI and MSW off, screens still break — now on deserialisation rather than 404s.
 
-Closing it means an adapter layer per domain (or re-typing the frontend to the backend's shapes) plus rewriting the MSW handlers to emit backend-shaped payloads so the tests keep testing something true. Recommended order: patients → billing → records → widgets, one domain per PR, extending `test_frontend_contract.py` to compare response shapes as each lands.
+Tracked as **#57**. Closing it means an adapter layer per domain (or re-typing the frontend to the backend's shapes) plus rewriting the MSW handlers to emit backend-shaped payloads so the tests keep testing something true. Recommended order: patients → billing → records → widgets, one domain per PR, extending `test_frontend_contract.py` to compare response shapes as each lands.
 
-Smaller leftovers:
+Also open:
 
-- `environmentMatchGlobs` in `vitest.config.ts` is deprecated in Vitest 3 and removed in 4; migrate to `test.projects` before upgrading.
+- **#58** — `POST /auth/login` has no rate limit or lockout. Failed attempts are already audited; nothing reads them. These accounts reach patient records.
+- **#60** — `environmentMatchGlobs` in `vitest.config.ts` is deprecated in Vitest 3 and removed in 4. The upgrade fails silently: every `.tsx` test drops to the `node` environment.
 - CI ran on Node 20, where jsdom 30 cannot load at all (`TypeError: webidl.util.markAsUncloneable is not a function` out of undici). That is why the pre-existing state-coverage job had never passed. CI now pins Node 22; the `localStorage` shim in `vitest.setup.ts` is what lets the same suite run on Node ≥24 locally.
-- No CI job runs the e2e journeys against a live backend — they run entirely against MSW, so they cannot catch the drift in this section.
+- **#59** — no CI job runs the e2e journeys against a live backend. They run entirely against MSW, which is how the drift in this section survived a green suite through all of M3.
+
+## 5. Fixed after the first pass
+
+- CI ran the frontend on Node 20, where jsdom 30 cannot load at all. Pinned to Node 22 in caec18b; all three jobs then passed for the first time.
+- A password reset left every existing refresh token valid for its remaining 7 days, so a reset could not lock an attacker out. Reset and change-password now revoke live sessions, matching role change and deactivation (949097a).
+- With `ENVIRONMENT=production` and no `JWT_SECRET`, the app booted on a random per-startup secret behind a warning — sessions die on every restart and two workers reject each other's tokens. It now refuses to boot (949097a).
