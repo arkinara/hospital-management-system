@@ -54,8 +54,7 @@ def _failure_rows(now: int, window_seconds: int) -> list[dict]:
     since = now - window_seconds
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT id, after_json, created_at FROM audit_log "
-            "WHERE action = ? AND created_at >= ?",
+            "SELECT id, after_json, created_at FROM audit_log WHERE action = ? AND created_at >= ?",
             (FAILED_ACTION, since),
         ).fetchall()
     parsed = []

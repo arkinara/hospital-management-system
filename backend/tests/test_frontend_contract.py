@@ -149,21 +149,17 @@ def test_patient_and_record_keys_are_present_in_backend_shapes():
     assert events, "seed has no history events"
     assert mappers["beHistoryEvent"] <= _k(events[0])
 
-    rx = client.get(
-        f"/medical-records/patients/{pid}/prescriptions", headers=h
-    ).json()["prescriptions"]
+    rx = client.get(f"/medical-records/patients/{pid}/prescriptions", headers=h).json()[
+        "prescriptions"
+    ]
     assert rx, "seed has no prescriptions"
     assert mappers["bePrescription"] <= _k(rx[0]), sorted(mappers["bePrescription"] - _k(rx[0]))
 
-    visits = client.get(
-        "/medical-records/visits", headers=h, params={"limit": 1}
-    ).json()["visits"]
+    visits = client.get("/medical-records/visits", headers=h, params={"limit": 1}).json()["visits"]
     assert visits, "seed has no visit notes"
     assert mappers["beVisitNote"] <= _k(visits[0]), sorted(mappers["beVisitNote"] - _k(visits[0]))
 
-    care = client.get(
-        f"/medical-records/patients/{pid}/care-plan", headers=h
-    ).json()["items"]
+    care = client.get(f"/medical-records/patients/{pid}/care-plan", headers=h).json()["items"]
     assert care, "seed has no care plan items"
     assert mappers["beCarePlanItem"] <= _k(care[0])
 
@@ -172,9 +168,7 @@ def test_billing_keys_are_present_in_backend_shapes():
     h = _admin_headers()
     mappers = _msw_mapper_keys()
 
-    invoices = client.get(
-        "/billing/invoices", headers=h, params={"limit": 100}
-    ).json()["invoices"]
+    invoices = client.get("/billing/invoices", headers=h, params={"limit": 100}).json()["invoices"]
     assert invoices, "seed has no invoices"
     assert mappers["beInvoice"] <= _k(invoices[0]), sorted(mappers["beInvoice"] - _k(invoices[0]))
 
